@@ -1,10 +1,25 @@
 #ifndef BUSTAFERL_CONFIG_H
 #define BUSTAFERL_CONFIG_H
 
-// Wiener Linien RBLs — fill these in before flashing.
-#define RBL_TULL_ATZGERSDORF  0
-#define RBL_TULL_HIETZING     0
-#define RBL_ENDEMANN          0
+// Wiener Linien RBLs.
+//
+// RBL_TULL_ATZGERSDORF: confirmed via
+//   https://www.wienerlinien.at/itip/bf/opendata.php?station=Tullnertalgasse
+//     &destination=Bhf.+Atzgersdorf+S&line=58A&stopId=8131
+//
+// The other two are not in any public search index I could reach from this
+// build environment (the OGD haltepunkte CSV is rate-limited and returns
+// 403 for bots). To resolve them, run a probe at flash time:
+//   1. Aim a browser at  https://till.mabe.at/rbl/?q=Tullnertalgasse
+//      and pick the Steig for direction "Hietzing".
+//   2. Same tool, query "Endemanngasse"; the post-loop direction shows
+//      towards "Atzgersdorf".
+// Alternatively, fetch
+//   https://www.wienerlinien.at/ogd_realtime/doku/ogd/wienerlinien-csv-haltepunkte.csv
+// and grep for the two names.
+#define RBL_TULL_ATZGERSDORF  8131
+#define RBL_TULL_HIETZING     0    // TODO: resolve before flashing
+#define RBL_ENDEMANN          0    // TODO: resolve before flashing
 
 // 58B at Endemanngasse runs a loop; we only want the post-loop direction.
 // This must match the `towards` string the OGD API returns (case-sensitive,
