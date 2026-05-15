@@ -1,0 +1,11 @@
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/
+.cache/
+build/
+*.bin
+*.elf
+*.o
+*.d
+src/secrets.h
