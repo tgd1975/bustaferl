@@ -6,13 +6,9 @@
 // Confirmed via the iTip endpoint
 //   https://www.wienerlinien.at/itip/bf/opendata.php?station=…&line=…&stopId=N
 // where N is the RBL.
-//
-// RBL_ENDEMANN still TODO: the post-loop Atzgersdorf direction at
-// Endemanngasse needs a probe before flashing. Use till.mabe.at/rbl/?q=Endemanngasse
-// or grep wienerlinien-csv-haltepunkte.csv from the OGD portal.
 #define RBL_TULL_ATZGERSDORF  8131   // Tullnertalgasse, 58A → Atzgersdorf
 #define RBL_TULL_HIETZING     3757   // Tullnertalgasse, 58A → Hietzing
-#define RBL_ENDEMANN          0      // TODO: Endemanngasse, 58B → Atzgersdorf
+#define RBL_ENDEMANN          8132   // Endemanngasse,    58B → Bhf. Atzgersdorf S (post-loop)
 
 // 58B at Endemanngasse runs a loop; we only want the post-loop direction.
 // This must match the `towards` string the OGD API returns (case-sensitive,
