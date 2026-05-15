@@ -4,18 +4,18 @@
 
 namespace bustaferl {
 
-void renderStaleFrame(Frame& fb) {
-    RenderInput in;
-    in.overlay = OverlayKind::Stale;
-    renderFrame(in, fb);
+void renderStaleFrame(Frame &fb) {
+  RenderInput in;
+  in.overlay = OverlayKind::Stale;
+  renderFrame(in, fb);
 }
 
-void renderStartFailedFrame(Frame& fb) {
-    RenderInput in;
-    in.overlay = OverlayKind::StartFailed;
-    renderFrame(in, fb);
+void renderStartFailedFrame(Frame &fb) {
+  RenderInput in;
+  in.overlay = OverlayKind::StartFailed;
+  renderFrame(in, fb);
 }
 
-}  // namespace bustaferl
+} // namespace bustaferl
 
 #endif

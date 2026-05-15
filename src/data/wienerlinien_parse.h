@@ -9,9 +9,9 @@ namespace bustaferl {
 
 // Filter for one stream within an OGD monitor response.
 struct StreamFilter {
-    int         rbl = 0;             // RBL number we expect this stream at
-    std::string line;                // e.g. "58A"
-    std::string towards_prefix;      // prefix match, case-sensitive; empty = no filter
+  int rbl = 0;                // RBL number we expect this stream at
+  std::string line;           // e.g. "58A"
+  std::string towards_prefix; // prefix match, case-sensitive; empty = no filter
 };
 
 // Parses an OGD monitor JSON response. The response contains a `monitors`
@@ -21,10 +21,10 @@ struct StreamFilter {
 //
 // Returns true if the JSON parsed cleanly (regardless of how many filters
 // matched). Sets snapshot.api_ok accordingly.
-bool parseMonitorResponse(const std::string& json,
+bool parseMonitorResponse(const std::string &json,
                           const StreamFilter (&filters)[STREAM_COUNT],
-                          StreamSnapshot& out);
+                          StreamSnapshot &out);
 
-}  // namespace bustaferl
+} // namespace bustaferl
 
 #endif

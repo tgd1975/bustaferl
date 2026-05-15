@@ -12,13 +12,13 @@ namespace bustaferl {
 // declared in the .cpp file.
 class Esp32PersistentStore : public IPersistentStore {
 public:
-    PersistedMeta loadMeta() override;
-    void          saveMeta(const PersistedMeta& m) override;
-    size_t        loadFramebuffer(uint8_t* out, size_t cap) override;
-    bool          saveFramebuffer(const uint8_t* fb, size_t len) override;
+  PersistedMeta loadMeta() override;
+  void saveMeta(const PersistedMeta &m) override;
+  size_t loadFramebuffer(uint8_t *out, size_t cap) override;
+  bool saveFramebuffer(const uint8_t *fb, size_t len) override;
 };
 
-}  // namespace bustaferl
+} // namespace bustaferl
 
 #endif
 #endif

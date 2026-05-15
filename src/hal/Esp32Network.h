@@ -11,16 +11,16 @@ namespace bustaferl {
 
 class Esp32Network : public INetwork {
 public:
-    void addAp(const char* ssid, const char* password);
-    bool connect(unsigned timeout_ms) override;
-    bool isConnected() override;
-    bool httpGet(const std::string& url, std::string& out) override;
+  void addAp(const char *ssid, const char *password);
+  bool connect(unsigned timeout_ms) override;
+  bool isConnected() override;
+  bool httpGet(const std::string &url, std::string &out) override;
 
 private:
-    WiFiMulti wifi_;
+  WiFiMulti wifi_;
 };
 
-}  // namespace bustaferl
+} // namespace bustaferl
 
 #endif
 #endif

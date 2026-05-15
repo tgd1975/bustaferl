@@ -9,6 +9,6 @@ namespace bustaferl {
 // time slots, show "veraltet"). `threshold_s` is typically STALE_THRESHOLD_S.
 bool isStale(time_t last_success, time_t now, int threshold_s);
 
-}  // namespace bustaferl
+} // namespace bustaferl
 
 #endif

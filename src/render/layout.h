@@ -11,16 +11,16 @@ constexpr int FB_H = 300;
 using Frame = FrameBuffer<FB_W, FB_H>;
 
 enum class OverlayKind {
-    None,
-    Stale,         // "veraltet"
-    FilterDead,    // "58B Filter ungültig"
-    StartFailed,   // "Start fehlgeschlagen"
+  None,
+  Stale,       // "veraltet"
+  FilterDead,  // "58B Filter ungültig"
+  StartFailed, // "Start fehlgeschlagen"
 };
 
 struct RenderInput {
-    StreamSnapshot snapshot;
-    OverlayKind    overlay = OverlayKind::None;
-    int            tz_offset_seconds = 3600;  // CET default; render-only
+  StreamSnapshot snapshot;
+  OverlayKind overlay = OverlayKind::None;
+  int tz_offset_seconds = 3600; // CET default; render-only
 };
 
 // Renders the layout described in CONCEPT.md §3 into the framebuffer.
@@ -28,9 +28,9 @@ struct RenderInput {
 // to include from the host build, but the symbol resolves only when GFX is
 // available.
 #ifndef NATIVE_BUILD
-void renderFrame(const RenderInput& in, Frame& fb);
+void renderFrame(const RenderInput &in, Frame &fb);
 #endif
 
-}  // namespace bustaferl
+} // namespace bustaferl
 
 #endif
