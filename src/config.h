@@ -3,23 +3,16 @@
 
 // Wiener Linien RBLs.
 //
-// RBL_TULL_ATZGERSDORF: confirmed via
-//   https://www.wienerlinien.at/itip/bf/opendata.php?station=Tullnertalgasse
-//     &destination=Bhf.+Atzgersdorf+S&line=58A&stopId=8131
+// Confirmed via the iTip endpoint
+//   https://www.wienerlinien.at/itip/bf/opendata.php?station=…&line=…&stopId=N
+// where N is the RBL.
 //
-// The other two are not in any public search index I could reach from this
-// build environment (the OGD haltepunkte CSV is rate-limited and returns
-// 403 for bots). To resolve them, run a probe at flash time:
-//   1. Aim a browser at  https://till.mabe.at/rbl/?q=Tullnertalgasse
-//      and pick the Steig for direction "Hietzing".
-//   2. Same tool, query "Endemanngasse"; the post-loop direction shows
-//      towards "Atzgersdorf".
-// Alternatively, fetch
-//   https://www.wienerlinien.at/ogd_realtime/doku/ogd/wienerlinien-csv-haltepunkte.csv
-// and grep for the two names.
-#define RBL_TULL_ATZGERSDORF  8131
-#define RBL_TULL_HIETZING     0    // TODO: resolve before flashing
-#define RBL_ENDEMANN          0    // TODO: resolve before flashing
+// RBL_ENDEMANN still TODO: the post-loop Atzgersdorf direction at
+// Endemanngasse needs a probe before flashing. Use till.mabe.at/rbl/?q=Endemanngasse
+// or grep wienerlinien-csv-haltepunkte.csv from the OGD portal.
+#define RBL_TULL_ATZGERSDORF  8131   // Tullnertalgasse, 58A → Atzgersdorf
+#define RBL_TULL_HIETZING     3757   // Tullnertalgasse, 58A → Hietzing
+#define RBL_ENDEMANN          0      // TODO: Endemanngasse, 58B → Atzgersdorf
 
 // 58B at Endemanngasse runs a loop; we only want the post-loop direction.
 // This must match the `towards` string the OGD API returns (case-sensitive,
