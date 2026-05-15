@@ -11,7 +11,9 @@
 #include "hal/Esp32Network.h"
 #include "hal/Esp32PersistentStore.h"
 #include "hal/Esp32Sleep.h"
+#include "logic/api_fetcher.h"
 #include "logic/boot_sequencer.h"
+#include "logic/display_apply.h"
 #include "logic/filter_health.h"
 #include "logic/refresh_planner.h"
 #include "logic/sleep_planner.h"
@@ -51,9 +53,16 @@ std::string apiUrl() {
 
 bool fetchSnapshot(StreamSnapshot &out) {
   std::string body;
-  if (!g_net.httpGet(apiUrl(), body)) {
-    Serial.println("[api] httpGet failed");
+  FetchConfig fc;
+  FetchOutcome fo = fetchWithRetry(g_net, apiUrl(), body, fc);
+  if (!fo.ok) {
+    Serial.printf("[api] httpGet failed after %d attempts\n",
+                  fo.attempts_taken);
     return false;
+  }
+  if (fo.attempts_taken > 1) {
+    Serial.printf("[api] httpGet succeeded on attempt %d/%d\n",
+                  fo.attempts_taken, fc.max_attempts);
   }
   StreamFilter filters[STREAM_COUNT];
   buildFilters(filters);
@@ -68,35 +77,6 @@ bool fetchSnapshot(StreamSnapshot &out) {
                 out.stream[STREAM_58B_ATZ].rbl_responded,
                 out.stream[STREAM_58B_ATZ].filter_matched);
   return parsed;
-}
-
-void applyDisplayDecision(const RefreshDecision &d, const Frame &fb,
-                          PersistedMeta &meta, time_t now) {
-  switch (d.kind) {
-  case RefreshKind::None:
-    break;
-  case RefreshKind::Partial:
-    g_display.drawPartial(fb.data(), d.bbox);
-    ++meta.partial_count;
-    break;
-  case RefreshKind::LightFull:
-    g_display.lightFull(fb.data());
-    meta.last_light_full = now;
-    meta.partial_count = 0;
-    break;
-  case RefreshKind::DeepClean:
-    g_display.deepClean(fb.data());
-    meta.last_deep_clean = now;
-    meta.last_light_full = now;
-    meta.partial_count = 0;
-    break;
-  }
-}
-
-bool needsNightlyDeepClean(time_t now, time_t last) {
-  if (last == 0)
-    return true;
-  return (now - last) >= 20 * 3600; // at least 20h since last clean
 }
 
 void registerWifiCredentials() {
@@ -123,7 +103,7 @@ void renderAndPush(const StreamSnapshot &snap, OverlayKind overlay,
       planRefresh(g_frame_prev.data(), g_frame_new.data(), prev_valid, now,
                   meta.last_light_full, meta.partial_count, rc);
 
-  applyDisplayDecision(d, g_frame_new, meta, now);
+  applyDisplayDecision(g_display, d, g_frame_new.data(), meta, now);
 
   bool saved = g_store.saveFramebuffer(g_frame_new.data(), Frame::bytes);
   meta.framebuffer_valid = saved;
@@ -184,7 +164,7 @@ void coldBootPath(PersistedMeta &meta) {
   meta.framebuffer_valid = true;
 
   SleepConfig sc{WAKE_BEFORE_BUS_S, BOOT_MARGIN_S, ACTIVE_THRESHOLD_S,
-                 NO_DATA_SLEEP_S};
+                 NO_DATA_SLEEP_S, API_FAILURE_RETRY_S};
   SleepDecision sd = planSleep(snap, g_clock.now(), sc);
   doSleepOrLoop(sd, meta);
 }
@@ -199,6 +179,7 @@ void warmCyclePath(PersistedMeta &meta) {
       renderAndPush({}, OverlayKind::Stale, meta);
     }
     g_sleep.deepSleep(POLL_INTERVAL_S);
+    return; // deepSleep doesn't return on hardware, but be explicit
   }
 
   // ESP32 deep sleep loses the system clock — now() returns seconds since
@@ -247,10 +228,10 @@ void warmCyclePath(PersistedMeta &meta) {
   // Nightly deep clean: if next sleep would be long and we haven't cleaned
   // in 20h, do it now.
   SleepConfig sc{WAKE_BEFORE_BUS_S, BOOT_MARGIN_S, ACTIVE_THRESHOLD_S,
-                 NO_DATA_SLEEP_S};
+                 NO_DATA_SLEEP_S, API_FAILURE_RETRY_S};
   SleepDecision pre = planSleep(snap, now, sc);
   bool nightly = pre.mode == Mode::DeepSleep && pre.seconds > 4 * 3600 &&
-                 needsNightlyDeepClean(now, meta.last_deep_clean);
+                 needsNightlyDeepClean(now, meta.last_deep_clean, 20 * 3600);
 
   if (nightly) {
     RenderInput in{snap, overlay, 3600};
@@ -261,8 +242,13 @@ void warmCyclePath(PersistedMeta &meta) {
     meta.partial_count = 0;
     g_store.saveFramebuffer(g_frame_new.data(), Frame::bytes);
     meta.framebuffer_valid = true;
-  } else {
+  } else if (ok || overlay != OverlayKind::None) {
     renderAndPush(snap, overlay, meta);
+  } else {
+    // Transient fetch failure (not yet stale): keep showing the last good
+    // frame. Re-rendering with an empty snap would flicker every slot to
+    // "--:--" for one cycle and back.
+    Serial.println("[warm] fetch failed pre-stale — keeping last frame");
   }
 
   doSleepOrLoop(pre, meta);

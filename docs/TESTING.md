@@ -1,32 +1,42 @@
 # Tests
 
-Alle Tests laufen auf dem Host (`env:native`), nicht auf dem ESP32. Das
-Test-Framework ist [Unity](https://github.com/ThrowTheSwitch/Unity), das
-PlatformIO mitbringt.
+Zwei Test-Sorten — Host-Suite (`env:native`, schnell, Mocks) und
+On-Device-Suites (`env:esp32-test-*`, exakte Hardware-Pfade über Unity-Serial).
 
 ```bash
-make test          # alle Suites
+make test          # Host-Suite
 make test-verbose  # mit Unity-Detail-Output
 pio test -e native -f test_sleep_planner   # nur eine Suite
+
+pio test -e esp32-test-fetch       # WiFi + HTTPS + Parse, NTP, Engine-Recovery
+pio test -e esp32-test-persistent  # RTC slow memory + RLE round-trip
+pio test -e esp32-test-render      # renderFrame() + error_overlay
+pio test -e esp32-test-sleep       # Esp32Sleep wakeupCause mapping
+pio test -e esp32-test-longterm    # 60 fetch cycles / 60 s = ~1 h Stress
 ```
 
 ## Testbar / nicht testbar
 
-| Schicht          | Host-Tests             | Hardware-Tests          |
-|------------------|------------------------|-------------------------|
-| `logic/`         | ✅ vollständig         | nein                    |
-| `data/`          | ✅ Parser mit Fixtures | nein                    |
-| `render/rle.cpp` | ✅ Roundtrip-Tests     | nein                    |
-| `render/layout`  | ❌ braucht GFX-Stack   | manuell auf Gerät       |
-| `hal/Esp32*`     | ❌ ESP32-only          | nur auf Gerät           |
-| `main.cpp`       | ❌ Verdrahtung         | Integrationstest        |
+| Schicht                    | Host-Tests             | On-Device-Tests               |
+|----------------------------|------------------------|-------------------------------|
+| `logic/`                   | ✅ vollständig         | im fetch-Test mit-exerziert   |
+| `data/`                    | ✅ Parser mit Fixtures | live-Antwort im fetch-Test    |
+| `render/rle.cpp`           | ✅ Roundtrip-Tests     | im persistent-Test indirekt   |
+| `render/layout`            | ❌ braucht GFX-Stack   | ✅ esp32-test-render          |
+| `render/error_overlay`     | ❌                     | ✅ esp32-test-render          |
+| `hal/Esp32Network`         | ❌ ESP32-only          | ✅ esp32-test-fetch           |
+| `hal/Esp32Clock`           | ❌ ESP32-only          | ✅ esp32-test-fetch           |
+| `hal/Esp32PersistentStore` | ❌ ESP32-only          | ✅ esp32-test-persistent      |
+| `hal/Esp32Display`         | ❌ ESP32-only          | nur visuell (Panel-Output)    |
+| `hal/Esp32Sleep`           | ❌ ESP32-only          | nur über Wake-Path im Betrieb |
+| `main.cpp`                 | ❌ Verdrahtung         | Engine-Sequenz im fetch-Test  |
 
 ## Neue Tests anlegen
 
 Jede Suite ist ein eigenes Verzeichnis unter `test/` mit genau einer
 `test_main.cpp`:
 
-```
+```text
 test/test_meine_logik/test_main.cpp
 ```
 
@@ -81,11 +91,11 @@ geeignet für sehr große Payloads. Für unsere Stichproben passt es.
 
 ## Coverage-Ziele
 
-| Modul           | Ziel    | Stand                                    |
-|-----------------|---------|------------------------------------------|
-| `logic/*`       | ≥ 90 %  | erreicht (Grenzfälle abgedeckt)          |
-| `data/parse`    | ≥ 80 %  | erreicht (Happy/Plan-Fallback/Error/Empty)|
-| `render/rle`    | hoch    | erreicht (Roundtrip + Overflow + Format) |
+| Modul        | Ziel   | Stand                                      |
+|--------------|--------|--------------------------------------------|
+| `logic/*`    | ≥ 90 % | erreicht (Grenzfälle abgedeckt)            |
+| `data/parse` | ≥ 80 % | erreicht (Happy/Plan-Fallback/Error/Empty) |
+| `render/rle` | hoch   | erreicht (Roundtrip + Overflow + Format)   |
 
 `gcov`-Auswertung ist nicht eingerichtet — bei Bedarf:
 

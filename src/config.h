@@ -43,7 +43,8 @@
 #define BOOT_MARGIN_S 30           // boot + wifi + api + render reserve
 #define POLL_INTERVAL_S 30         // API poll cadence while awake
 #define ACTIVE_THRESHOLD_S 120     // below this delta, stay awake
-#define NO_DATA_SLEEP_S 1800       // sleep when API has no departures
+#define NO_DATA_SLEEP_S 1800       // API ok, no departures (overnight)
+#define API_FAILURE_RETRY_S 60     // API/network failed → short retry instead
 #define PARTIAL_HARDCAP 80         // safety cap before forced light full
 #define LIGHT_FULL_INTERVAL_S 7200 // 2 h between scheduled light fulls
 #define NTP_INTERVAL_S 86400       // 24 h between NTP syncs

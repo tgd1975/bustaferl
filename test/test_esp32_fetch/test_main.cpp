@@ -22,6 +22,29 @@ Esp32Network g_net;
 Esp32Clock g_clock{NTP_SERVER, TZ_INFO};
 std::string g_body;
 
+void printClock(const char *tag) {
+  time_t t = g_clock.now();
+  struct tm local;
+  localtime_r(&t, &local);
+  Serial.printf("[ntp] %s epoch=%lld local=%04d-%02d-%02d %02d:%02d:%02d "
+                "isdst=%d\n",
+                tag, static_cast<long long>(t), local.tm_year + 1900,
+                local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min,
+                local.tm_sec, local.tm_isdst);
+}
+
+void printSlot(const char *stream, const Departure &d) {
+  if (!d.valid) {
+    Serial.printf("[api] %s slot=--:-- (invalid)\n", stream);
+    return;
+  }
+  struct tm local;
+  localtime_r(&d.when, &local);
+  Serial.printf("[api] %s slot=%02d:%02d %s epoch=%lld\n", stream,
+                local.tm_hour, local.tm_min, d.is_realtime ? "RT" : "PLAN",
+                static_cast<long long>(d.when));
+}
+
 std::string apiUrl() {
   std::string url = WL_API_BASE;
   char buf[64];
@@ -49,10 +72,19 @@ void test_wifi_connects(void) {
 }
 
 void test_http_get_returns_body(void) {
+  Serial.printf("[api] GET %s\n", apiUrl().c_str());
   TEST_ASSERT_TRUE_MESSAGE(g_net.httpGet(apiUrl(), g_body),
                            "httpGet returned false");
-  Serial.printf("[test] body size = %u bytes, free heap = %u\n",
+  Serial.printf("[api] body size = %u bytes, free heap = %u\n",
                 static_cast<unsigned>(g_body.size()), ESP.getFreeHeap());
+  // Print a head + tail snippet so a malformed/truncated response is obvious
+  // in the log without dumping the entire payload over serial.
+  const size_t head = g_body.size() < 240 ? g_body.size() : 240;
+  Serial.printf("[api] body head: %.*s\n", static_cast<int>(head),
+                g_body.c_str());
+  if (g_body.size() > 480) {
+    Serial.printf("[api] body tail: %s\n", g_body.c_str() + g_body.size() - 240);
+  }
   TEST_ASSERT_GREATER_THAN_MESSAGE(100, g_body.size(),
                                    "body suspiciously small (<100 bytes)");
   TEST_ASSERT_TRUE_MESSAGE(g_body.find("monitors") != std::string::npos,
@@ -67,7 +99,7 @@ void test_parse_all_three_rbls_respond(void) {
                            "parseMonitorResponse failed");
   TEST_ASSERT_TRUE_MESSAGE(snap.api_ok, "api_ok was false after parse");
 
-  Serial.printf("[test] streams: 58A-Atz r=%d f=%d | "
+  Serial.printf("[api] streams: 58A-Atz r=%d f=%d | "
                 "58A-Hie r=%d f=%d | 58B r=%d f=%d\n",
                 snap.stream[STREAM_58A_ATZ].rbl_responded,
                 snap.stream[STREAM_58A_ATZ].filter_matched,
@@ -75,6 +107,18 @@ void test_parse_all_three_rbls_respond(void) {
                 snap.stream[STREAM_58A_HIETZING].filter_matched,
                 snap.stream[STREAM_58B_ATZ].rbl_responded,
                 snap.stream[STREAM_58B_ATZ].filter_matched);
+
+  // Per-stream parsed departure times — visible in serial so a wrong towards
+  // filter (returns rbl_responded but no slots) is obvious at a glance.
+  for (int slot = 0; slot < SLOTS_PER_STREAM; ++slot) {
+    char tag[24];
+    std::snprintf(tag, sizeof(tag), "58A-Atz[%d]", slot);
+    printSlot(tag, snap.stream[STREAM_58A_ATZ].slot[slot]);
+    std::snprintf(tag, sizeof(tag), "58A-Hie[%d]", slot);
+    printSlot(tag, snap.stream[STREAM_58A_HIETZING].slot[slot]);
+    std::snprintf(tag, sizeof(tag), "58B-Atz[%d]", slot);
+    printSlot(tag, snap.stream[STREAM_58B_ATZ].slot[slot]);
+  }
 
   TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58A_ATZ].rbl_responded,
                            "RBL_TULL_ATZGERSDORF (8131) did not respond");
@@ -97,19 +141,17 @@ void test_parse_all_three_rbls_respond(void) {
 void test_clock_at_boot_is_unsynced(void) {
   // ESP32 cold-boots with time() near zero (seconds since boot, not Unix
   // epoch). This is also the post-deep-sleep state that bites warmCyclePath.
-  time_t t = g_clock.now();
-  Serial.printf("[engine] clock at boot: %lld (unsynced if <1.7e9)\n",
-                static_cast<long long>(t));
-  TEST_ASSERT_LESS_THAN_MESSAGE(1700000000, t,
+  printClock("boot (expected unsynced, < 1.7e9)");
+  TEST_ASSERT_LESS_THAN_MESSAGE(1700000000, g_clock.now(),
                                 "clock unexpectedly synced at boot");
 }
 
 void test_ntp_sync_brings_clock_to_present(void) {
+  Serial.printf("[ntp] calling ntpSync() against %s (TZ=%s)\n", NTP_SERVER,
+                TZ_INFO);
   TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "ntpSync() failed");
-  time_t t = g_clock.now();
-  Serial.printf("[engine] clock after NTP: %lld\n",
-                static_cast<long long>(t));
-  TEST_ASSERT_GREATER_THAN_MESSAGE(1700000000, t,
+  printClock("after ntpSync()");
+  TEST_ASSERT_GREATER_THAN_MESSAGE(1700000000, g_clock.now(),
                                    "clock still bogus after NTP");
 }
 
@@ -138,10 +180,8 @@ void test_warm_boot_recovery_sequence(void) {
   // exact production guard against the actual cold-boot clock state (which
   // is also the post-deep-sleep symptom): clock < 1.7e9 -> force ntpSync ->
   // planSleep must now compute a sane interval, not 50 years.
-  time_t before = g_clock.now();
-  Serial.printf("[engine] sim warm-boot: clock=%lld\n",
-                static_cast<long long>(before));
-  TEST_ASSERT_LESS_THAN_MESSAGE(1700000000, before,
+  printClock("sim warm-boot pre-recovery");
+  TEST_ASSERT_LESS_THAN_MESSAGE(1700000000, g_clock.now(),
                                 "precondition: clock must be bogus");
 
   // Production guard, literal copy from warmCyclePath:
@@ -149,8 +189,7 @@ void test_warm_boot_recovery_sequence(void) {
     TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "recovery NTP failed");
   }
   time_t after = g_clock.now();
-  Serial.printf("[engine] post-recovery: clock=%lld\n",
-                static_cast<long long>(after));
+  printClock("post-recovery");
   TEST_ASSERT_GREATER_THAN_MESSAGE(1700000000, after,
                                    "recovery did not produce a valid clock");
 
@@ -174,16 +213,10 @@ void test_warm_boot_recovery_sequence(void) {
 void test_clock_reads_plausible_current_time(void) {
   // Once NTP has run, the clock should read close to wall-clock 'now'.
   // Bounds: 2026-01-01 (post-fixture-capture) to 2030-01-01 (sanity upper).
-  // Also prints the localtime decomposition so a human can eyeball the
-  // timezone applied (TZ_INFO=CET-1CEST,M3.5.0,M10.5.0/3).
+  printClock("plausibility check");
   time_t t = g_clock.now();
   struct tm local;
   localtime_r(&t, &local);
-  Serial.printf("[engine] clock: %lld -> %04d-%02d-%02d %02d:%02d:%02d "
-                "(tm_isdst=%d)\n",
-                static_cast<long long>(t), local.tm_year + 1900,
-                local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min,
-                local.tm_sec, local.tm_isdst);
   TEST_ASSERT_GREATER_THAN_MESSAGE(
       1735689600, t, "clock pre-2026-01-01 — NTP returned a stale time?");
   TEST_ASSERT_LESS_THAN_MESSAGE(
