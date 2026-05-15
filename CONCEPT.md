@@ -12,16 +12,19 @@ Das Bustaferl ist eine e-Paper-Anzeige fürs Vorzimmer. Es zeigt die nächsten A
 
 ### Pin-Belegung
 
-| ePaper | ESP32 GPIO | Bemerkung |
-|---|---|---|
-| 3.3V | 3V3 | |
-| GND | GND | |
-| DIN | 23 | HW-SPI MOSI (VSPI) |
-| CLK | 18 | HW-SPI SCK (VSPI) |
-| CS | 5 | klassischer SPI-CS |
-| DC | 17 | frei |
-| RST | 16 | frei |
-| BUSY | 4 | frei, Input |
+Reihenfolge am Modul-Stecker: `BUSY · RST · DC · CS · CLK · DIN · GND · 3.3V`.
+Kabelfarben entsprechen dem mitgelieferten Waveshare-Adapterkabel.
+
+| ePaper | Kabel   | ESP32 GPIO | DevKit-Label | Bemerkung           |
+|--------|---------|------------|--------------|---------------------|
+| 3.3V   | rot     | 3V3        | `3V3`        |                     |
+| GND    | schwarz | GND        | `GND`        |                     |
+| DIN    | blau    | 23         | `D23`        | HW-SPI MOSI (VSPI)  |
+| CLK    | gelb    | 18         | `D18`        | HW-SPI SCK (VSPI)   |
+| CS     | orange  | 5          | `D5`         | SPI-CS              |
+| DC     | grün    | 17         | `TX2`        |                     |
+| RST    | weiß    | 16         | `RX2`        |                     |
+| BUSY   | violett | 4          | `D4`         | Input               |
 
 ## 2. Datenquelle und Filter
 

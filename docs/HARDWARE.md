@@ -29,19 +29,27 @@ Display bleibt leer oder zeigt Müll.
 
 ## Pin-Belegung (4-line SPI)
 
-| ePaper  | ESP32 GPIO | Bemerkung               |
-|---------|------------|-------------------------|
-| 3.3V    | 3V3        |                         |
-| GND     | GND        |                         |
-| DIN     | GPIO 23    | HW-SPI MOSI (VSPI)      |
-| CLK     | GPIO 18    | HW-SPI SCK (VSPI)       |
-| CS      | GPIO 5     | klassischer SPI-CS      |
-| DC      | GPIO 17    | frei                    |
-| RST     | GPIO 16    | frei                    |
-| BUSY    | GPIO 4     | frei, Input             |
+Reihenfolge am 8-Pin-JST-Stecker des Moduls (so steht es auf der Platine):
+`BUSY · RST · DC · CS · CLK · DIN · GND · 3.3V`. Das mitgelieferte Kabel
+hat Standard-Waveshare-Farben.
 
-GPIO-Belegung in `src/config.h` änderbar (Defines `EPD_CS`, `EPD_DC`,
-`EPD_RST`, `EPD_BUSY`).
+| ePaper | Kabelfarbe | ESP32 GPIO | Boardlabel* | Bemerkung           |
+|--------|------------|------------|-------------|---------------------|
+| 3.3V   | rot        | 3V3        | `3V3`       |                     |
+| GND    | schwarz    | GND        | `GND`       |                     |
+| DIN    | blau       | GPIO 23    | `D23`       | HW-SPI MOSI (VSPI)  |
+| CLK    | gelb       | GPIO 18    | `D18`       | HW-SPI SCK (VSPI)   |
+| CS     | orange     | GPIO 5     | `D5`        | SPI-CS              |
+| DC     | grün       | GPIO 17    | `TX2`       | = GPIO 17           |
+| RST    | weiß       | GPIO 16    | `RX2`       | = GPIO 16           |
+| BUSY   | violett    | GPIO 4     | `D4`        | Input               |
+
+\* Bezieht sich auf das ESP32-WROOM-32 30-Pin-DevKit (DEVKIT V1) — die
+beiden mittleren Pins der Unterreihe heißen dort `RX2`/`TX2` statt
+`D16`/`D17`. GPIO-Nummer ist verbindlich, nicht das Label.
+
+Alle GPIO-Zuordnungen sind in `src/config.h` über `EPD_CS`, `EPD_DC`,
+`EPD_RST`, `EPD_BUSY` änderbar (MOSI/SCK sind über VSPI fixiert).
 
 ## BS-Jumper
 
