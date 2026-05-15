@@ -51,11 +51,23 @@ std::string apiUrl() {
 
 bool fetchSnapshot(StreamSnapshot &out) {
   std::string body;
-  if (!g_net.httpGet(apiUrl(), body))
+  if (!g_net.httpGet(apiUrl(), body)) {
+    Serial.println("[api] httpGet failed");
     return false;
+  }
   StreamFilter filters[STREAM_COUNT];
   buildFilters(filters);
-  return parseMonitorResponse(body, filters, out);
+  bool parsed = parseMonitorResponse(body, filters, out);
+  Serial.printf("[api] parse=%d api_ok=%d  streams: "
+                "58A-Atz r=%d f=%d | 58A-Hie r=%d f=%d | 58B r=%d f=%d\n",
+                parsed, out.api_ok,
+                out.stream[STREAM_58A_ATZ].rbl_responded,
+                out.stream[STREAM_58A_ATZ].filter_matched,
+                out.stream[STREAM_58A_HIETZING].rbl_responded,
+                out.stream[STREAM_58A_HIETZING].filter_matched,
+                out.stream[STREAM_58B_ATZ].rbl_responded,
+                out.stream[STREAM_58B_ATZ].filter_matched);
+  return parsed;
 }
 
 void applyDisplayDecision(const RefreshDecision &d, const Frame &fb,
@@ -120,17 +132,25 @@ void renderAndPush(const StreamSnapshot &snap, OverlayKind overlay,
 void doSleepOrLoop(const SleepDecision &sd, const PersistedMeta &meta) {
   g_store.saveMeta(meta);
   if (sd.mode == Mode::DeepSleep) {
-    Serial.printf("[sleep] deep sleep for %u s\n", sd.seconds);
+    Serial.printf("[sleep] deep sleep for %u s (next bus far away or no data)\n",
+                  sd.seconds);
     g_sleep.deepSleep(sd.seconds);
   }
-  Serial.println("[sleep] staying active");
+  Serial.printf("[sleep] staying active, light sleep for %u s\n",
+                POLL_INTERVAL_S);
   g_sleep.lightSleep(POLL_INTERVAL_S);
 }
 
 void coldBootPath(PersistedMeta &meta) {
+  Serial.printf("[boot] cold path, retry %u/%u\n", meta.cold_boot_retries,
+                COLD_BOOT_MAX_RETRIES);
   BootConfig bc;
   bc.max_retries = COLD_BOOT_MAX_RETRIES;
   BootResult r = runColdBoot(g_net, g_clock, meta.cold_boot_retries, bc);
+  Serial.printf("[boot] runColdBoot -> %s\n",
+                r == BootResult::Ok ? "Ok"
+                : r == BootResult::RetryLater ? "RetryLater"
+                                              : "GiveUp");
   if (r == BootResult::RetryLater) {
     ++meta.cold_boot_retries;
     g_store.saveMeta(meta);
@@ -152,12 +172,8 @@ void coldBootPath(PersistedMeta &meta) {
   bool ok = fetchSnapshot(snap);
   if (ok) {
     meta.last_api_success = g_clock.now();
-    for (int i = 0; i < STREAM_COUNT; ++i) {
-      if (snap.stream[i].rbl_responded && snap.stream[i].filter_matched) {
-        // nothing, just clarity
-      }
-    }
   }
+  Serial.printf("[boot] fetch ok=%d, rendering and deep-cleaning panel\n", ok);
   RenderInput in{snap, OverlayKind::None, 3600};
   renderFrame(in, g_frame_new);
   g_display.deepClean(g_frame_new.data());
@@ -174,6 +190,7 @@ void coldBootPath(PersistedMeta &meta) {
 }
 
 void warmCyclePath(PersistedMeta &meta) {
+  Serial.println("[warm] cycle start");
   if (!g_net.connect(10000)) {
     Serial.println("[warm] wifi down");
     // No data — keep showing last render, but flip to stale if old enough.
@@ -182,6 +199,23 @@ void warmCyclePath(PersistedMeta &meta) {
       renderAndPush({}, OverlayKind::Stale, meta);
     }
     g_sleep.deepSleep(POLL_INTERVAL_S);
+  }
+
+  // ESP32 deep sleep loses the system clock — now() returns seconds since
+  // boot, not Unix epoch. Without this guard, the periodic NTP check below
+  // (a signed subtraction) underflows to a huge negative and never fires,
+  // leaving planSleep to compute a 50-year deep sleep against a bogus now.
+  if (g_clock.now() < 1700000000) {
+    Serial.printf("[warm] clock unsynced (now=%lld), forcing NTP\n",
+                  static_cast<long long>(g_clock.now()));
+    if (g_clock.ntpSync()) {
+      meta.last_ntp_sync = g_clock.now();
+      Serial.printf("[warm] NTP recovered: now=%lld\n",
+                    static_cast<long long>(g_clock.now()));
+    } else {
+      Serial.println("[warm] NTP failed, retrying after cold-boot interval");
+      g_sleep.deepSleep(COLD_BOOT_RETRY_S);
+    }
   }
 
   // Periodic NTP refresh.

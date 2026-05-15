@@ -11,18 +11,24 @@
 #define RBL_ENDEMANN                                                           \
   8132 // Endemanngasse,    58B → Bhf. Atzgersdorf S (post-loop)
 
-// 58B at Endemanngasse runs a loop; we only want the post-loop direction.
-// This must match the `towards` string the OGD API returns (case-sensitive,
-// prefix match). Verify against a real API response before flashing.
-#define FILTER_TOWARDS_58B "Atzgersdorf"
+// All towards-prefixes are case-sensitive prefix matches against the OGD
+// API's `towards` field. The strings below are taken from a live response
+// (2026-05); the parser's regression test locks them against the captured
+// fixture in test/test_wienerlinien_parse/fixtures/wl_live.h.
+//
+// 58B at Endemanngasse runs a loop; the API distinguishes the two passes by
+// the "(üb. Rosenhügelstr.)" suffix versus "(üb. Atzgersdorfer Str.)". The
+// 58B filter combined with line=58B picks only the post-loop direction.
+#define FILTER_TOWARDS_58B "Bhf. Atzgersdorf"
 
 // Line names as the API reports them.
 #define LINE_58A "58A"
 #define LINE_58B "58B"
 
-// Direction labels for the 58A streams. Used only for filtering the response
-// — verify exact strings from a real API call.
-#define TOWARDS_58A_ATZ "Atzgersdorf"
+// Direction labels for the 58A streams. The 58A→Atzgersdorf branch reports
+// "Bhf. Atzgersdorf S (üb. Atzgersdorfer Str.)"; the Hietzing branch reports
+// "Hietzing U".
+#define TOWARDS_58A_ATZ "Bhf. Atzgersdorf"
 #define TOWARDS_58A_HIETZING "Hietzing"
 
 // e-Paper GPIO

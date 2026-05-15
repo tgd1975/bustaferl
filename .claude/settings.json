@@ -5,5 +5,10 @@
     "check-tool": "on",
     "commit": "on",
     "fix-markdown": "on"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pio test *)"
+    ]
   }
 }

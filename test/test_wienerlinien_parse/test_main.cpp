@@ -1,7 +1,9 @@
 #include <string>
 #include <unity.h>
 
+#include "config.h"
 #include "data/wienerlinien_parse.h"
+#include "fixtures/wl_live.h"
 
 using namespace bustaferl;
 
@@ -144,6 +146,42 @@ void test_empty_monitors_succeeds_with_no_data() {
   }
 }
 
+void test_real_live_response_parses() {
+  // Captured live API body (fixtures/wl_live.h). Real RBLs from config.h.
+  StreamFilter f[STREAM_COUNT];
+  f[STREAM_58A_ATZ] = {8131, "58A", "Atzgersdorf"};
+  f[STREAM_58A_HIETZING] = {3757, "58A", "Hietzing"};
+  f[STREAM_58B_ATZ] = {8132, "58B", "Atzgersdorf"};
+  StreamSnapshot s;
+  TEST_ASSERT_TRUE_MESSAGE(parseMonitorResponse(kLiveResponseJson, f, s),
+                           "parseMonitorResponse returned false on real body");
+  TEST_ASSERT_TRUE(s.api_ok);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].rbl_responded);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58A_HIETZING].rbl_responded);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58B_ATZ].rbl_responded);
+}
+
+void test_real_live_response_all_three_filters_match() {
+  // Uses the production filter strings from config.h against the captured
+  // live response. Locks the contract: with the real towards-prefixes, all
+  // three streams must filter_match and yield a valid first slot.
+  StreamFilter f[STREAM_COUNT];
+  f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
+  f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
+  f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
+  StreamSnapshot s;
+  TEST_ASSERT_TRUE(parseMonitorResponse(kLiveResponseJson, f, s));
+  TEST_ASSERT_TRUE_MESSAGE(s.stream[STREAM_58A_ATZ].filter_matched,
+                           "58A→Atzgersdorf filter did not match real data");
+  TEST_ASSERT_TRUE_MESSAGE(s.stream[STREAM_58A_HIETZING].filter_matched,
+                           "58A→Hietzing filter did not match real data");
+  TEST_ASSERT_TRUE_MESSAGE(s.stream[STREAM_58B_ATZ].filter_matched,
+                           "58B→Atzgersdorf filter did not match real data");
+  TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].slot[0].valid);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58A_HIETZING].slot[0].valid);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58B_ATZ].slot[0].valid);
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -154,5 +192,7 @@ int main(int, char **) {
   RUN_TEST(test_filter_mismatch_marks_responded_but_not_matched);
   RUN_TEST(test_malformed_json_fails_cleanly);
   RUN_TEST(test_empty_monitors_succeeds_with_no_data);
+  RUN_TEST(test_real_live_response_parses);
+  RUN_TEST(test_real_live_response_all_three_filters_match);
   return UNITY_END();
 }

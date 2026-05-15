@@ -20,7 +20,9 @@ time_t Esp32Clock::now() {
 }
 
 bool Esp32Clock::ntpSync() {
-  configTzTime(tz_info_, ntp_server_);
+  // Primary + two well-known fallbacks. The SNTP daemon races them, so a
+  // single sluggish pool member can't fail the whole sync.
+  configTzTime(tz_info_, ntp_server_, "pool.ntp.org", "time.google.com");
   // Wait up to 10s for the SNTP daemon to set the system clock.
   for (int i = 0; i < 50; ++i) {
     time_t t = now();

@@ -3,8 +3,8 @@
 # `make help` lists everything. Default target is help.
 
 .DEFAULT_GOAL := help
-.PHONY: help build upload monitor flash test test-verbose clean format \
-        format-check lint size secrets ci
+.PHONY: help build upload monitor flash test test-verbose test-esp32 clean \
+        format format-check lint size secrets ci
 
 PIO := pio
 
@@ -28,6 +28,9 @@ test:                  ## run unit tests on host
 
 test-verbose:          ## run unit tests with verbose output
 	$(PIO) test -e native -v
+
+test-esp32:            ## on-device smoke test: WiFi + HTTPS + parse vs live API
+	$(PIO) test -e esp32-test-fetch -v
 
 clean:                 ## remove build artifacts
 	$(PIO) run -t clean
