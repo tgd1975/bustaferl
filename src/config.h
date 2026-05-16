@@ -45,6 +45,12 @@
 #define EPD_RST 16
 #define EPD_BUSY 4
 
+// Onboard "BOOT" button — GPIO 0, active-low with internal pullup. Short
+// press triggers an update cycle (wakes from deep sleep if applicable);
+// hold past BTN_LONG_PRESS_MS triggers a B/W panel reset + redraw.
+#define BTN_BOOT_PIN 0
+#define BTN_LONG_PRESS_MS 2000
+
 // Behaviour thresholds (seconds unless noted).
 #define STALE_THRESHOLD_S 180      // 3 min until stale state
 #define WAKE_BEFORE_BUS_S 900      // 15 min safety lead

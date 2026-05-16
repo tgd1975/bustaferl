@@ -6,6 +6,7 @@ namespace bustaferl {
 enum class WakeCause {
   ColdBoot,
   Timer,
+  Button, // GPIO 0 (boot button) pulled LOW during sleep
   Other,
 };
 

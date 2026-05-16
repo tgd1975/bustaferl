@@ -365,20 +365,104 @@ void warmCyclePath(PersistedMeta &meta) {
   doSleepOrLoop(pre, meta);
 }
 
+enum class ButtonPress { None, Short, Long };
+
+// Block until the boot button is released; classify as short or long based
+// on BTN_LONG_PRESS_MS. Assumes the button is currently held LOW (we got
+// here because of an EXT0/GPIO wake or a positive poll). If it's already
+// HIGH on entry, treat as a transient press (Short).
+ButtonPress measureButtonPress() {
+  pinMode(BTN_BOOT_PIN, INPUT_PULLUP);
+  delay(20); // debounce settle
+  if (digitalRead(BTN_BOOT_PIN) == HIGH) {
+    return ButtonPress::Short;
+  }
+  uint32_t t0 = millis();
+  bool long_latched = false;
+  while (digitalRead(BTN_BOOT_PIN) == LOW) {
+    if (!long_latched && millis() - t0 >= BTN_LONG_PRESS_MS) {
+      long_latched = true;
+      Serial.println("[btn] long-press threshold reached, waiting for release");
+    }
+    delay(10);
+  }
+  Serial.printf("[btn] released after %u ms\n",
+                static_cast<unsigned>(millis() - t0));
+  return long_latched ? ButtonPress::Long : ButtonPress::Short;
+}
+
+// Long-press action: flush the panel with a B/W deep clean and redraw the
+// last good framebuffer. If we have nothing persisted, render an empty
+// frame and clean. Caller still runs the regular warm cycle afterwards to
+// fetch fresh data.
+void runBwReset(PersistedMeta &meta) {
+  Serial.println("[btn] BW reset + redraw");
+  bool have_fb =
+      meta.framebuffer_valid &&
+      g_store.loadFramebuffer(g_frame_new.data(), Frame::bytes) == Frame::bytes;
+  if (!have_fb) {
+    Serial.println("[btn] no valid framebuffer — rendering empty for clean");
+    StreamSnapshot snap;
+    RenderInput in{snap, OverlayKind::None};
+    renderFrame(in, g_frame_new);
+  }
+  g_display.deepClean(g_frame_new.data());
+  if (!have_fb) {
+    g_store.saveFramebuffer(g_frame_new.data(), Frame::bytes);
+    meta.framebuffer_valid = true;
+  }
+  time_t now = g_clock.now();
+  meta.last_deep_clean = now;
+  meta.last_light_full = now;
+  meta.partial_count = 0;
+  g_store.saveMeta(meta);
+}
+
+// Poll the button right now (used in loop() after light-sleep wake) and,
+// if a press is in progress, classify + dispatch. Returns the classified
+// press for the caller's logging convenience.
+ButtonPress handleButtonIfPressed(PersistedMeta &meta) {
+  pinMode(BTN_BOOT_PIN, INPUT_PULLUP);
+  delay(5);
+  if (digitalRead(BTN_BOOT_PIN) != LOW) {
+    return ButtonPress::None;
+  }
+  Serial.println("[btn] press detected");
+  ButtonPress p = measureButtonPress();
+  if (p == ButtonPress::Long) {
+    runBwReset(meta);
+  } else {
+    Serial.println("[btn] short — proceed with update");
+  }
+  return p;
+}
+
 } // namespace
 
 void setup() {
   Serial.begin(115200);
   delay(100);
 
+  pinMode(BTN_BOOT_PIN, INPUT_PULLUP);
+
   registerWifiCredentials();
   g_display.init();
 
   PersistedMeta meta = g_store.loadMeta();
 
-  if (g_sleep.wakeupCause() == WakeCause::ColdBoot) {
+  WakeCause cause = g_sleep.wakeupCause();
+  if (cause == WakeCause::ColdBoot) {
     Serial.println("[boot] cold");
     coldBootPath(meta);
+  } else if (cause == WakeCause::Button) {
+    Serial.println("[boot] button-wake");
+    ButtonPress p = measureButtonPress();
+    if (p == ButtonPress::Long) {
+      runBwReset(meta);
+    } else {
+      Serial.println("[btn] short — proceed with update");
+    }
+    warmCyclePath(meta);
   } else {
     Serial.println("[boot] warm");
     warmCyclePath(meta);
@@ -387,9 +471,12 @@ void setup() {
 
 void loop() {
   // Active-phase polling: warmCyclePath set us up for
-  // lightSleep(POLL_INTERVAL_S) and we get here when it returns. Just rerun the
-  // warm cycle.
+  // lightSleep(POLL_INTERVAL_S) and we get here when it returns — either
+  // on timer, or because the boot button was pressed (configured as a GPIO
+  // wake source). Check the button first so a long press during active
+  // mode still resets the panel.
   PersistedMeta meta = g_store.loadMeta();
+  handleButtonIfPressed(meta);
   warmCyclePath(meta);
 }
 
