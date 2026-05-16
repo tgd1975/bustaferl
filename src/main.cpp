@@ -6,6 +6,8 @@
 #include <string>
 
 #include "config.h"
+#include "data/ScheduleHint.h"
+#include "data/efa_parse.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Display.h"
@@ -17,7 +19,9 @@
 #include "logic/display_apply.h"
 #include "logic/filter_health.h"
 #include "logic/refresh_planner.h"
+#include "logic/schedule_fetcher.h"
 #include "logic/sleep_planner.h"
+#include "logic/slot_merger.h"
 #include "logic/stale_policy.h"
 #include "render/error_overlay.h"
 #include "render/layout.h"
@@ -44,6 +48,17 @@ void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
   f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
                             TOWARDS_U1_LEOPOLDAU};
   f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
+}
+
+void buildScheduleFilters(ScheduleStreamFilter (&f)[STREAM_COUNT]) {
+  f[STREAM_58A_ATZ] = {DIVA_TULLNERTALGASSE, LINE_58A, EFA_TOWARDS_58A_ATZ};
+  f[STREAM_58A_HIETZING] = {DIVA_TULLNERTALGASSE, LINE_58A,
+                            EFA_TOWARDS_58A_HIETZING};
+  f[STREAM_58B_ATZ] = {DIVA_ENDEMANNGASSE, LINE_58B, EFA_TOWARDS_58B_ATZ};
+  f[STREAM_U1_LEOPOLDAU] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
+                            EFA_TOWARDS_U1_LEOPOLDAU};
+  f[STREAM_U1_OBERLAA] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
+                          EFA_TOWARDS_U1_OBERLAA};
 }
 
 // Maximum stopIds per OGD monitor query. Smaller batches are empirically
@@ -181,9 +196,67 @@ void registerWifiCredentials() {
 #endif
 }
 
+// One EFA pass per distinct DIVA. Returns true if at least one call yielded
+// usable data; partial success is good enough to update the snapshot (any
+// streams that did not get fresh data keep their previous hint values via
+// the load-modify-save flow in the callers).
+bool refreshSchedule(ScheduleSnapshot &out) {
+  ScheduleStreamFilter sf[STREAM_COUNT];
+  buildScheduleFilters(sf);
+  ScheduleFetchConfig cfg;
+  cfg.endpoint_base = WL_EFA_DM_BASE;
+  ScheduleFetchResult r = fetchSchedule(g_net, g_clock.now(), sf, cfg);
+  Serial.printf("[sched] calls=%d failed=%d ok=%d\n", r.calls_attempted,
+                r.calls_failed, r.ok);
+  if (!r.ok)
+    return false;
+  // Only overwrite hints for streams whose DIVA call actually returned —
+  // streams whose call failed keep their previous values (carried in `out`).
+  for (int i = 0; i < STREAM_COUNT; ++i) {
+    // calls_failed > 0 means at least one DIVA missed; we cannot tell from
+    // ScheduleFetchResult which one. Cheap-and-correct: only overwrite slot
+    // if the parser actually wrote a non-zero first_tomorrow[0] for it.
+    if (r.hint[i].first_tomorrow[0] != 0 || r.hint[i].last_today != 0) {
+      out.hint[i] = r.hint[i];
+    }
+  }
+  out.fetched_at = g_clock.now();
+  return true;
+}
+
+bool needScheduleRefresh(const ScheduleSnapshot &s, time_t now) {
+  if (s.fetched_at == 0)
+    return true;
+  if (now - s.fetched_at >= SCHEDULE_HINT_MAX_AGE_S)
+    return true;
+  // Refresh once today's last departure has passed for any stream we still
+  // have data for, and we have not already refreshed since today's local
+  // midnight.
+  struct tm local;
+  localtime_r(&now, &local);
+  local.tm_hour = 0;
+  local.tm_min = 0;
+  local.tm_sec = 0;
+  local.tm_isdst = -1;
+  time_t midnight = mktime(&local);
+  if (s.fetched_at >= midnight)
+    return false;
+  for (int i = 0; i < STREAM_COUNT; ++i) {
+    if (s.hint[i].last_today != 0 && now > s.hint[i].last_today)
+      return true;
+  }
+  return false;
+}
+
 void renderAndPush(const StreamSnapshot &snap, OverlayKind overlay,
-                   PersistedMeta &meta) {
-  RenderInput in{snap, overlay};
+                   PersistedMeta &meta, const ScheduleSnapshot &schedule) {
+  // Stale overlay must keep showing "??:??" everywhere — do not let scheduled
+  // hints leak through when the realtime data is untrustworthy.
+  StreamSnapshot merged =
+      (overlay == OverlayKind::Stale)
+          ? snap
+          : mergeSlots(snap, schedule, g_clock.now());
+  RenderInput in{merged, overlay};
   renderFrame(in, g_frame_new);
 
   bool prev_valid = meta.framebuffer_valid;
@@ -248,8 +321,15 @@ void coldBootPath(PersistedMeta &meta) {
   if (ok) {
     meta.last_api_success = g_clock.now();
   }
+  // Schedule fetch is best-effort: failure leaves `schedule.fetched_at = 0`
+  // and the renderer falls back to pure realtime behaviour.
+  ScheduleSnapshot schedule = g_store.loadSchedule();
+  if (refreshSchedule(schedule)) {
+    g_store.saveSchedule(schedule);
+  }
   Serial.printf("[boot] fetch ok=%d, rendering and deep-cleaning panel\n", ok);
-  RenderInput in{snap, OverlayKind::None};
+  StreamSnapshot merged = mergeSlots(snap, schedule, g_clock.now());
+  RenderInput in{merged, OverlayKind::None};
   renderFrame(in, g_frame_new);
   g_display.deepClean(g_frame_new.data());
   meta.last_deep_clean = g_clock.now();
@@ -260,18 +340,22 @@ void coldBootPath(PersistedMeta &meta) {
 
   SleepConfig sc{WAKE_BEFORE_BUS_S, BOOT_MARGIN_S, ACTIVE_THRESHOLD_S,
                  NO_DATA_SLEEP_S, API_FAILURE_RETRY_S};
-  SleepDecision sd = planSleep(snap, g_clock.now(), sc);
+  // planSleep wants the merged view: if realtime has nothing but hints fill
+  // a slot, the next bus is the hint's time — sleep until then, not until
+  // the conservative "no data" interval.
+  SleepDecision sd = planSleep(merged, g_clock.now(), sc);
   doSleepOrLoop(sd, meta);
 }
 
 void warmCyclePath(PersistedMeta &meta) {
   Serial.println("[warm] cycle start");
+  ScheduleSnapshot schedule = g_store.loadSchedule();
   if (!g_net.connect(10000)) {
     Serial.println("[warm] wifi down");
     // No data — keep showing last render, but flip to stale if old enough.
     if (isStale(meta.last_api_success, g_clock.now(), STALE_THRESHOLD_S)) {
       renderStaleFrame(g_frame_new);
-      renderAndPush({}, OverlayKind::Stale, meta);
+      renderAndPush({}, OverlayKind::Stale, meta, schedule);
     }
     g_sleep.deepSleep(POLL_INTERVAL_S);
     return; // deepSleep doesn't return on hardware, but be explicit
@@ -336,16 +420,28 @@ void warmCyclePath(PersistedMeta &meta) {
     snap = StreamSnapshot{};
   }
 
+  // Schedule refresh: piggyback on the nightly slot (WiFi is up, we're about
+  // to sleep long). Also forced if the on-RTC snapshot is stale-old.
+  if (needScheduleRefresh(schedule, now)) {
+    if (refreshSchedule(schedule)) {
+      g_store.saveSchedule(schedule);
+    }
+  }
+
   // Nightly deep clean: if next sleep would be long and we haven't cleaned
-  // in 20h, do it now.
+  // in 20h, do it now. Use the merged view for sleep planning so a fresh
+  // morning hint shortens what would otherwise be a generic NO_DATA sleep.
+  StreamSnapshot merged = (overlay == OverlayKind::Stale)
+                              ? snap
+                              : mergeSlots(snap, schedule, now);
   SleepConfig sc{WAKE_BEFORE_BUS_S, BOOT_MARGIN_S, ACTIVE_THRESHOLD_S,
                  NO_DATA_SLEEP_S, API_FAILURE_RETRY_S};
-  SleepDecision pre = planSleep(snap, now, sc);
+  SleepDecision pre = planSleep(merged, now, sc);
   bool nightly = pre.mode == Mode::DeepSleep && pre.seconds > 4 * 3600 &&
                  needsNightlyDeepClean(now, meta.last_deep_clean, 20 * 3600);
 
   if (nightly) {
-    RenderInput in{snap, overlay};
+    RenderInput in{merged, overlay};
     renderFrame(in, g_frame_new);
     g_display.deepClean(g_frame_new.data());
     meta.last_deep_clean = now;
@@ -354,7 +450,7 @@ void warmCyclePath(PersistedMeta &meta) {
     g_store.saveFramebuffer(g_frame_new.data(), Frame::bytes);
     meta.framebuffer_valid = true;
   } else if (ok || overlay != OverlayKind::None) {
-    renderAndPush(snap, overlay, meta);
+    renderAndPush(snap, overlay, meta, schedule);
   } else {
     // Transient fetch failure (not yet stale): keep showing the last good
     // frame. Re-rendering with an empty snap would flicker every slot to

@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <ctime>
 
+#include "../data/ScheduleHint.h"
+
 namespace bustaferl {
 
 // Metadata that needs to survive deep sleep alongside the framebuffer.
@@ -29,6 +31,12 @@ public:
   virtual size_t loadFramebuffer(uint8_t *out, size_t cap) = 0;
   // Compresses and stores. Returns true on success.
   virtual bool saveFramebuffer(const uint8_t *fb, size_t len) = 0;
+  // ScheduleSnapshot lives in its own RTC slot with its own magic so a future
+  // schema bump on schedule data does not invalidate the (much costlier to
+  // rebuild) framebuffer. A never-saved schedule reads back as a
+  // zero-initialised ScheduleSnapshot (fetched_at = 0).
+  virtual ScheduleSnapshot loadSchedule() = 0;
+  virtual void saveSchedule(const ScheduleSnapshot &s) = 0;
 };
 
 } // namespace bustaferl

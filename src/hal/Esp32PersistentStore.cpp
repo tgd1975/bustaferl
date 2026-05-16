@@ -20,7 +20,13 @@ RTC_DATA_ATTR PersistedMeta g_meta{};
 RTC_DATA_ATTR uint32_t g_rle_len = 0;
 RTC_DATA_ATTR uint8_t g_rle[RLE_CAP] = {0};
 
-constexpr uint32_t MAGIC = 0xB05AFE71; // bustaferl ;)
+// Schedule lives in a separate RTC slot with its own magic so a future
+// ScheduleSnapshot schema change does not also wipe the framebuffer.
+RTC_DATA_ATTR uint32_t g_sched_magic = 0;
+RTC_DATA_ATTR ScheduleSnapshot g_sched{};
+
+constexpr uint32_t MAGIC = 0xB05AFE71;       // bustaferl ;)
+constexpr uint32_t SCHED_MAGIC = 0x5CEDB051; // sched-bustaferl-1
 
 } // namespace
 
@@ -55,6 +61,17 @@ bool Esp32PersistentStore::saveFramebuffer(const uint8_t *fb, size_t len) {
   g_meta.framebuffer_valid = true;
   g_magic = MAGIC;
   return true;
+}
+
+ScheduleSnapshot Esp32PersistentStore::loadSchedule() {
+  if (g_sched_magic != SCHED_MAGIC)
+    return ScheduleSnapshot{};
+  return g_sched;
+}
+
+void Esp32PersistentStore::saveSchedule(const ScheduleSnapshot &s) {
+  g_sched = s;
+  g_sched_magic = SCHED_MAGIC;
 }
 
 } // namespace bustaferl

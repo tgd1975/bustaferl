@@ -223,6 +223,78 @@ if (wifiMulti.run(10000) != WL_CONNECTED) {
 - 3 RBL-Nummern in `config.h`
 - Exakte `towards`-Strings aus realer API-Antwort verifizieren (z.B. „Hietzing" vs. „Hietzing S+U")
 
+## 12. Plan-Erstabfahrten am Abend („Bus-in-der-Früh"-Anzeige)
+
+Die OGD-Realtime-API liefert nur ein Fenster von ~70 Minuten vor jeder Abfahrt. Damit am Abend „wann fährt der Bus in der Früh?" sichtbar wird, müssen wir die Plandaten dazumischen.
+
+### 12.1 Datenquelle: EFA-Departure-Monitor
+
+`https://www.wienerlinien.at/ogd_routing/XSLT_DM_REQUEST` mit `outputFormat=JSON`, `useRealtime=0`. Liefert pro Haltestelle (DIVA-ID) eine Liste planmäßiger Abfahrten ab einer gewünschten Stichzeit.
+
+Pro Departure-Eintrag relevant: `dateTime` (geplante Zeit), `servingLine.number` (Linie), `servingLine.direction` (Richtungsname).
+
+Direction-Strings unterscheiden sich von der OGD-API — z. B. EFA `"Wien Atzgersdorf"` vs. OGD `"Bhf. Atzgersdorf S (üb. Atzgersdorfer Str.)"`. Eigene `FILTER_TOWARDS_EFA_*`-Konstanten parallel zu den OGD-Konstanten.
+
+### 12.2 Was gespeichert wird
+
+Pro Stream (in RTC Slow Memory, ~120 Byte gesamt):
+
+```cpp
+struct ScheduleHint {
+  time_t last_today;        // letzte planmäßige Abfahrt heute
+  time_t first_tomorrow[2]; // erste zwei planmäßige Abfahrten morgen
+};
+ScheduleHint hint[STREAM_COUNT];
+time_t schedule_fetched_at;
+```
+
+`last_today` ist Trigger für Refresh-Logik, kein direkter Display-Wert.
+
+### 12.3 Refresh-Strategie
+
+**Cold Boot** (§8): nach dem Realtime-Fetch, vor Deep Clean, ein EFA-Fetch pro Haltestelle. Best Effort — schlägt es fehl, bleibt `schedule_fetched_at = 0` und der Renderer fällt auf reines Realtime-Verhalten zurück.
+
+**Warm Cycle**: getriggert, nicht zeitgesteuert. Bedingung: `now() > min(hint[*].last_today)` *und* `schedule_fetched_at < heute_00:00`. Das fällt natürlich mit dem nächtlichen Deep-Clean-Slot zusammen (beides „WiFi ohnehin an, lange Wachphase"). Sicherheits-Fallback: wenn `now() - schedule_fetched_at > 48 h` → erzwungener Refresh.
+
+**Call-Schema** pro Haltestelle: ein einziger Call mit `itdTime=22:00` (heute) und `limit=50`. Die Response deckt typischerweise die letzten Abfahrten heute + die ersten morgen ab. Daraus client-seitig je Stream (Line+Direction-Filter):
+
+- `last_today` = letzter Eintrag mit `dateTime` < morgen 03:00
+- `first_tomorrow[0..1]` = erste zwei Einträge mit `dateTime` ≥ morgen 03:00
+
+Drei Haltestellen → drei Calls pro Tag.
+
+### 12.4 Verwendung im Display
+
+Eine Regel — keine Sondertypografie, keine zusätzlichen Zeilen, kein Hinweis „Plan vs. Echtzeit":
+
+```text
+slot[0..1] = die nächsten zwei Departures ab now() aus:
+             realtime ∪ {hint.first_tomorrow[0], hint.first_tomorrow[1]}
+             nach Zeit sortiert, ersten beiden zeigen
+```
+
+Bewusst keine Unterscheidung: sobald eine Morgenfahrt ins 70-Minuten-Realtime-Fenster rutscht, ersetzt der Realtime-Wert den Hint auf demselben Slot — exakt das gewünschte „schrittweise" Verhalten. Nutzer sieht keinen Bruch.
+
+`hint`-Werte werden ignoriert, wenn `schedule_fetched_at == 0` (nie geladen) oder älter als 48 h. Stale-Mechanik aus §4 bleibt unverändert.
+
+### 12.5 Edge Cases
+
+- **EFA unreachable** während Cold Boot oder geplantem Refresh → alte `hint`-Werte bleiben gültig (bis Alters-Cap); kein Display-Effekt. Retry beim nächsten regulären Anlass.
+- **EFA-`direction`-Filter greift nicht** (analog zum bestehenden FilterHealth für OGD): `hint`-Werte für betroffenen Stream bleiben 0; Renderer verhält sich für diesen Slot wie heute (`—:—` außerhalb des Realtime-Fensters). Reicht für jetzt — eigene FilterHealth-Instanz für EFA wäre über-engineered.
+- **Wochenende/Feiertag**: EFA berücksichtigt Kalendervarianten automatisch — wir bekommen die richtigen Werte für den jeweils nächsten Verkehrstag.
+- **DST-Übergang**: `dateTime` aus EFA wird zu `time_t` (UTC) normalisiert; intern alles `time_t`, keine HH:MM-Strings.
+- **Schema-Änderung in RTC-Layout**: `MAGIC` in `Esp32PersistentStore` bumpen, damit alte Strukturen nach Update nicht falsch interpretiert werden.
+
+### 12.6 Pre-flash-Konfiguration
+
+Zusätzlich zu §11:
+
+- **DIVA-Stop-IDs** für die drei Haltestellen in `config.h` (verifiziert via `XSLT_STOPFINDER_REQUEST?name_sf=…`):
+  - Tullnertalgasse → `60201395`
+  - Endemanngasse → `60200278`
+  - Südtiroler Platz / Hauptbahnhof → `60201349`
+- **EFA-Direction-Strings** für die fünf Streams — einmal an einem echten Cold-Boot-Call verifizieren, ggf. korrigieren (analog zu den OGD-Towards-Konstanten).
+
 ## Schwellwert-Defaults im Überblick
 
 | Variable | Wert | Bedeutung |

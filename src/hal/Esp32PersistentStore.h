@@ -16,6 +16,8 @@ public:
   void saveMeta(const PersistedMeta &m) override;
   size_t loadFramebuffer(uint8_t *out, size_t cap) override;
   bool saveFramebuffer(const uint8_t *fb, size_t len) override;
+  ScheduleSnapshot loadSchedule() override;
+  void saveSchedule(const ScheduleSnapshot &s) override;
 };
 
 } // namespace bustaferl

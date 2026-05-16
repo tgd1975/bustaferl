@@ -39,6 +39,28 @@
 #define TOWARDS_U1_LEOPOLDAU "Leopoldau"
 #define TOWARDS_U1_OBERLAA "Oberlaa"
 
+// DIVA stop IDs for the EFA schedule API (XSLT_DM_REQUEST). One per
+// physical Haltestelle (not per RBL — DIVA aggregates the directions).
+// Looked up via XSLT_STOPFINDER_REQUEST?name_sf=…; see CONCEPT.md §12.
+#define DIVA_TULLNERTALGASSE 60201395
+#define DIVA_ENDEMANNGASSE 60200278
+#define DIVA_SUEDTIROLER_PLATZ 60201349
+
+// Direction strings as the EFA API reports them in
+// `departureList[].servingLine.direction`. These DIFFER from the OGD
+// `towards` strings — verify against a live response on first flash.
+#define EFA_TOWARDS_58A_ATZ "Wien Atzgersdorf"
+#define EFA_TOWARDS_58A_HIETZING "Wien Hietzing"
+#define EFA_TOWARDS_58B_ATZ "Wien Atzgersdorf" // TODO verify post-loop variant
+#define EFA_TOWARDS_U1_LEOPOLDAU "Leopoldau"
+#define EFA_TOWARDS_U1_OBERLAA "Oberlaa"
+
+// EFA schedule endpoint. Caller appends &name_dm=<DIVA>&itdDate*=...
+#define WL_EFA_DM_BASE                                                         \
+  "https://www.wienerlinien.at/ogd_routing/"                                   \
+  "XSLT_DM_REQUEST?outputFormat=JSON&language=de&stateless=1"                  \
+  "&mode=direct&type_dm=stop&useRealtime=0"
+
 // e-Paper GPIO
 #define EPD_CS 5
 #define EPD_DC 17
