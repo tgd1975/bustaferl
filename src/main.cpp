@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <cstdio>
+#include <ctime>
 #include <string>
 
 #include "config.h"
@@ -40,15 +41,41 @@ void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
   f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
   f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
   f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
+  f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
+                            TOWARDS_U1_LEOPOLDAU};
+  f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
 }
 
 std::string apiUrl() {
+  // Per OGD Schnittstellendoku V1.4 §3.1.1: `rbl` is deprecated, `stopId` is
+  // the official parameter name. The values are identical RBL numbers.
   std::string url = WL_API_BASE;
-  char buf[64];
-  snprintf(buf, sizeof(buf), "&rbl=%d&rbl=%d&rbl=%d", RBL_TULL_ATZGERSDORF,
-           RBL_TULL_HIETZING, RBL_ENDEMANN);
+  char buf[96];
+  snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
+           RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
+           RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
   url += buf;
   return url;
+}
+
+int countValidFirstSlots(const StreamSnapshot &s) {
+  int n = 0;
+  for (int i = 0; i < STREAM_COUNT; ++i)
+    if (s.stream[i].slot[0].valid)
+      ++n;
+  return n;
+}
+
+void logSlot(const char *tag, const Departure &d) {
+  if (!d.valid) {
+    Serial.printf("[api]   %s: --:--\n", tag);
+    return;
+  }
+  struct tm local;
+  localtime_r(&d.when, &local);
+  Serial.printf("[api]   %s: %02d:%02d %s epoch=%lld\n", tag, local.tm_hour,
+                local.tm_min, d.is_realtime ? "RT" : "PLAN",
+                static_cast<long long>(d.when));
 }
 
 bool fetchSnapshot(StreamSnapshot &out) {
@@ -67,15 +94,66 @@ bool fetchSnapshot(StreamSnapshot &out) {
   StreamFilter filters[STREAM_COUNT];
   buildFilters(filters);
   bool parsed = parseMonitorResponse(body, filters, out);
+
+  // Partial-empty retry: the OGD monitor occasionally drops individual
+  // stopIds from a response (observed: U1 Oberlaa missing then present on
+  // the next call). If *some* streams have data and *others* don't, request
+  // once more and union the two snapshots per-stream. A fully empty result
+  // is left alone — that's the legitimate Betriebstag-Pause case.
+  if (parsed) {
+    int got = countValidFirstSlots(out);
+    if (got > 0 && got < STREAM_COUNT) {
+      Serial.printf("[api] partial empty (%d/%d streams) — retrying once\n",
+                    got, STREAM_COUNT);
+      delay(500);
+      std::string body2;
+      FetchOutcome fo2 = fetchWithRetry(g_net, apiUrl(), body2, fc);
+      if (fo2.ok) {
+        StreamSnapshot out2;
+        if (parseMonitorResponse(body2, filters, out2)) {
+          int filled = 0;
+          for (int i = 0; i < STREAM_COUNT; ++i) {
+            if (!out.stream[i].slot[0].valid &&
+                out2.stream[i].slot[0].valid) {
+              out.stream[i] = out2.stream[i];
+              ++filled;
+            }
+          }
+          Serial.printf("[api] retry: %d/%d streams; filled %d empty\n",
+                        countValidFirstSlots(out2), STREAM_COUNT, filled);
+        } else {
+          Serial.println("[api] retry: parse failed, keeping first result");
+        }
+      } else {
+        Serial.println("[api] retry: httpGet failed, keeping first result");
+      }
+    }
+  }
+
   Serial.printf("[api] parse=%d api_ok=%d  streams: "
-                "58A-Atz r=%d f=%d | 58A-Hie r=%d f=%d | 58B r=%d f=%d\n",
+                "58A-Atz r=%d f=%d | 58A-Hie r=%d f=%d | 58B r=%d f=%d | "
+                "U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
                 parsed, out.api_ok,
                 out.stream[STREAM_58A_ATZ].rbl_responded,
                 out.stream[STREAM_58A_ATZ].filter_matched,
                 out.stream[STREAM_58A_HIETZING].rbl_responded,
                 out.stream[STREAM_58A_HIETZING].filter_matched,
                 out.stream[STREAM_58B_ATZ].rbl_responded,
-                out.stream[STREAM_58B_ATZ].filter_matched);
+                out.stream[STREAM_58B_ATZ].filter_matched,
+                out.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
+                out.stream[STREAM_U1_LEOPOLDAU].filter_matched,
+                out.stream[STREAM_U1_OBERLAA].rbl_responded,
+                out.stream[STREAM_U1_OBERLAA].filter_matched);
+  logSlot("58A-Atz[0]", out.stream[STREAM_58A_ATZ].slot[0]);
+  logSlot("58A-Atz[1]", out.stream[STREAM_58A_ATZ].slot[1]);
+  logSlot("58A-Hie[0]", out.stream[STREAM_58A_HIETZING].slot[0]);
+  logSlot("58A-Hie[1]", out.stream[STREAM_58A_HIETZING].slot[1]);
+  logSlot("58B-Atz[0]", out.stream[STREAM_58B_ATZ].slot[0]);
+  logSlot("58B-Atz[1]", out.stream[STREAM_58B_ATZ].slot[1]);
+  logSlot("U1-Leo[0]", out.stream[STREAM_U1_LEOPOLDAU].slot[0]);
+  logSlot("U1-Leo[1]", out.stream[STREAM_U1_LEOPOLDAU].slot[1]);
+  logSlot("U1-Obe[0]", out.stream[STREAM_U1_OBERLAA].slot[0]);
+  logSlot("U1-Obe[1]", out.stream[STREAM_U1_OBERLAA].slot[1]);
   return parsed;
 }
 
@@ -88,7 +166,7 @@ void registerWifiCredentials() {
 
 void renderAndPush(const StreamSnapshot &snap, OverlayKind overlay,
                    PersistedMeta &meta) {
-  RenderInput in{snap, overlay, 3600};
+  RenderInput in{snap, overlay};
   renderFrame(in, g_frame_new);
 
   bool prev_valid = meta.framebuffer_valid;
@@ -154,7 +232,7 @@ void coldBootPath(PersistedMeta &meta) {
     meta.last_api_success = g_clock.now();
   }
   Serial.printf("[boot] fetch ok=%d, rendering and deep-cleaning panel\n", ok);
-  RenderInput in{snap, OverlayKind::None, 3600};
+  RenderInput in{snap, OverlayKind::None};
   renderFrame(in, g_frame_new);
   g_display.deepClean(g_frame_new.data());
   meta.last_deep_clean = g_clock.now();
@@ -215,11 +293,27 @@ void warmCyclePath(PersistedMeta &meta) {
   OverlayKind overlay = OverlayKind::None;
   if (ok) {
     meta.last_api_success = now;
-    fh.recordCall(snap.stream[STREAM_58B_ATZ].rbl_responded,
-                  snap.stream[STREAM_58B_ATZ].filter_matched);
-    meta.filter_miss_streak = fh.streak();
-    if (fh.isDead())
-      overlay = OverlayKind::FilterDead;
+
+    // FilterHealth only gets a signal when at least one of our streams has
+    // actual departures. During the nightly Betriebstag-Pause the API
+    // returns matching RBLs/lines but with empty `departures` arrays — that
+    // would otherwise read as "filter responded but didn't match" for
+    // hours and falsely trip FilterDead. Treat "no service anywhere" as no
+    // signal instead of as a streak.
+    bool any_service = false;
+    for (int s = 0; s < STREAM_COUNT; ++s) {
+      if (snap.stream[s].slot[0].valid) {
+        any_service = true;
+        break;
+      }
+    }
+    if (any_service) {
+      fh.recordCall(snap.stream[STREAM_58B_ATZ].rbl_responded,
+                    snap.stream[STREAM_58B_ATZ].filter_matched);
+      meta.filter_miss_streak = fh.streak();
+      if (fh.isDead())
+        overlay = OverlayKind::FilterDead;
+    }
   } else if (isStale(meta.last_api_success, now, STALE_THRESHOLD_S)) {
     overlay = OverlayKind::Stale;
     snap = StreamSnapshot{};
@@ -234,7 +328,7 @@ void warmCyclePath(PersistedMeta &meta) {
                  needsNightlyDeepClean(now, meta.last_deep_clean, 20 * 3600);
 
   if (nightly) {
-    RenderInput in{snap, overlay, 3600};
+    RenderInput in{snap, overlay};
     renderFrame(in, g_frame_new);
     g_display.deepClean(g_frame_new.data());
     meta.last_deep_clean = now;

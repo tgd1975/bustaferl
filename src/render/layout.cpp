@@ -32,16 +32,15 @@ private:
   uint8_t *buf_;
 };
 
-void formatHHMM(time_t t, int tz_offset, char *out, size_t cap) {
+// Format UTC epoch `t` as local HH:MM. Relies on the TZ environment variable
+// being set by Esp32Clock (CET-1CEST,…), so DST is applied automatically —
+// hard-coding 3600 s would be 1 hour off through the summer.
+void formatHHMM(time_t t, char *out, size_t cap) {
   if (cap < 6)
     return;
-  time_t local = t + tz_offset;
-  int secs = static_cast<int>(local % 86400);
-  if (secs < 0)
-    secs += 86400;
-  int h = secs / 3600;
-  int m = (secs % 3600) / 60;
-  std::snprintf(out, cap, "%02d:%02d", h, m);
+  struct tm local;
+  localtime_r(&t, &local);
+  std::snprintf(out, cap, "%02d:%02d", local.tm_hour, local.tm_min);
 }
 
 void drawText(ExternalCanvas &c, int x, int y, uint8_t size, const char *s) {
@@ -56,11 +55,15 @@ void drawHeader(ExternalCanvas &c, int y, const char *label) {
   c.drawFastHLine(8, y + 18, 384, 0);
 }
 
-void drawSlot(ExternalCanvas &c, int x, int y, const Departure &d,
-              int tz_offset) {
+// In stale mode, every slot shows "??:??" regardless of the (now untrusted)
+// `d.valid` — distinguishes "we have no data right now" (--:--) from
+// "what we *had* is too old to display" (??:??).
+void drawSlot(ExternalCanvas &c, int x, int y, const Departure &d, bool stale) {
   char buf[8];
-  if (d.valid) {
-    formatHHMM(d.when, tz_offset, buf, sizeof(buf));
+  if (stale) {
+    std::snprintf(buf, sizeof(buf), "??:??");
+  } else if (d.valid) {
+    formatHHMM(d.when, buf, sizeof(buf));
   } else {
     std::snprintf(buf, sizeof(buf), "--:--");
   }
@@ -68,10 +71,10 @@ void drawSlot(ExternalCanvas &c, int x, int y, const Departure &d,
 }
 
 void drawStreamLine(ExternalCanvas &c, int y, const char *prefix,
-                    const StreamData &s, int tz_offset) {
+                    const StreamData &s, bool stale) {
   drawText(c, 8, y, 2, prefix);
-  drawSlot(c, 220, y, s.slot[0], tz_offset);
-  drawSlot(c, 320, y, s.slot[1], tz_offset);
+  drawSlot(c, 220, y, s.slot[0], stale);
+  drawSlot(c, 320, y, s.slot[1], stale);
 }
 
 void drawOverlay(ExternalCanvas &c, OverlayKind kind) {
@@ -98,19 +101,27 @@ void drawOverlay(ExternalCanvas &c, OverlayKind kind) {
 } // namespace
 
 void renderFrame(const RenderInput &in, Frame &fb) {
+  const bool stale = (in.overlay == OverlayKind::Stale);
+
   fb.clear(true); // white background
   ExternalCanvas c(FB_W, FB_H, fb.data());
 
   drawHeader(c, 4, "TULLNERTALGASSE");
   drawStreamLine(c, 38, "58A -> Atzgers.", in.snapshot.stream[STREAM_58A_ATZ],
-                 in.tz_offset_seconds);
+                 stale);
   drawStreamLine(c, 66, "58A -> Hietzing",
-                 in.snapshot.stream[STREAM_58A_HIETZING], in.tz_offset_seconds);
+                 in.snapshot.stream[STREAM_58A_HIETZING], stale);
 
   drawHeader(c, 110, "ENDEMANNGASSE");
   drawStreamLine(c, 144, "58B -> Atzgers.", in.snapshot.stream[STREAM_58B_ATZ],
-                 in.tz_offset_seconds);
+                 stale);
   drawText(c, 8, 174, 1, "(nach Schleife)");
+
+  drawHeader(c, 196, "SUEDTIROLER PLATZ");
+  drawStreamLine(c, 222, "U1 -> Leopoldau",
+                 in.snapshot.stream[STREAM_U1_LEOPOLDAU], stale);
+  drawStreamLine(c, 246, "U1 -> Oberlaa",
+                 in.snapshot.stream[STREAM_U1_OBERLAA], stale);
 
   if (in.overlay != OverlayKind::None)
     drawOverlay(c, in.overlay);

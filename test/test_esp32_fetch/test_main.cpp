@@ -47,9 +47,10 @@ void printSlot(const char *stream, const Departure &d) {
 
 std::string apiUrl() {
   std::string url = WL_API_BASE;
-  char buf[64];
-  snprintf(buf, sizeof(buf), "&rbl=%d&rbl=%d&rbl=%d", RBL_TULL_ATZGERSDORF,
-           RBL_TULL_HIETZING, RBL_ENDEMANN);
+  char buf[96];
+  snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
+           RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
+           RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
   url += buf;
   return url;
 }
@@ -58,6 +59,9 @@ void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
   f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
   f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
   f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
+  f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
+                            TOWARDS_U1_LEOPOLDAU};
+  f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
 }
 
 } // namespace
@@ -91,7 +95,7 @@ void test_http_get_returns_body(void) {
                            "response missing \"monitors\" key");
 }
 
-void test_parse_all_three_rbls_respond(void) {
+void test_parse_all_rbls_respond(void) {
   StreamFilter filters[STREAM_COUNT];
   buildFilters(filters);
   StreamSnapshot snap;
@@ -100,13 +104,18 @@ void test_parse_all_three_rbls_respond(void) {
   TEST_ASSERT_TRUE_MESSAGE(snap.api_ok, "api_ok was false after parse");
 
   Serial.printf("[api] streams: 58A-Atz r=%d f=%d | "
-                "58A-Hie r=%d f=%d | 58B r=%d f=%d\n",
+                "58A-Hie r=%d f=%d | 58B r=%d f=%d | "
+                "U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
                 snap.stream[STREAM_58A_ATZ].rbl_responded,
                 snap.stream[STREAM_58A_ATZ].filter_matched,
                 snap.stream[STREAM_58A_HIETZING].rbl_responded,
                 snap.stream[STREAM_58A_HIETZING].filter_matched,
                 snap.stream[STREAM_58B_ATZ].rbl_responded,
-                snap.stream[STREAM_58B_ATZ].filter_matched);
+                snap.stream[STREAM_58B_ATZ].filter_matched,
+                snap.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
+                snap.stream[STREAM_U1_LEOPOLDAU].filter_matched,
+                snap.stream[STREAM_U1_OBERLAA].rbl_responded,
+                snap.stream[STREAM_U1_OBERLAA].filter_matched);
 
   // Per-stream parsed departure times — visible in serial so a wrong towards
   // filter (returns rbl_responded but no slots) is obvious at a glance.
@@ -118,6 +127,10 @@ void test_parse_all_three_rbls_respond(void) {
     printSlot(tag, snap.stream[STREAM_58A_HIETZING].slot[slot]);
     std::snprintf(tag, sizeof(tag), "58B-Atz[%d]", slot);
     printSlot(tag, snap.stream[STREAM_58B_ATZ].slot[slot]);
+    std::snprintf(tag, sizeof(tag), "U1-Leo[%d]", slot);
+    printSlot(tag, snap.stream[STREAM_U1_LEOPOLDAU].slot[slot]);
+    std::snprintf(tag, sizeof(tag), "U1-Obe[%d]", slot);
+    printSlot(tag, snap.stream[STREAM_U1_OBERLAA].slot[slot]);
   }
 
   TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58A_ATZ].rbl_responded,
@@ -126,6 +139,11 @@ void test_parse_all_three_rbls_respond(void) {
                            "RBL_TULL_HIETZING (3757) did not respond");
   TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58B_ATZ].rbl_responded,
                            "RBL_ENDEMANN (8132) did not respond");
+  TEST_ASSERT_TRUE_MESSAGE(
+      snap.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
+      "RBL_SUEDTIROLER_LEOPOLDAU (4105) did not respond");
+  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_OBERLAA].rbl_responded,
+                           "RBL_SUEDTIROLER_OBERLAA (4124) did not respond");
 
   // Filter match is time-of-day dependent (no buses overnight). Don't assert
   // it — but make it visible above so a mismatch is obvious in the log.
@@ -296,7 +314,7 @@ void setup() {
   RUN_TEST(test_warm_boot_recovery_sequence);
 
   RUN_TEST(test_http_get_returns_body);
-  RUN_TEST(test_parse_all_three_rbls_respond);
+  RUN_TEST(test_parse_all_rbls_respond);
 
   // Clock is now synced (by the recovery test). These verify post-sync state.
   RUN_TEST(test_ntp_sync_brings_clock_to_present);

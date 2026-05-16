@@ -20,7 +20,6 @@ enum class OverlayKind {
 struct RenderInput {
   StreamSnapshot snapshot;
   OverlayKind overlay = OverlayKind::None;
-  int tz_offset_seconds = 3600; // CET default; render-only
 };
 
 // Renders the layout described in CONCEPT.md §3 into the framebuffer.

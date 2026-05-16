@@ -10,6 +10,8 @@
 #define RBL_TULL_HIETZING 3757    // Tullnertalgasse, 58A → Hietzing
 #define RBL_ENDEMANN                                                           \
   8132 // Endemanngasse,    58B → Bhf. Atzgersdorf S (post-loop)
+#define RBL_SUEDTIROLER_LEOPOLDAU 4105 // Südtiroler Platz, U1 → Leopoldau
+#define RBL_SUEDTIROLER_OBERLAA 4124   // Südtiroler Platz, U1 → Oberlaa
 
 // All towards-prefixes are case-sensitive prefix matches against the OGD
 // API's `towards` field. The strings below are taken from a live response
@@ -24,12 +26,18 @@
 // Line names as the API reports them.
 #define LINE_58A "58A"
 #define LINE_58B "58B"
+#define LINE_U1 "U1"
 
 // Direction labels for the 58A streams. The 58A→Atzgersdorf branch reports
 // "Bhf. Atzgersdorf S (üb. Atzgersdorfer Str.)"; the Hietzing branch reports
 // "Hietzing U".
 #define TOWARDS_58A_ATZ "Bhf. Atzgersdorf"
 #define TOWARDS_58A_HIETZING "Hietzing"
+
+// U1 endpoints; each RBL is one-directional, so the towards filter is mostly
+// a belt-and-braces guard against a future schedule change.
+#define TOWARDS_U1_LEOPOLDAU "Leopoldau"
+#define TOWARDS_U1_OBERLAA "Oberlaa"
 
 // e-Paper GPIO
 #define EPD_CS 5

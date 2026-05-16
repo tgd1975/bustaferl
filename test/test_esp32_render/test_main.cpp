@@ -7,6 +7,7 @@
 
 #include <Arduino.h>
 #include <cstring>
+#include <memory>
 #include <unity.h>
 
 #include "config.h"
@@ -17,6 +18,13 @@
 using namespace bustaferl;
 
 namespace {
+
+// Frame is 15 KB. The Arduino-ESP32 loop task has an 8 KB stack, so even one
+// `Frame fb;` local would guru-meditate the chip *before* Serial.print and
+// silently kill the whole test run. Heap-allocate via unique_ptr — the
+// buffer goes to PSRAM/DRAM, ownership stays scoped to the test.
+using FramePtr = std::unique_ptr<Frame>;
+FramePtr makeFrame() { return std::unique_ptr<Frame>(new Frame()); }
 
 int countNonWhite(const uint8_t *fb) {
   int n = 0;
@@ -29,11 +37,11 @@ int countNonWhite(const uint8_t *fb) {
 } // namespace
 
 void test_render_empty_snapshot_draws_chrome() {
-  Frame fb;
+  FramePtr fb = makeFrame();
   StreamSnapshot snap{};
-  RenderInput in{snap, OverlayKind::None, 3600};
-  renderFrame(in, fb);
-  int non_white = countNonWhite(fb.data());
+  RenderInput in{snap, OverlayKind::None};
+  renderFrame(in, *fb);
+  int non_white = countNonWhite(fb->data());
   Serial.printf("[engine] render empty snapshot: non_white_bytes=%d\n",
                 non_white);
   TEST_ASSERT_GREATER_THAN_MESSAGE(
@@ -42,21 +50,25 @@ void test_render_empty_snapshot_draws_chrome() {
 }
 
 void test_overlay_changes_framebuffer_in_band() {
-  Frame fb_a, fb_b;
+  // FilterDead / StartFailed only add a banner — their diff must stay inside
+  // the overlay band [266, 294). Stale is the exception (inverts whole
+  // content area) and is covered separately below.
+  FramePtr fb_a = makeFrame();
+  FramePtr fb_b = makeFrame();
   StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::None, 3600}, fb_a);
-  renderFrame({snap, OverlayKind::Stale, 3600}, fb_b);
+  renderFrame({snap, OverlayKind::None}, *fb_a);
+  renderFrame({snap, OverlayKind::FilterDead}, *fb_b);
   TEST_ASSERT_TRUE_MESSAGE(
-      std::memcmp(fb_a.data(), fb_b.data(), Frame::bytes) != 0,
-      "Stale overlay did not change framebuffer");
+      std::memcmp(fb_a->data(), fb_b->data(), Frame::bytes) != 0,
+      "FilterDead overlay did not change framebuffer");
 
-  // Overlay band per layout.cpp: y in [266, 294)  (fillRect at y-4=266, h=28).
   const int stride = FB_W / 8;
   int diff_inside = 0;
   int diff_outside = 0;
   for (int y = 0; y < FB_H; ++y) {
     for (int xb = 0; xb < stride; ++xb) {
-      bool diff = fb_a.data()[y * stride + xb] != fb_b.data()[y * stride + xb];
+      bool diff =
+          fb_a->data()[y * stride + xb] != fb_b->data()[y * stride + xb];
       if (!diff)
         continue;
       if (y >= 266 && y < 294)
@@ -73,15 +85,16 @@ void test_overlay_changes_framebuffer_in_band() {
 }
 
 void test_filling_slot_changes_framebuffer() {
-  Frame fb_empty, fb_filled;
+  FramePtr fb_empty = makeFrame();
+  FramePtr fb_filled = makeFrame();
   StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::None, 3600}, fb_empty);
+  renderFrame({snap, OverlayKind::None}, *fb_empty);
   // 12:31 CET = 1704108660 UTC. Fills slot[0] for 58A→Atzgersdorf.
   snap.stream[STREAM_58A_ATZ].slot[0] = {1704108660, true, true};
-  renderFrame({snap, OverlayKind::None, 3600}, fb_filled);
+  renderFrame({snap, OverlayKind::None}, *fb_filled);
   int diff = 0;
   for (size_t i = 0; i < Frame::bytes; ++i)
-    if (fb_empty.data()[i] != fb_filled.data()[i])
+    if (fb_empty->data()[i] != fb_filled->data()[i])
       ++diff;
   Serial.printf("[engine] valid-slot render: changed_bytes=%d\n", diff);
   TEST_ASSERT_GREATER_THAN_MESSAGE(
@@ -89,44 +102,49 @@ void test_filling_slot_changes_framebuffer() {
 }
 
 void test_render_stale_frame_helper() {
-  Frame a, b;
-  renderStaleFrame(a);
+  FramePtr a = makeFrame();
+  FramePtr b = makeFrame();
+  renderStaleFrame(*a);
   StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::Stale, 3600}, b);
+  renderFrame({snap, OverlayKind::Stale}, *b);
   TEST_ASSERT_EQUAL_INT_MESSAGE(
-      0, std::memcmp(a.data(), b.data(), Frame::bytes),
+      0, std::memcmp(a->data(), b->data(), Frame::bytes),
       "renderStaleFrame should match renderFrame(..., OverlayKind::Stale)");
 }
 
 void test_render_start_failed_frame_helper() {
-  Frame a, b;
-  renderStartFailedFrame(a);
+  FramePtr a = makeFrame();
+  FramePtr b = makeFrame();
+  renderStartFailedFrame(*a);
   StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::StartFailed, 3600}, b);
-  TEST_ASSERT_EQUAL_INT(0, std::memcmp(a.data(), b.data(), Frame::bytes));
+  renderFrame({snap, OverlayKind::StartFailed}, *b);
+  TEST_ASSERT_EQUAL_INT(0, std::memcmp(a->data(), b->data(), Frame::bytes));
 }
 
 void test_each_overlay_kind_changes_framebuffer() {
-  Frame base, stale, dead, failed;
+  FramePtr base = makeFrame();
+  FramePtr stale = makeFrame();
+  FramePtr dead = makeFrame();
+  FramePtr failed = makeFrame();
   StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::None, 3600}, base);
-  renderFrame({snap, OverlayKind::Stale, 3600}, stale);
-  renderFrame({snap, OverlayKind::FilterDead, 3600}, dead);
-  renderFrame({snap, OverlayKind::StartFailed, 3600}, failed);
+  renderFrame({snap, OverlayKind::None}, *base);
+  renderFrame({snap, OverlayKind::Stale}, *stale);
+  renderFrame({snap, OverlayKind::FilterDead}, *dead);
+  renderFrame({snap, OverlayKind::StartFailed}, *failed);
   TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(base.data(), stale.data(), Frame::bytes));
+      0, std::memcmp(base->data(), stale->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(base.data(), dead.data(), Frame::bytes));
+      0, std::memcmp(base->data(), dead->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(base.data(), failed.data(), Frame::bytes));
+      0, std::memcmp(base->data(), failed->data(), Frame::bytes));
   // Each overlay kind must produce a distinguishable framebuffer — guards
   // against e.g. a fall-through bug in drawOverlay's switch.
   TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(stale.data(), dead.data(), Frame::bytes));
+      0, std::memcmp(stale->data(), dead->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(stale.data(), failed.data(), Frame::bytes));
+      0, std::memcmp(stale->data(), failed->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(dead.data(), failed.data(), Frame::bytes));
+      0, std::memcmp(dead->data(), failed->data(), Frame::bytes));
 }
 
 void setup() {
