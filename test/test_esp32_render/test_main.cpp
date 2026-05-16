@@ -26,10 +26,13 @@ namespace {
 using FramePtr = std::unique_ptr<Frame>;
 FramePtr makeFrame() { return std::unique_ptr<Frame>(new Frame()); }
 
-int countNonWhite(const uint8_t *fb) {
+// Layout draws white ink on a black background, so an untouched byte after
+// fb.clear(false) is 0x00. "Drawn" bytes are any non-zero byte — the more
+// of them, the more content was rendered on top of the black background.
+int countDrawnBytes(const uint8_t *fb) {
   int n = 0;
   for (size_t i = 0; i < Frame::bytes; ++i)
-    if (fb[i] != 0xFF)
+    if (fb[i] != 0x00)
       ++n;
   return n;
 }
@@ -41,12 +44,11 @@ void test_render_empty_snapshot_draws_chrome() {
   StreamSnapshot snap{};
   RenderInput in{snap, OverlayKind::None};
   renderFrame(in, *fb);
-  int non_white = countNonWhite(fb->data());
-  Serial.printf("[engine] render empty snapshot: non_white_bytes=%d\n",
-                non_white);
+  int drawn = countDrawnBytes(fb->data());
+  Serial.printf("[engine] render empty snapshot: drawn_bytes=%d\n", drawn);
   TEST_ASSERT_GREATER_THAN_MESSAGE(
-      50, non_white,
-      "renderFrame produced a near-blank framebuffer — chrome not drawn?");
+      50, drawn,
+      "renderFrame produced a blank framebuffer — chrome not drawn?");
 }
 
 void test_overlay_changes_framebuffer_in_band() {

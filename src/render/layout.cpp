@@ -43,8 +43,12 @@ void formatHHMM(time_t t, char *out, size_t cap) {
   std::snprintf(out, cap, "%02d:%02d", local.tm_hour, local.tm_min);
 }
 
-void drawText(ExternalCanvas &c, int x, int y, uint8_t size, const char *s) {
-  c.setTextColor(0); // black ink
+// Global design is white ink on black background, so drawText defaults
+// `ink = 1` (white). drawOverlay overrides with `ink = 0` because the
+// alert banner is a white box where the text must read black.
+void drawText(ExternalCanvas &c, int x, int y, uint8_t size, const char *s,
+              uint16_t ink = 1) {
+  c.setTextColor(ink);
   c.setTextSize(size);
   c.setCursor(x, y);
   c.print(s);
@@ -52,7 +56,7 @@ void drawText(ExternalCanvas &c, int x, int y, uint8_t size, const char *s) {
 
 void drawHeader(ExternalCanvas &c, int y, const char *label) {
   drawText(c, 8, y, 2, label);
-  c.drawFastHLine(8, y + 18, 384, 0);
+  c.drawFastHLine(8, y + 18, 384, 1); // white separator line
 }
 
 // In stale mode, every slot shows "??:??" regardless of the (now untrusted)
@@ -92,10 +96,13 @@ void drawOverlay(ExternalCanvas &c, OverlayKind kind) {
   default:
     return;
   }
+  // Banner is a white box with a black border + black text, regardless of
+  // the global ink scheme, so the alert stays high-contrast against the
+  // black background.
   int y = 270;
-  c.fillRect(0, y - 4, 400, 28, 1); // clear white
+  c.fillRect(0, y - 4, 400, 28, 1);
   c.drawRect(4, y - 4, 392, 26, 0);
-  drawText(c, 12, y, 2, msg);
+  drawText(c, 12, y, 2, msg, 0);
 }
 
 } // namespace
@@ -103,7 +110,7 @@ void drawOverlay(ExternalCanvas &c, OverlayKind kind) {
 void renderFrame(const RenderInput &in, Frame &fb) {
   const bool stale = (in.overlay == OverlayKind::Stale);
 
-  fb.clear(true); // white background
+  fb.clear(false); // black background; content drawn in white
   ExternalCanvas c(FB_W, FB_H, fb.data());
 
   drawHeader(c, 4, "TULLNERTALGASSE");

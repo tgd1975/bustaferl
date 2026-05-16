@@ -14,12 +14,16 @@ namespace {
 // 400×300 UC8176 panel. GxEPD2_420 is the matching driver class.
 using Panel = GxEPD2_BW<GxEPD2_420, GxEPD2_420::HEIGHT>;
 
-// Push our 1-bpp framebuffer (white=1, black=0) to the panel inside a
-// firstPage/nextPage loop. GxEPD2 wants BLACK=0 / WHITE=1 too, so we can
-// blit bytes 1:1 via fillScreen + drawImage-equivalent. Simplest: iterate
-// bytes and call drawPixel — but for full-frame perf we use drawBitmap.
+// Push our 1-bpp framebuffer (1=white, 0=black) to the panel via
+// Adafruit_GFX::drawBitmap. The 2-color overload is
+// drawBitmap(x, y, bmp, w, h, color_for_set_bits, color_for_clear_bits)
+// — so set bits (our white) must map to GxEPD_WHITE and clear bits
+// (our black) to GxEPD_BLACK. Reversing these inverts every full/light
+// refresh while leaving partial-refresh regions (which use drawPixel
+// directly) correct — the cause of the previously observed "white
+// rectangles on an inverted background" symptom.
 void blit(Panel &panel, const uint8_t *fb) {
-  panel.drawBitmap(0, 0, fb, EPD_WIDTH, EPD_HEIGHT, GxEPD_BLACK, GxEPD_WHITE);
+  panel.drawBitmap(0, 0, fb, EPD_WIDTH, EPD_HEIGHT, GxEPD_WHITE, GxEPD_BLACK);
 }
 
 void blitPartial(Panel &panel, const uint8_t *fb, const Bbox &b) {

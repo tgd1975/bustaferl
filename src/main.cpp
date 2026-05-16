@@ -46,24 +46,30 @@ void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
   f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
 }
 
-std::string apiUrl() {
-  // Per OGD Schnittstellendoku V1.4 §3.1.1: `rbl` is deprecated, `stopId` is
-  // the official parameter name. The values are identical RBL numbers.
-  std::string url = WL_API_BASE;
-  char buf[96];
-  snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
-           RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
-           RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
-  url += buf;
-  return url;
-}
+// Maximum stopIds per OGD monitor query. Smaller batches are empirically
+// more stable — the all-five-at-once call occasionally dropped individual
+// entries (observed: U1 Oberlaa missing on one call, present on the next).
+// 2 stopIds per call → 3 batches for our 5 streams.
+constexpr int STOPIDS_PER_QUERY = 2;
 
-int countValidFirstSlots(const StreamSnapshot &s) {
-  int n = 0;
-  for (int i = 0; i < STREAM_COUNT; ++i)
-    if (s.stream[i].slot[0].valid)
-      ++n;
-  return n;
+// Order in which stream slots are queried. Reversed from display/enum order
+// so STREAM_U1_OBERLAA (previously the lone 5th query) moves into the first
+// paired batch. Diagnostic: if data gaps now appear on STREAM_58A_ATZ (the
+// new singleton), the problem follows query position; if they still appear
+// on U1-Oberlaa, the problem is RBL-specific.
+constexpr int FETCH_ORDER[STREAM_COUNT] = {
+    STREAM_U1_OBERLAA, STREAM_U1_LEOPOLDAU, STREAM_58B_ATZ,
+    STREAM_58A_HIETZING, STREAM_58A_ATZ,
+};
+
+std::string apiUrlForBatch(const int *stop_ids, int count) {
+  std::string url = WL_API_BASE;
+  char buf[24];
+  for (int i = 0; i < count; ++i) {
+    snprintf(buf, sizeof(buf), "&stopId=%d", stop_ids[i]);
+    url += buf;
+  }
+  return url;
 }
 
 void logSlot(const char *tag, const Departure &d) {
@@ -79,61 +85,72 @@ void logSlot(const char *tag, const Departure &d) {
 }
 
 bool fetchSnapshot(StreamSnapshot &out) {
-  std::string body;
-  FetchConfig fc;
-  FetchOutcome fo = fetchWithRetry(g_net, apiUrl(), body, fc);
-  if (!fo.ok) {
-    Serial.printf("[api] httpGet failed after %d attempts\n",
-                  fo.attempts_taken);
-    return false;
-  }
-  if (fo.attempts_taken > 1) {
-    Serial.printf("[api] httpGet succeeded on attempt %d/%d\n",
-                  fo.attempts_taken, fc.max_attempts);
-  }
+  out = StreamSnapshot{};
   StreamFilter filters[STREAM_COUNT];
   buildFilters(filters);
-  bool parsed = parseMonitorResponse(body, filters, out);
 
-  // Partial-empty retry: the OGD monitor occasionally drops individual
-  // stopIds from a response (observed: U1 Oberlaa missing then present on
-  // the next call). If *some* streams have data and *others* don't, request
-  // once more and union the two snapshots per-stream. A fully empty result
-  // is left alone — that's the legitimate Betriebstag-Pause case.
-  if (parsed) {
-    int got = countValidFirstSlots(out);
-    if (got > 0 && got < STREAM_COUNT) {
-      Serial.printf("[api] partial empty (%d/%d streams) — retrying once\n",
-                    got, STREAM_COUNT);
-      delay(500);
-      std::string body2;
-      FetchOutcome fo2 = fetchWithRetry(g_net, apiUrl(), body2, fc);
-      if (fo2.ok) {
-        StreamSnapshot out2;
-        if (parseMonitorResponse(body2, filters, out2)) {
-          int filled = 0;
-          for (int i = 0; i < STREAM_COUNT; ++i) {
-            if (!out.stream[i].slot[0].valid &&
-                out2.stream[i].slot[0].valid) {
-              out.stream[i] = out2.stream[i];
-              ++filled;
-            }
-          }
-          Serial.printf("[api] retry: %d/%d streams; filled %d empty\n",
-                        countValidFirstSlots(out2), STREAM_COUNT, filled);
-        } else {
-          Serial.println("[api] retry: parse failed, keeping first result");
-        }
-      } else {
-        Serial.println("[api] retry: httpGet failed, keeping first result");
+  int total_batches = 0;
+  int failed_batches = 0;
+
+  for (int start = 0; start < STREAM_COUNT; start += STOPIDS_PER_QUERY) {
+    int batch_size = STREAM_COUNT - start;
+    if (batch_size > STOPIDS_PER_QUERY)
+      batch_size = STOPIDS_PER_QUERY;
+
+    int stop_ids[STOPIDS_PER_QUERY];
+    for (int j = 0; j < batch_size; ++j) {
+      stop_ids[j] = filters[FETCH_ORDER[start + j]].rbl;
+    }
+    char batch_label[40] = "";
+    {
+      int pos = 0;
+      for (int j = 0; j < batch_size; ++j) {
+        pos += snprintf(batch_label + pos, sizeof(batch_label) - pos,
+                        j == 0 ? "%d" : ",%d", stop_ids[j]);
       }
+    }
+
+    std::string body;
+    FetchConfig fc;
+    FetchOutcome fo =
+        fetchWithRetry(g_net, apiUrlForBatch(stop_ids, batch_size), body, fc);
+    ++total_batches;
+
+    if (!fo.ok) {
+      Serial.printf("[api] batch [%s] httpGet failed after %d attempts\n",
+                    batch_label, fo.attempts_taken);
+      ++failed_batches;
+      continue;
+    }
+    if (fo.attempts_taken > 1) {
+      Serial.printf("[api] batch [%s] succeeded on attempt %d/%d\n",
+                    batch_label, fo.attempts_taken, fc.max_attempts);
+    }
+
+    StreamSnapshot partial;
+    if (!parseMonitorResponse(body, filters, partial)) {
+      Serial.printf("[api] batch [%s] parse failed\n", batch_label);
+      ++failed_batches;
+      continue;
+    }
+
+    // Copy out only the streams we asked for in this batch — other indices
+    // in `partial` are default-empty by construction.
+    for (int j = 0; j < batch_size; ++j) {
+      int idx = FETCH_ORDER[start + j];
+      out.stream[idx] = partial.stream[idx];
     }
   }
 
-  Serial.printf("[api] parse=%d api_ok=%d  streams: "
+  // api_ok if at least one batch returned valid JSON. A complete network
+  // failure (all batches failed httpGet/parse) falls through to api_ok=false
+  // and warmCyclePath's short-retry policy.
+  out.api_ok = (failed_batches < total_batches);
+
+  Serial.printf("[api] batches=%d failed=%d api_ok=%d  streams: "
                 "58A-Atz r=%d f=%d | 58A-Hie r=%d f=%d | 58B r=%d f=%d | "
                 "U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
-                parsed, out.api_ok,
+                total_batches, failed_batches, out.api_ok,
                 out.stream[STREAM_58A_ATZ].rbl_responded,
                 out.stream[STREAM_58A_ATZ].filter_matched,
                 out.stream[STREAM_58A_HIETZING].rbl_responded,
@@ -154,7 +171,7 @@ bool fetchSnapshot(StreamSnapshot &out) {
   logSlot("U1-Leo[1]", out.stream[STREAM_U1_LEOPOLDAU].slot[1]);
   logSlot("U1-Obe[0]", out.stream[STREAM_U1_OBERLAA].slot[0]);
   logSlot("U1-Obe[1]", out.stream[STREAM_U1_OBERLAA].slot[1]);
-  return parsed;
+  return out.api_ok;
 }
 
 void registerWifiCredentials() {
