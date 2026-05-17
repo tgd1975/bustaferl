@@ -71,7 +71,8 @@ bool parseMonitorResponse(const std::string &json,
   JsonDocument doc;
   // The OGD locationStop block nests Feature→geometry→coordinates etc. up to
   // ~12 levels; ArduinoJson's default cap is 10. Lift it for headroom.
-  auto err = deserializeJson(doc, json, DeserializationOption::NestingLimit(20));
+  auto err =
+      deserializeJson(doc, json, DeserializationOption::NestingLimit(20));
   if (err)
     return false;
 

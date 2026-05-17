@@ -75,6 +75,7 @@ Kabelfarben entsprechen dem mitgelieferten Waveshare-Adapterkabel.
 Wiener-Linien-Echtzeit-API (OGD): `https://www.wienerlinien.at/ogd_realtime/monitor?rbl=…`. Kein API-Key, kostenfrei.
 
 Drei Datenflüsse:
+
 - **Tullnertalgasse**, Linie 58A, Richtung Atzgersdorf
 - **Tullnertalgasse**, Linie 58A, Richtung Hietzing
 - **Endemanngasse**, Linie 58B, gefiltert über `towards = "Atzgersdorf"` (das ist genau der Steig-Durchgang nach der Schleife)
@@ -85,7 +86,7 @@ Pro Abfahrt wird der Echtzeit-Wert verwendet. Liefert die API nur den Plan-Wert,
 
 Drei nach Linie und Richtung gruppierte Blöcke:
 
-```
+```text
 TULLNERTALGASSE
 58A → Atzgersdorf      HH:MM  HH:MM
 58A → Hietzing         HH:MM  HH:MM
@@ -136,7 +137,7 @@ Das zuletzt gerenderte Bild muss Deep Sleep überleben, sonst gibt es nichts zum
 
 Nach jedem Render Berechnung des nächsten Wake-Zeitpunkts:
 
-```
+```text
 t_ref   = min(alle angezeigten Abfahrtszeiten über alle 3 Streams)
 wake_at = t_ref − 15 min − 30 s Boot-Margin
 delta   = wake_at − now()
@@ -366,17 +367,20 @@ Diese Version ergänzt v1. Sie ändert nur Datenquelle, Stream-Topologie und Lay
 ## 1. Motivation und Geltungsbereich
 
 Was bleibt gleich (aus v1):
+
 - Hardware, Pin-Belegung, e-Paper-Stufenmodell
 - 58A Tullnertalgasse (beide Richtungen) und 58B Endemanngasse als Streams 0–2, weiterhin über Wiener-Linien-OGD
 - EFA-Plan-Hints für 58A/58B (v1 §12)
 - Stale-Schwelle, Wake-Logik, Deep-Sleep, RLE-Persistenz, Diff-Refresh
 
 Was sich ändert:
+
 - Streams 3 + 4 (U1 Leopoldau/Oberlaa) entfallen. Neuer Stream **`STREAM_SBAHN_HBF`** ersetzt sie. `STREAM_COUNT` sinkt von 5 auf 4.
 - Neue Datenquelle: **ÖBB Scotty (HAFAS mgate.exe)** für Echtzeit, plus optional ein paralleler Hint-Mechanismus für Spät-/Frühabfahrten.
 - Layout-Block 3 zeigt eine Linie mit Linienkennung (S2/S3/S4/REX) je Slot, statt zwei Richtungen mit fixer Linie.
 
 Nicht-Ziele:
+
 - Keine Anzeige von Gleisnummer, Verspätungsminuten als Zahl, Zuglaufnummer oder Echtzeit-Zwischenhalten. Anzeige bleibt „nur Abfahrtsuhrzeit".
 - Keine Mischung mit S-Bahnen Richtung Liesing/Mödling — nur Richtung Hauptbahnhof.
 
@@ -397,6 +401,7 @@ Die Wiener-Linien-OGD-Schnittstelle (RBL-Monitor) deckt **keine ÖBB-S-Bahn ab**
 ### 2.2 Empfehlung
 
 **Primär: ÖBB Scotty (HAFAS mgate.exe).** Begründung:
+
 - Liefert in einem einzigen Request alle Abfahrten ab einer Station mit Echtzeit, Direction-Filter und Produkt-Filter (S-Bahn vs. RJ vs. Nightjet).
 - JSON ist ESP32-tauglich (~5 kB pro Antwort, ArduinoJson kommt damit zurecht — vgl. bestehende EFA-Parser).
 - Wird von der offiziellen ÖBB-Webapp verwendet, also auch ohne Mobile-App gut beobachtbar (DevTools).
@@ -443,12 +448,14 @@ POST `https://fahrplan.oebb.at/bin/mgate.exe` mit folgendem Body (Beispiel; konk
 ```
 
 Felder:
+
 - `stbLoc.extId` → EVA Atzgersdorf
 - `dirLoc.extId` → EVA Wien Hbf. Filtert HAFAS-seitig auf Züge, die Hbf als kommenden Halt haben. Das schließt automatisch die Gegenrichtung (Mödling/Liesing) aus, ohne dass wir auf Endstation-Strings filtern müssen.
 - `jnyFltrL` → bitmask `value="63"` = S-Bahn + Regio + REX (Bits 0–5). Die echten Bitwerte für das ÖBB-Profil sind vor Flash zu verifizieren — siehe §10 Open Questions.
 - `maxJny: 6` → 6 Abfahrten anfragen, im Client die ersten ≤3 Richtung Hbf nehmen. Puffer, falls `dirLoc` einzelne Fahrten doch nicht ausfiltert (z. B. Triebwagenwende).
 
 Antwort enthält pro Eintrag mindestens:
+
 - `jnyL[i].stbStop.dTimeS` — Plan-Abfahrt `HHMMSS`
 - `jnyL[i].stbStop.dTimeR` — Echtzeit-Abfahrt (optional, fehlt im Stör-/Ausfall-Fall)
 - `jnyL[i].stbStop.dCncl` — Bool, Fahrt entfällt
@@ -511,6 +518,7 @@ Der einzige Stream im System, bei dem die **Linie pro Slot variieren kann** (mal
 Bestehendes Schema bleibt: `POLL_INTERVAL_S=30` im Wachzustand, `WAKE_BEFORE_BUS_S=900` Vorlauf vor `t_ref`.
 
 Neu zu beachten:
+
 - mgate.exe ist nicht rate-limited dokumentiert; die ÖBB-Webapp pollt ihre eigene Bahnhofstafel ca. alle 30 s. 30 s sind also unauffällig.
 - HTTPS-Handshake ist auf ESP32 spürbar — bestehender HTTPS-Code (für `wienerlinien.at`) funktioniert weiter, kein neues Root-Cert nötig (Let's Encrypt / DigiCert sind im Bundle).
 - Die ÖBB-Antwort kann größer sein als die OGD-Antwort (~5–8 kB statt ~2 kB). `ApiFetcher` braucht einen größeren Response-Buffer; Heap-Spitze im wachen Zustand prüfen.
@@ -521,7 +529,7 @@ Neu zu beachten:
 
 Bisheriger Südtirolerplatz-Block:
 
-```
+```text
 SÜDTIROLER PLATZ
 U1 → Leopoldau         HH:MM  HH:MM
 U1 → Oberlaa           HH:MM  HH:MM
@@ -529,13 +537,14 @@ U1 → Oberlaa           HH:MM  HH:MM
 
 Neuer Block:
 
-```
+```text
 ATZGERSDORF S-BAHN
 → Hauptbahnhof
 S2  HH:MM   S3  HH:MM
 ```
 
 Begründung dieser Form:
+
 - Eine Richtung (Hbf) → Richtung steht einmal in der Überschrift, spart Tinte.
 - Linie wandert vor die Uhrzeit, weil sie pro Slot variiert. Layout muss damit umgehen, dass `S2` (2 Glyphen) und `REX1` (4 Glyphen) unterschiedlich breit sind — bestehende Glyphen aus dem GxEPD2-Font sind monospace-freundlich, aber `REX` zerstört die schmale Spalte. Lösung: Spaltenbreite an die längste tatsächlich auftretende Liniennummer kalibrieren (typisch `S3` / `REX1`), und Edge-Case `Nightjet/RJX` → mit `xx` darstellen (sichtbarer Hinweis statt Layout-Bruch).
 - Fällt eine Fahrt aus (`dCncl=true`), Slot wird zu `—:—`, Linie unsichtbar.
@@ -570,7 +579,7 @@ Vor dem ersten Flash auf der echten Hardware durchzuführen:
 3. **`dirLoc`-Verhalten** an drei verschiedenen Tageszeiten gegenchecken: Hauptverkehr / abends / Wochenende. Wenn Gegenrichtung jemals durchsickert, brauchen wir clientseitigen Filter über `jnyL[i].dirTxt` (heuristisch: Richtungen Hbf/Floridsdorf/Praterstern akzeptieren, Mödling/Wr. Neustadt verwerfen).
 4. **2 oder 3 Slots?** §5.2-Entscheidung: Variante A vorgesehen; im echten Betrieb beobachten, ob ein dritter Slot Mehrwert hätte.
 5. **Hint-Variante.** §8: Default 1 (kein Hint). Vor Roll-out kurz im Vorzimmer beobachten, ob das morgendliche Verhalten reicht.
-6. **HTTP-Heap-Spitze** unter realer Antwort-Größe messen. Bestehende Tests in [test_esp32_render](test/test_esp32_render/test_main.cpp) um einen Heap-Check für den S-Bahn-Pfad erweitern.
+6. **HTTP-Heap-Spitze** unter realer Antwort-Größe messen. Bestehende Tests in [test_device_render](test/test_device_render/test_main.cpp) um einen Heap-Check für den S-Bahn-Pfad erweitern.
 
 ## 11. Migrationsschritte (zur späteren Umsetzung, nicht Teil dieses Konzepts)
 
@@ -582,7 +591,7 @@ In Reihenfolge:
 4. `api_fetcher`: POST-Pfad ergänzen (bisher nur GET); Body via `ArduinoJson` zusammenbauen.
 5. `main.cpp::buildFilters` und `buildScheduleFilters` umbauen (oder Schedule-Pfad für S-Bahn-Stream leer lassen, abhängig von §8 Hint-Entscheidung).
 6. `layout.cpp` Block 3 neu zeichnen.
-7. On-Device-Test mit `pio test -e esp32-test-*` erweitert um S-Bahn-Stream-Suite (Parser, Layout, Heap).
+7. On-Device-Test mit `make test-device` (env:device-*) erweitert um S-Bahn-Stream-Suite (Parser, Layout, Heap).
 8. README/v1-Abschnitt final aktualisieren — *erst nach erfolgreicher Verifikation*, damit die Hauptdoku den tatsächlich gefahrenen Stand spiegelt.
 
 ## Quellen (Web-Recherche zu v2)

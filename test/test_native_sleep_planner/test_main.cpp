@@ -72,19 +72,18 @@ void test_nightly_never_cleaned_is_due() {
 }
 
 void test_nightly_just_cleaned_is_not_due() {
-  TEST_ASSERT_FALSE(needsNightlyDeepClean(1700000000, 1700000000 - 60,
-                                          20 * 3600));
+  TEST_ASSERT_FALSE(
+      needsNightlyDeepClean(1700000000, 1700000000 - 60, 20 * 3600));
 }
 
 void test_nightly_at_threshold_is_due() {
-  TEST_ASSERT_TRUE(needsNightlyDeepClean(1700000000, 1700000000 - 20 * 3600,
-                                         20 * 3600));
+  TEST_ASSERT_TRUE(
+      needsNightlyDeepClean(1700000000, 1700000000 - 20 * 3600, 20 * 3600));
 }
 
 void test_nightly_just_under_threshold_is_not_due() {
-  TEST_ASSERT_FALSE(needsNightlyDeepClean(1700000000,
-                                          1700000000 - (20 * 3600 - 1),
-                                          20 * 3600));
+  TEST_ASSERT_FALSE(needsNightlyDeepClean(
+      1700000000, 1700000000 - (20 * 3600 - 1), 20 * 3600));
 }
 
 void test_nightly_clock_behind_last_is_not_due() {

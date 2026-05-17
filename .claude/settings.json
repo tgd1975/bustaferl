@@ -57,6 +57,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/inject-project-skills.sh",
+            "statusMessage": "Loading project-policy skills (bash-no-prompts, check-tool, fix-markdown)..."
+          }
+        ]
+      }
     ]
   }
 }

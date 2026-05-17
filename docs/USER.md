@@ -37,9 +37,11 @@ Zwei einfache Wege:
    - Pro Linie und Richtung gibt es eine eigene RBL — du brauchst drei
 
 2. **Live-Test in der Shell:**
+
    ```bash
    curl -s "https://www.wienerlinien.at/ogd_realtime/monitor?rbl=12345" | jq .
    ```
+
    Wenn `data.monitors[].locationStop.properties.title` deine Haltestelle
    ist und `lines[].name` die richtige Linie, hast du die RBL gefunden.
 
@@ -96,32 +98,38 @@ Empfohlen:
 ## Troubleshooting
 
 ### Display bleibt leer
+
 - Verkabelung prüfen, insbesondere BUSY und RST
 - Modul-Revision: UC8176 vs. SSD1683 — bei letzterem die GxEPD2-Treiber-
   Klasse anpassen (siehe `docs/HARDWARE.md`)
 - BS-Jumper auf der Rückseite des e-Paper-Moduls steht auf 0?
 
 ### Display zeigt nur Striche `--:--`
+
 - API erreichbar? `curl` mit deinen RBLs vom selben WiFi probieren
 - Serial-Monitor öffnen (`make monitor`) und nach `[warm]`-Logs schauen
 - `towards`-Strings könnten nicht passen — siehe Punkt unten
 
 ### Banner „58B Filter ungueltig"
+
 - Wiener Linien haben den Richtungstext geändert
 - Aktuelle Werte abfragen: `curl https://www.wienerlinien.at/ogd_realtime/monitor?rbl=$RBL_ENDEMANN`
 - Neuen Prefix in `FILTER_TOWARDS_58B` eintragen, neu flashen
 
 ### Banner „Start fehlgeschlagen"
+
 - Cold Boot hat 5× hintereinander WiFi oder NTP nicht hochbekommen
 - WiFi-Passwort in `src/secrets.h` korrekt?
 - Reichweite zum Router OK?
 - Nach 5 min versucht das Gerät automatisch neu
 
 ### Display friert ein / Ghosting wird sichtbar
+
 - Light Full Refresh alle 2 h sollte das auffangen
 - Falls nicht: einmal kurz vom Strom trennen → Cold Boot mit Deep Clean
 - Nach 24 h sollte der nächtliche Deep Clean alle Reste entfernen
 
 ### Geräte-Uhr läuft falsch
+
 - NTP-Sync alle 24 h, gemeinsam mit dem nächtlichen Deep Clean
 - Falls dauerhaft falsch: Zeitzone in `src/config.h` (`TZ_INFO`) prüfen

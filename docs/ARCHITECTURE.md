@@ -2,7 +2,7 @@
 
 ## Modulkarte
 
-```
+```text
 src/
 ├── main.cpp                  Top-level setup()/loop(), Verdrahtung
 ├── config.h                  alle Schwellwerte und Pins (CONCEPT.md §10)
@@ -37,7 +37,7 @@ src/
 
 ## Schichten-Regel
 
-```
+```text
               main.cpp
                  │
         ┌────────┼────────┐
@@ -59,7 +59,7 @@ src/
 
 ## Dataflow (warm cycle)
 
-```
+```text
               ┌─────────┐
               │WiFi up  │
               └────┬────┘
@@ -102,7 +102,7 @@ src/
 
 ## Zustandsmaschine
 
-```
+```text
                   ┌──────────────┐
        power-on   │  Cold Boot   │
        ─────────► │ §8 Sequencer │
@@ -137,24 +137,29 @@ src/
 ## Wichtige Design-Entscheidungen
 
 ### Framebuffer-Diff statt blind-redraw
+
 e-Paper-Partials sind schnell und flickerfrei, kosten aber „Ghosting".
 Wir behalten das letzte Bild im RTC-RAM (RLE-komprimiert, ~1–3 kB),
 vergleichen byteweise, refreshen nur die Differenz-Bbox auf 8-Pixel-Grenzen.
 
 ### Light Full primär zeitgesteuert
+
 Partial-Counter als reines Sicherheitsnetz: nach 2 h sowieso Light Full,
 egal wie viele Partials. Vermeidet, dass bei statischen Anzeigen das
 Ghosting unkontrolliert wächst.
 
 ### Cold-Boot-Erkennung via Wakeup-Cause
+
 `esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED` → frischer
 Boot (Power-on oder Brown-out). Sonst → Wake aus Sleep, RTC-Daten gültig.
 
 ### Stale-Verhalten ist binär
+
 Bewusste Vereinfachung: entweder vertrauenswürdige Echtzeit oder klar
 sichtbares „kaputt". Keine grauen Zwischenzustände mit Zeitstempeln.
 
 ### `towards`-Filter-Drift wird sichtbar gemacht
+
 Wenn 58B im Endemann-RBL 3 erfolgreiche API-Calls in Folge keinerlei
 Departure mit passendem `towards` liefert, blendet das Bustaferl
 `58B Filter ungueltig` ein. Sonst würde der Wegfall stillschweigend zu

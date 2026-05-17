@@ -127,8 +127,8 @@ void renderFrame(const RenderInput &in, Frame &fb) {
   drawHeader(c, 196, "SUEDTIROLER PLATZ");
   drawStreamLine(c, 222, "U1 -> Leopoldau",
                  in.snapshot.stream[STREAM_U1_LEOPOLDAU], stale);
-  drawStreamLine(c, 246, "U1 -> Oberlaa",
-                 in.snapshot.stream[STREAM_U1_OBERLAA], stale);
+  drawStreamLine(c, 246, "U1 -> Oberlaa", in.snapshot.stream[STREAM_U1_OBERLAA],
+                 stale);
 
   if (in.overlay != OverlayKind::None)
     drawOverlay(c, in.overlay);

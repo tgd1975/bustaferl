@@ -1,12 +1,17 @@
-// Long-term on-device test. Iterates a full fetch+parse cycle on a 60 s
-// cadence for ~60 minutes, asserting steady-state invariants: WiFi stays
-// up, every RBL keeps responding, the wall clock advances monotonically,
-// and free heap doesn't accumulate a leak. Per-cycle telemetry goes to
-// serial as `[longterm] cycle=N ...` so a regression like "memory leaks
-// 1KB/cycle" is visible in the log even if the soft-assertions still pass.
+// Long-term on-device test (canonical heap-leak detector). Iterates a
+// full fetch+parse cycle on a 60 s cadence for LONGTERM_SOAK_CYCLES
+// minutes, asserting steady-state invariants: WiFi stays up, every RBL
+// keeps responding, the wall clock advances monotonically, and free
+// heap does not accumulate a leak. Per-cycle telemetry goes to serial
+// as `[longterm] cycle=N ...` so a regression like "memory leaks
+// 1KB/cycle" is visible in the log even if the soft-assertions pass.
 //
-// Run via `pio test -e esp32-test-longterm` — the env sets test_timeout
-// well above the wall-clock budget so PIO does not kill the run early.
+// One source, three variants (LONGTERM_SOAK_CYCLES set by env):
+//   make test-longterm-soak-5min    (CYCLES=5,  ~5 min  quick-check)
+//   make test-longterm-soak-15min   (CYCLES=15, ~15 min pre-commit)
+//   make test-longterm-soak-1h      (CYCLES=60, ~1 h    canonical)
+// HEAP_LEAK_BUDGET_BYTES scales linearly so the per-cycle drift
+// tolerance is identical across the three variants.
 
 #include <Arduino.h>
 #include <cstdio>
@@ -24,10 +29,16 @@ using namespace bustaferl;
 
 namespace {
 
-constexpr int CYCLES = 60;
+#ifndef LONGTERM_SOAK_CYCLES
+#define LONGTERM_SOAK_CYCLES 60 // canonical 1 h default if env didn't set it
+#endif
+
+constexpr int CYCLES = LONGTERM_SOAK_CYCLES;
 constexpr int CYCLE_INTERVAL_S = 60;
-constexpr int HEAP_LEAK_BUDGET_BYTES = 8 * 1024; // 8 KB allowed drift over 1h
-constexpr int MIN_SUCCESS_PCT = 85;              // tolerate transient outages
+// 8 KB/h budget, scaled linearly to cycle count so per-cycle drift
+// tolerance stays identical across the 5min/15min/1h variants.
+constexpr int HEAP_LEAK_BUDGET_BYTES = (8 * 1024 * CYCLES) / 60;
+constexpr int MIN_SUCCESS_PCT = 85; // tolerate transient outages
 
 Esp32Network g_net;
 Esp32Clock g_clock{NTP_SERVER, TZ_INFO};
@@ -76,7 +87,7 @@ void test_setup_wifi_and_clock(void) {
                 static_cast<long long>(g_clock.now()));
 }
 
-void test_run_one_hour_cycle(void) {
+void test_run_soak_cycles(void) {
   StreamFilter filters[STREAM_COUNT];
   buildFilters(filters);
 
@@ -121,9 +132,9 @@ void test_run_one_hour_cycle(void) {
         "[longterm] cycle=%d/%d %02d:%02d:%02d ok=%d parsed=%d attempts=%d "
         "body=%u heap_b=%u heap_a=%u Δ=%d 58A-Atz r=%d f=%d | 58A-Hie r=%d "
         "f=%d | 58B r=%d f=%d | U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
-        cycle, CYCLES, local.tm_hour, local.tm_min, local.tm_sec, fo.ok,
-        parsed, fo.attempts_taken, static_cast<unsigned>(body.size()),
-        heap_before, heap_after,
+        cycle, CYCLES, local.tm_hour, local.tm_min, local.tm_sec, fo.ok, parsed,
+        fo.attempts_taken, static_cast<unsigned>(body.size()), heap_before,
+        heap_after,
         static_cast<int>(heap_after) - static_cast<int>(heap_before),
         snap.stream[STREAM_58A_ATZ].rbl_responded,
         snap.stream[STREAM_58A_ATZ].filter_matched,
@@ -154,8 +165,7 @@ void test_run_one_hour_cycle(void) {
   Serial.printf("[longterm] heap: initial=%u final=%u min=%u final_Δ=%d "
                 "min_Δ=%d\n",
                 g_initial_heap, final_heap, g_min_heap,
-                static_cast<int>(final_heap) -
-                    static_cast<int>(g_initial_heap),
+                static_cast<int>(final_heap) - static_cast<int>(g_initial_heap),
                 static_cast<int>(g_min_heap) -
                     static_cast<int>(g_initial_heap));
 
@@ -163,8 +173,8 @@ void test_run_one_hour_cycle(void) {
       (CYCLES * MIN_SUCCESS_PCT) / 100, g_successes,
       "long-term: success rate below threshold");
 
-  int heap_loss = static_cast<int>(g_initial_heap) -
-                  static_cast<int>(final_heap);
+  int heap_loss =
+      static_cast<int>(g_initial_heap) - static_cast<int>(final_heap);
   TEST_ASSERT_LESS_THAN_INT_MESSAGE(
       HEAP_LEAK_BUDGET_BYTES, heap_loss,
       "long-term: free heap dropped more than budget — leak suspected");
@@ -179,7 +189,7 @@ void setup() {
   delay(2000);
   UNITY_BEGIN();
   RUN_TEST(test_setup_wifi_and_clock);
-  RUN_TEST(test_run_one_hour_cycle);
+  RUN_TEST(test_run_soak_cycles);
   UNITY_END();
 }
 

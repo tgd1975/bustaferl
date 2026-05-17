@@ -119,8 +119,7 @@ void test_save_schedule_round_trip() {
   g_store.saveSchedule(s);
   ScheduleSnapshot loaded = g_store.loadSchedule();
   TEST_ASSERT_EQUAL_INT64(1700001234, loaded.fetched_at);
-  TEST_ASSERT_EQUAL_INT64(1700009999,
-                          loaded.hint[STREAM_58A_ATZ].last_today);
+  TEST_ASSERT_EQUAL_INT64(1700009999, loaded.hint[STREAM_58A_ATZ].last_today);
   TEST_ASSERT_EQUAL_INT64(1700020000,
                           loaded.hint[STREAM_58A_ATZ].first_tomorrow[0]);
   TEST_ASSERT_EQUAL_INT64(1700020600,
@@ -128,8 +127,7 @@ void test_save_schedule_round_trip() {
   TEST_ASSERT_EQUAL_INT64(1700008888,
                           loaded.hint[STREAM_U1_OBERLAA].last_today);
   // Streams we did not touch must still come back zeroed.
-  TEST_ASSERT_EQUAL_INT64(0,
-                          loaded.hint[STREAM_58B_ATZ].first_tomorrow[0]);
+  TEST_ASSERT_EQUAL_INT64(0, loaded.hint[STREAM_58B_ATZ].first_tomorrow[0]);
 }
 
 void test_save_framebuffer_overflow_clears_valid() {
@@ -142,14 +140,12 @@ void test_save_framebuffer_overflow_clears_valid() {
   PersistedMeta m = g_store.loadMeta();
   Serial.printf("[engine] overflow save returned=%d fb_valid_after=%d\n", ok,
                 m.framebuffer_valid);
-  TEST_ASSERT_FALSE_MESSAGE(ok,
-                            "worst-case input must not fit in RLE budget");
+  TEST_ASSERT_FALSE_MESSAGE(ok, "worst-case input must not fit in RLE budget");
   TEST_ASSERT_FALSE_MESSAGE(m.framebuffer_valid,
                             "framebuffer_valid not cleared on overflow");
   uint8_t out[FB_BYTES] = {0};
-  TEST_ASSERT_EQUAL_UINT_MESSAGE(
-      0, g_store.loadFramebuffer(out, FB_BYTES),
-      "load must refuse to decode after overflow");
+  TEST_ASSERT_EQUAL_UINT_MESSAGE(0, g_store.loadFramebuffer(out, FB_BYTES),
+                                 "load must refuse to decode after overflow");
 }
 
 void setup() {

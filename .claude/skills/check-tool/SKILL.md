@@ -38,7 +38,7 @@ Invoke proactively before:
    >
    > **Suggested install command:**
 >
-   > ```
+   > ```text
    > <install command>
    > ```
    >

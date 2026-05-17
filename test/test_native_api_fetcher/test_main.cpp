@@ -80,8 +80,7 @@ void test_all_attempts_fail() {
   TEST_ASSERT_FALSE(r.ok);
   TEST_ASSERT_EQUAL_INT(3, r.attempts_taken);
   TEST_ASSERT_EQUAL_INT(3, net.call_count);
-  TEST_ASSERT_TRUE_MESSAGE(body.empty(),
-                           "body must be cleared on failure");
+  TEST_ASSERT_TRUE_MESSAGE(body.empty(), "body must be cleared on failure");
 }
 
 void test_single_attempt_no_retry() {

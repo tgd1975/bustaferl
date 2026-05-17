@@ -118,10 +118,11 @@ void test_full_schedule_fetch_does_not_crash() {
   Serial.printf("[efa] full result ok=%d attempted=%d failed=%d\n", r.ok,
                 r.calls_attempted, r.calls_failed);
   for (int i = 0; i < STREAM_COUNT; ++i) {
-    Serial.printf("[efa] stream %d last_today=%lld first[0]=%lld first[1]=%lld\n",
-                  i, static_cast<long long>(r.hint[i].last_today),
-                  static_cast<long long>(r.hint[i].first_tomorrow[0]),
-                  static_cast<long long>(r.hint[i].first_tomorrow[1]));
+    Serial.printf(
+        "[efa] stream %d last_today=%lld first[0]=%lld first[1]=%lld\n", i,
+        static_cast<long long>(r.hint[i].last_today),
+        static_cast<long long>(r.hint[i].first_tomorrow[0]),
+        static_cast<long long>(r.hint[i].first_tomorrow[1]));
   }
 
   TEST_ASSERT_EQUAL_INT_MESSAGE(3, r.calls_attempted,
@@ -140,9 +141,8 @@ void test_full_schedule_fetch_does_not_crash() {
       break;
     }
   }
-  TEST_ASSERT_TRUE_MESSAGE(any_hint,
-                           "no stream got a first_tomorrow hint — "
-                           "EFA direction string mismatch?");
+  TEST_ASSERT_TRUE_MESSAGE(any_hint, "no stream got a first_tomorrow hint — "
+                                     "EFA direction string mismatch?");
 }
 
 void setup() {

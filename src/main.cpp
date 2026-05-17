@@ -73,7 +73,7 @@ constexpr int STOPIDS_PER_QUERY = 2;
 // new singleton), the problem follows query position; if they still appear
 // on U1-Oberlaa, the problem is RBL-specific.
 constexpr int FETCH_ORDER[STREAM_COUNT] = {
-    STREAM_U1_OBERLAA, STREAM_U1_LEOPOLDAU, STREAM_58B_ATZ,
+    STREAM_U1_OBERLAA,   STREAM_U1_LEOPOLDAU, STREAM_58B_ATZ,
     STREAM_58A_HIETZING, STREAM_58A_ATZ,
 };
 
@@ -112,7 +112,7 @@ bool fetchSnapshot(StreamSnapshot &out) {
     if (batch_size > STOPIDS_PER_QUERY)
       batch_size = STOPIDS_PER_QUERY;
 
-    int stop_ids[STOPIDS_PER_QUERY];
+    int stop_ids[STOPIDS_PER_QUERY] = {0};
     for (int j = 0; j < batch_size; ++j) {
       stop_ids[j] = filters[FETCH_ORDER[start + j]].rbl;
     }
@@ -252,10 +252,9 @@ void renderAndPush(const StreamSnapshot &snap, OverlayKind overlay,
                    PersistedMeta &meta, const ScheduleSnapshot &schedule) {
   // Stale overlay must keep showing "??:??" everywhere — do not let scheduled
   // hints leak through when the realtime data is untrustworthy.
-  StreamSnapshot merged =
-      (overlay == OverlayKind::Stale)
-          ? snap
-          : mergeSlots(snap, schedule, g_clock.now());
+  StreamSnapshot merged = (overlay == OverlayKind::Stale)
+                              ? snap
+                              : mergeSlots(snap, schedule, g_clock.now());
   RenderInput in{merged, overlay};
   renderFrame(in, g_frame_new);
 
@@ -280,8 +279,9 @@ void renderAndPush(const StreamSnapshot &snap, OverlayKind overlay,
 void doSleepOrLoop(const SleepDecision &sd, const PersistedMeta &meta) {
   g_store.saveMeta(meta);
   if (sd.mode == Mode::DeepSleep) {
-    Serial.printf("[sleep] deep sleep for %u s (next bus far away or no data)\n",
-                  sd.seconds);
+    Serial.printf(
+        "[sleep] deep sleep for %u s (next bus far away or no data)\n",
+        sd.seconds);
     g_sleep.deepSleep(sd.seconds);
   }
   Serial.printf("[sleep] staying active, light sleep for %u s\n",
@@ -295,10 +295,10 @@ void coldBootPath(PersistedMeta &meta) {
   BootConfig bc;
   bc.max_retries = COLD_BOOT_MAX_RETRIES;
   BootResult r = runColdBoot(g_net, g_clock, meta.cold_boot_retries, bc);
-  Serial.printf("[boot] runColdBoot -> %s\n",
-                r == BootResult::Ok ? "Ok"
-                : r == BootResult::RetryLater ? "RetryLater"
-                                              : "GiveUp");
+  Serial.printf("[boot] runColdBoot -> %s\n", r == BootResult::Ok ? "Ok"
+                                              : r == BootResult::RetryLater
+                                                  ? "RetryLater"
+                                                  : "GiveUp");
   if (r == BootResult::RetryLater) {
     ++meta.cold_boot_retries;
     g_store.saveMeta(meta);
@@ -431,9 +431,8 @@ void warmCyclePath(PersistedMeta &meta) {
   // Nightly deep clean: if next sleep would be long and we haven't cleaned
   // in 20h, do it now. Use the merged view for sleep planning so a fresh
   // morning hint shortens what would otherwise be a generic NO_DATA sleep.
-  StreamSnapshot merged = (overlay == OverlayKind::Stale)
-                              ? snap
-                              : mergeSlots(snap, schedule, now);
+  StreamSnapshot merged =
+      (overlay == OverlayKind::Stale) ? snap : mergeSlots(snap, schedule, now);
   SleepConfig sc{WAKE_BEFORE_BUS_S, BOOT_MARGIN_S, ACTIVE_THRESHOLD_S,
                  NO_DATA_SLEEP_S, API_FAILURE_RETRY_S};
   SleepDecision pre = planSleep(merged, now, sc);

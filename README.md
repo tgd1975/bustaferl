@@ -7,7 +7,7 @@ Entscheidung „aufbrechen oder warten" trifft der Mensch selbst.
 
 ## Was es zeigt
 
-```
+```text
 TULLNERTALGASSE
 58A -> Atzgersdorf      HH:MM  HH:MM
 58A -> Hietzing         HH:MM  HH:MM
@@ -47,7 +47,7 @@ ENDEMANNGASSE
 
 ## Build-Targets
 
-```
+```text
 make build      compile firmware for ESP32
 make upload     flash to attached ESP32
 make flash      upload + open monitor

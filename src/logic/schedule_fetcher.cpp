@@ -17,7 +17,10 @@
 static inline uint32_t freeHeap() { return esp_get_free_heap_size(); }
 #else
 #define SCHED_LOG(...) ((void)0)
-#define SCHED_MIN_FREE_HEAP 0u
+// On native there is no real heap to bail on; freeHeap() returns
+// UINT32_MAX so the threshold check is always false. Using 1u rather
+// than 0u avoids gcc's tautological-compare warning on `unsigned < 0`.
+#define SCHED_MIN_FREE_HEAP 1u
 static inline uint32_t freeHeap() { return UINT32_MAX; }
 #endif
 
@@ -103,8 +106,8 @@ fetchSchedule(INetwork &net, time_t now,
       continue;
     }
 
-    std::string url = buildEfaUrl(cfg.endpoint_base, diva, query_time,
-                                  cfg.limit);
+    std::string url =
+        buildEfaUrl(cfg.endpoint_base, diva, query_time, cfg.limit);
     ++out.calls_attempted;
 
     {

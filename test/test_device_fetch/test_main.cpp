@@ -48,7 +48,8 @@ void printSlot(const char *stream, const Departure &d) {
 std::string apiUrl() {
   std::string url = WL_API_BASE;
   char buf[96];
-  snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
+  snprintf(buf, sizeof(buf),
+           "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
            RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
            RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
   url += buf;
@@ -87,7 +88,8 @@ void test_http_get_returns_body(void) {
   Serial.printf("[api] body head: %.*s\n", static_cast<int>(head),
                 g_body.c_str());
   if (g_body.size() > 480) {
-    Serial.printf("[api] body tail: %s\n", g_body.c_str() + g_body.size() - 240);
+    Serial.printf("[api] body tail: %s\n",
+                  g_body.c_str() + g_body.size() - 240);
   }
   TEST_ASSERT_GREATER_THAN_MESSAGE(100, g_body.size(),
                                    "body suspiciously small (<100 bytes)");
@@ -139,9 +141,8 @@ void test_parse_all_rbls_respond(void) {
                            "RBL_TULL_HIETZING (3757) did not respond");
   TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58B_ATZ].rbl_responded,
                            "RBL_ENDEMANN (8132) did not respond");
-  TEST_ASSERT_TRUE_MESSAGE(
-      snap.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
-      "RBL_SUEDTIROLER_LEOPOLDAU (4105) did not respond");
+  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
+                           "RBL_SUEDTIROLER_LEOPOLDAU (4105) did not respond");
   TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_OBERLAA].rbl_responded,
                            "RBL_SUEDTIROLER_OBERLAA (4124) did not respond");
 
@@ -269,10 +270,10 @@ void test_ntp_completes_before_api_query(void) {
                            "ordering test: httpGet failed");
 
   time_t clock_after_query = g_clock.now();
-  Serial.printf("[engine] ordering: clock=%lld after query (Δ=%lld s)\n",
-                static_cast<long long>(clock_after_query),
-                static_cast<long long>(clock_after_query -
-                                        clock_at_query_start));
+  Serial.printf(
+      "[engine] ordering: clock=%lld after query (Δ=%lld s)\n",
+      static_cast<long long>(clock_after_query),
+      static_cast<long long>(clock_after_query - clock_at_query_start));
   TEST_ASSERT_TRUE_MESSAGE(clock_after_query - clock_at_query_start < 30,
                            "clock jumped >30 s during query — NTP fired "
                            "again mid-query?");

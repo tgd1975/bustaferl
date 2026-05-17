@@ -1,0 +1,25 @@
+{
+  // Project-wide markdownlint-cli2 config.
+  //
+  // Rule rationale:
+  //   MD013 (line-length): disabled. The repo writes long German prose
+  //     paragraphs and wide tables (Hardware pin tables, EFA hint
+  //     tables) where 80-char wrapping would be invasive without
+  //     improving readability.
+  //   MD060 (table-column-style): disabled. Different tables use
+  //     different alignments intentionally (compact for inline,
+  //     aligned for pin tables).
+  //   MD040 (fence-code-language) stays ON — every fenced block must
+  //     name its language (use `text` for ASCII art / non-code).
+  "config": {
+    "MD013": false,
+    "MD060": false
+  },
+  "ignores": [
+    "node_modules",
+    ".venv",
+    ".pio",
+    ".tmp",
+    ".claude/security-review-latest.md"
+  ]
+}

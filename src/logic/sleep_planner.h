@@ -21,8 +21,8 @@ struct SleepConfig {
   int wake_before_bus_s = 900;
   int boot_margin_s = 30;
   int active_threshold_s = 120;
-  int no_data_sleep_s = 1800;     // API ok but no departures (overnight)
-  int api_failure_retry_s = 60;   // !snap.api_ok → short retry
+  int no_data_sleep_s = 1800;   // API ok but no departures (overnight)
+  int api_failure_retry_s = 60; // !snap.api_ok → short retry
 };
 
 // Decides whether to enter deep sleep based on the earliest departure across

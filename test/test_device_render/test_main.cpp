@@ -100,7 +100,8 @@ void test_filling_slot_changes_framebuffer() {
       ++diff;
   Serial.printf("[engine] valid-slot render: changed_bytes=%d\n", diff);
   TEST_ASSERT_GREATER_THAN_MESSAGE(
-      0, diff, "Filling a slot did not change framebuffer — formatHHMM broken?");
+      0, diff,
+      "Filling a slot did not change framebuffer — formatHHMM broken?");
 }
 
 void test_render_stale_frame_helper() {
@@ -133,16 +134,16 @@ void test_each_overlay_kind_changes_framebuffer() {
   renderFrame({snap, OverlayKind::Stale}, *stale);
   renderFrame({snap, OverlayKind::FilterDead}, *dead);
   renderFrame({snap, OverlayKind::StartFailed}, *failed);
-  TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(base->data(), stale->data(), Frame::bytes));
-  TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(base->data(), dead->data(), Frame::bytes));
+  TEST_ASSERT_NOT_EQUAL(0,
+                        std::memcmp(base->data(), stale->data(), Frame::bytes));
+  TEST_ASSERT_NOT_EQUAL(0,
+                        std::memcmp(base->data(), dead->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
       0, std::memcmp(base->data(), failed->data(), Frame::bytes));
   // Each overlay kind must produce a distinguishable framebuffer — guards
   // against e.g. a fall-through bug in drawOverlay's switch.
-  TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(stale->data(), dead->data(), Frame::bytes));
+  TEST_ASSERT_NOT_EQUAL(0,
+                        std::memcmp(stale->data(), dead->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
       0, std::memcmp(stale->data(), failed->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(

@@ -58,8 +58,7 @@ void test_repeated_light_sleeps_keep_reporting_timer() {
   for (int i = 0; i < 3; ++i) {
     g_sleep.lightSleep(1);
     WakeCause c = g_sleep.wakeupCause();
-    Serial.printf("[sleep] iter=%d wakeupCause()=%d\n", i,
-                  static_cast<int>(c));
+    Serial.printf("[sleep] iter=%d wakeupCause()=%d\n", i, static_cast<int>(c));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(WakeCause::Timer),
                           static_cast<int>(c));
   }

@@ -97,7 +97,8 @@ void test_splits_at_cutoff_into_last_today_and_first_tomorrow() {
   ScheduleStreamFilter f[STREAM_COUNT];
   buildFilters(f);
   ScheduleHint h[STREAM_COUNT]{};
-  // Cutoff = 2026-05-17 03:00: 23:45 falls below → last_today; 05:06 etc. above.
+  // Cutoff = 2026-05-17 03:00: 23:45 falls below → last_today; 05:06 etc.
+  // above.
   time_t cutoff = makeLocal(2026, 5, 17, 3, 0);
   TEST_ASSERT_TRUE(parseEfaResponse(kEveningJson, 60201395, f, cutoff, h));
 

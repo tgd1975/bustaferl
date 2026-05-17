@@ -71,7 +71,7 @@ make ci
 
 ## Module-Layer-Regel
 
-```
+```text
 main.cpp          → darf alles
 hal/Esp32*.cpp    → darf Arduino-Core und Treiber
 hal/*.h           → reines Interface, nur std::
