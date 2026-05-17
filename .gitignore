@@ -3,6 +3,7 @@
 .piolibdeps/
 .vscode/
 .cache/
+.tmp/
 build/
 *.bin
 *.elf
