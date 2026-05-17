@@ -35,6 +35,8 @@ ENDEMANNGASSE
 ## Dokumentation
 
 - [`CONCEPT.md`](CONCEPT.md) — Architektur-Entscheidungen, Verhalten im Detail
+- [`docs/HANDBUCH.md`](docs/HANDBUCH.md) — Anzeigen-Bedeutung mit Screenshots,
+  Refresh-Rhythmus, Echtzeit vs. Plandaten, Offline-Verhalten
 - [`docs/USER.md`](docs/USER.md) — Erstinbetriebnahme, Anzeigen-Bedeutung,
   Troubleshooting
 - [`docs/HARDWARE.md`](docs/HARDWARE.md) — Stückliste, Verkabelung,
