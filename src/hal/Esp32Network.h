@@ -15,6 +15,8 @@ public:
   bool connect(unsigned timeout_ms) override;
   bool isConnected() override;
   bool httpGet(const std::string &url, std::string &out) override;
+  bool httpGetStream(const std::string &url,
+                     StreamConsumer consumer) override;
 
 private:
   WiFiMulti wifi_;

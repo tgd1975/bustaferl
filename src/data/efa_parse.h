@@ -6,6 +6,10 @@
 #include "ScheduleHint.h"
 #include "StreamSnapshot.h"
 
+#ifndef NATIVE_BUILD
+#include <Stream.h>
+#endif
+
 namespace bustaferl {
 
 // One filter per stream — like StreamFilter (OGD) but matches EFA fields:
@@ -32,6 +36,21 @@ struct ScheduleStreamFilter {
 bool parseEfaResponse(const std::string &json, int call_diva,
                       const ScheduleStreamFilter (&filters)[STREAM_COUNT],
                       time_t cutoff, ScheduleHint (&hint)[STREAM_COUNT]);
+
+#ifndef NATIVE_BUILD
+// Streaming overload: feeds the HTTP body directly into ArduinoJson without
+// buffering the entire ~38 KB response in std::string first. Cuts peak heap
+// usage during a TLS+HTTPS round-trip enough to let three back-to-back EFA
+// calls complete without tripping the PHY/mbedtls assert that fires when
+// the heap dips below ~50 KB.
+//
+// Fully-qualified `::Stream` because bustaferl has its own `Stream` enum
+// (StreamSnapshot.h) — unqualified lookup inside the namespace finds that
+// enum first and the Arduino class second.
+bool parseEfaResponse(::Stream &json, int call_diva,
+                      const ScheduleStreamFilter (&filters)[STREAM_COUNT],
+                      time_t cutoff, ScheduleHint (&hint)[STREAM_COUNT]);
+#endif
 
 } // namespace bustaferl
 

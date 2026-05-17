@@ -3,6 +3,10 @@
 #include <ArduinoJson.h>
 #include <cstring>
 
+#ifndef NATIVE_BUILD
+#include <Stream.h>
+#endif
+
 namespace bustaferl {
 
 namespace {
@@ -49,46 +53,23 @@ time_t parseEfaDateTime(JsonObjectConst dt) {
   return (t == (time_t)-1) ? 0 : t;
 }
 
-} // namespace
-
-bool parseEfaResponse(const std::string &json, int call_diva,
-                      const ScheduleStreamFilter (&filters)[STREAM_COUNT],
-                      time_t cutoff, ScheduleHint (&hint)[STREAM_COUNT]) {
-  // EFA responses are ~37 KB and most of that is metadata we never read
-  // (servingLines block, route geometry, operator info, …). A filter drops
-  // everything except the fields the parser actually consumes, shrinking the
-  // resident JsonDocument by ~10× and keeping cold-boot heap usage in
-  // bounds.
-  JsonDocument filter;
-  filter["departureList"][0]["dateTime"]["year"] = true;
-  filter["departureList"][0]["dateTime"]["month"] = true;
-  filter["departureList"][0]["dateTime"]["day"] = true;
-  filter["departureList"][0]["dateTime"]["hour"] = true;
-  filter["departureList"][0]["dateTime"]["minute"] = true;
-  filter["departureList"][0]["servingLine"]["number"] = true;
-  filter["departureList"][0]["servingLine"]["direction"] = true;
-
-  JsonDocument doc;
-  auto err = deserializeJson(doc, json, DeserializationOption::Filter(filter),
-                             DeserializationOption::NestingLimit(20));
-  if (err)
-    return false;
-
-  // Reset hints for streams whose DIVA matches this call — we own them
-  // exclusively for this response.
+// Common parse-and-filter logic shared by the std::string and Stream
+// overloads. `doc` must already hold the deserialized (filtered) EFA
+// response. Mutates `hint` in place.
+void consumeEfaDoc(JsonDocument &doc, int call_diva,
+                   const ScheduleStreamFilter (&filters)[STREAM_COUNT],
+                   time_t cutoff, ScheduleHint (&hint)[STREAM_COUNT]) {
   for (int i = 0; i < STREAM_COUNT; ++i) {
     if (filters[i].diva == call_diva) {
       hint[i] = ScheduleHint{};
     }
   }
 
-  // Track how many "tomorrow" slots we have filled per stream.
   int tomorrow_fill[STREAM_COUNT] = {0};
 
   JsonArrayConst deps = doc["departureList"].as<JsonArrayConst>();
   if (deps.isNull()) {
-    // Valid JSON, no departures — leave hints zeroed and report success.
-    return true;
+    return;
   }
 
   for (JsonObjectConst dep : deps) {
@@ -121,8 +102,57 @@ bool parseEfaResponse(const std::string &json, int call_diva,
       break;
     }
   }
+}
 
+// EFA responses are ~37 KB and most of that is metadata we never read
+// (servingLines block, route geometry, operator info, …). A filter drops
+// everything except the fields the parser actually consumes, shrinking the
+// resident JsonDocument by ~10× and keeping cold-boot heap usage in
+// bounds.
+void buildEfaFilter(JsonDocument &filter) {
+  filter["departureList"][0]["dateTime"]["year"] = true;
+  filter["departureList"][0]["dateTime"]["month"] = true;
+  filter["departureList"][0]["dateTime"]["day"] = true;
+  filter["departureList"][0]["dateTime"]["hour"] = true;
+  filter["departureList"][0]["dateTime"]["minute"] = true;
+  filter["departureList"][0]["servingLine"]["number"] = true;
+  filter["departureList"][0]["servingLine"]["direction"] = true;
+}
+
+} // namespace
+
+bool parseEfaResponse(const std::string &json, int call_diva,
+                      const ScheduleStreamFilter (&filters)[STREAM_COUNT],
+                      time_t cutoff, ScheduleHint (&hint)[STREAM_COUNT]) {
+  JsonDocument filter;
+  buildEfaFilter(filter);
+
+  JsonDocument doc;
+  auto err = deserializeJson(doc, json, DeserializationOption::Filter(filter),
+                             DeserializationOption::NestingLimit(20));
+  if (err)
+    return false;
+
+  consumeEfaDoc(doc, call_diva, filters, cutoff, hint);
   return true;
 }
+
+#ifndef NATIVE_BUILD
+bool parseEfaResponse(::Stream &json, int call_diva,
+                      const ScheduleStreamFilter (&filters)[STREAM_COUNT],
+                      time_t cutoff, ScheduleHint (&hint)[STREAM_COUNT]) {
+  JsonDocument filter;
+  buildEfaFilter(filter);
+
+  JsonDocument doc;
+  auto err = deserializeJson(doc, json, DeserializationOption::Filter(filter),
+                             DeserializationOption::NestingLimit(20));
+  if (err)
+    return false;
+
+  consumeEfaDoc(doc, call_diva, filters, cutoff, hint);
+  return true;
+}
+#endif
 
 } // namespace bustaferl

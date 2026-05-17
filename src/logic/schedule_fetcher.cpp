@@ -7,21 +7,32 @@
 
 #ifndef NATIVE_BUILD
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 #define SCHED_LOG(...) Serial.printf(__VA_ARGS__)
-// EFA responses are ~37 KB; HTTPS plus parsing peaks at ~90 KB above the
-// idle baseline. Bail before the call if free heap is below this — better
-// to skip a refresh than to crash and bootloop. Measured empirically on
-// an esp32dev: stays comfortable through three sequential calls.
+// EFA + TLS peaks ~90 KB above the idle baseline. Bail before the call
+// if free heap is below this — better to skip a refresh than to crash
+// and bootloop.
 #define SCHED_MIN_FREE_HEAP 90000u
+// The TLS handshake also needs at least one ~50 KB contiguous block for
+// the mbedtls session buffer. After repeated calls the heap can have
+// 200 KB free but be too fragmented to hand one out; without this check
+// the PHY allocator hit that case and aborted (no recoverable error
+// path inside libphy.a).
+#define SCHED_MIN_LARGEST_BLOCK 60000u
 static inline uint32_t freeHeap() { return esp_get_free_heap_size(); }
+static inline uint32_t largestFreeBlock() {
+  return heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+}
 #else
 #define SCHED_LOG(...) ((void)0)
-// On native there is no real heap to bail on; freeHeap() returns
-// UINT32_MAX so the threshold check is always false. Using 1u rather
+// On native there is no real heap to bail on; the probes return
+// UINT32_MAX so the threshold checks are always false. Using 1u rather
 // than 0u avoids gcc's tautological-compare warning on `unsigned < 0`.
 #define SCHED_MIN_FREE_HEAP 1u
+#define SCHED_MIN_LARGEST_BLOCK 1u
 static inline uint32_t freeHeap() { return UINT32_MAX; }
+static inline uint32_t largestFreeBlock() { return UINT32_MAX; }
 #endif
 
 namespace bustaferl {
@@ -97,10 +108,14 @@ fetchSchedule(INetwork &net, time_t now,
       continue;
 
     uint32_t heap_before = freeHeap();
-    if (heap_before < SCHED_MIN_FREE_HEAP) {
-      SCHED_LOG("[sched] diva=%d skipped, free heap %u < %u\n", diva,
-                static_cast<unsigned>(heap_before),
-                static_cast<unsigned>(SCHED_MIN_FREE_HEAP));
+    uint32_t largest_before = largestFreeBlock();
+    if (heap_before < SCHED_MIN_FREE_HEAP ||
+        largest_before < SCHED_MIN_LARGEST_BLOCK) {
+      SCHED_LOG("[sched] diva=%d skipped, free=%u largest=%u (need %u/%u)\n",
+                diva, static_cast<unsigned>(heap_before),
+                static_cast<unsigned>(largest_before),
+                static_cast<unsigned>(SCHED_MIN_FREE_HEAP),
+                static_cast<unsigned>(SCHED_MIN_LARGEST_BLOCK));
       ++out.calls_attempted;
       ++out.calls_failed;
       continue;
@@ -110,6 +125,23 @@ fetchSchedule(INetwork &net, time_t now,
         buildEfaUrl(cfg.endpoint_base, diva, query_time, cfg.limit);
     ++out.calls_attempted;
 
+#ifndef NATIVE_BUILD
+    // Stream-parse path: ArduinoJson reads bytes directly off the HTTP
+    // stream, so the 38 KB body is never buffered. Cuts peak heap by
+    // roughly that amount, which is what keeps three back-to-back TLS
+    // sessions from tipping mbedtls/PHY into an abort.
+    bool parsed = false;
+    bool got = net.httpGetStream(url, [&](::Stream &s) {
+      parsed = parseEfaResponse(s, diva, filters, cutoff, out.hint);
+      return parsed;
+    });
+    if (!got) {
+      SCHED_LOG("[sched] diva=%d %s\n", diva,
+                parsed ? "httpGetStream failed" : "parse failed");
+      ++out.calls_failed;
+      continue;
+    }
+#else
     {
       std::string body;
       FetchConfig fc;
@@ -126,9 +158,8 @@ fetchSchedule(INetwork &net, time_t now,
         ++out.calls_failed;
         continue;
       }
-      // body scope ends here — the 37 KB string is released before the next
-      // iteration touches WiFi/TLS state.
     }
+#endif
     SCHED_LOG("[sched] diva=%d ok, heap %u -> %u\n", diva,
               static_cast<unsigned>(heap_before),
               static_cast<unsigned>(freeHeap()));
