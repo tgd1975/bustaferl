@@ -8,7 +8,55 @@
   },
   "permissions": {
     "allow": [
-      "Bash(pio test *)"
+      "Bash(pio test *)",
+
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(git blame:*)",
+
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(wc:*)",
+
+      "Bash(markdownlint-cli2:*)",
+
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh api repos/:*)"
+    ],
+    "deny": [
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+
+      "Bash(git push origin main:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'cmd=$(jq -r \".tool_input.command // \\\"\\\"\" 2>/dev/null); echo \"$cmd\" | grep -qE \"git (commit|merge|push)\" || exit 0; branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); [ \"$branch\" = \"main\" ] && echo \"WARNING: You are about to run \\\"$cmd\\\" on the main branch. This is usually wrong — consider working on a feature branch instead. Proceeding anyway? If not, stop and create a branch first.\" >&2; exit 0'",
+            "statusMessage": "Checking branch before git operation..."
+          }
+        ]
+      }
     ]
   }
 }

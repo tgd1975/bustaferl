@@ -54,9 +54,23 @@ time_t parseEfaDateTime(JsonObjectConst dt) {
 bool parseEfaResponse(const std::string &json, int call_diva,
                       const ScheduleStreamFilter (&filters)[STREAM_COUNT],
                       time_t cutoff, ScheduleHint (&hint)[STREAM_COUNT]) {
+  // EFA responses are ~37 KB and most of that is metadata we never read
+  // (servingLines block, route geometry, operator info, …). A filter drops
+  // everything except the fields the parser actually consumes, shrinking the
+  // resident JsonDocument by ~10× and keeping cold-boot heap usage in
+  // bounds.
+  JsonDocument filter;
+  filter["departureList"][0]["dateTime"]["year"] = true;
+  filter["departureList"][0]["dateTime"]["month"] = true;
+  filter["departureList"][0]["dateTime"]["day"] = true;
+  filter["departureList"][0]["dateTime"]["hour"] = true;
+  filter["departureList"][0]["dateTime"]["minute"] = true;
+  filter["departureList"][0]["servingLine"]["number"] = true;
+  filter["departureList"][0]["servingLine"]["direction"] = true;
+
   JsonDocument doc;
-  auto err =
-      deserializeJson(doc, json, DeserializationOption::NestingLimit(20));
+  auto err = deserializeJson(doc, json, DeserializationOption::Filter(filter),
+                             DeserializationOption::NestingLimit(20));
   if (err)
     return false;
 
