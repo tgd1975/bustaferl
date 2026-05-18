@@ -1,5 +1,8 @@
 #include "slot_merger.h"
 
+#include <algorithm>
+#include <iterator>
+
 namespace bustaferl {
 
 namespace {
@@ -16,10 +19,12 @@ bool scheduleUsable(const ScheduleSnapshot &s, time_t now) {
 void insertSorted(Departure (&out)[SLOTS_PER_STREAM], const Departure &cand) {
   if (!cand.valid)
     return;
-  for (int i = 0; i < SLOTS_PER_STREAM; ++i) {
-    if (out[i].valid && out[i].when == cand.when)
-      return; // dedup
-  }
+  const bool duplicate =
+      std::any_of(std::begin(out), std::end(out), [&](const Departure &slot) {
+        return slot.valid && slot.when == cand.when;
+      });
+  if (duplicate)
+    return;
   for (int i = 0; i < SLOTS_PER_STREAM; ++i) {
     if (!out[i].valid) {
       out[i] = cand;
@@ -55,16 +60,14 @@ StreamSnapshot mergeSlots(const StreamSnapshot &snap,
     Departure merged[SLOTS_PER_STREAM]{};
 
     // Realtime slots first so they win on tie.
-    for (int i = 0; i < SLOTS_PER_STREAM; ++i) {
-      const Departure &d = snap.stream[s].slot[i];
+    for (const auto &d : snap.stream[s].slot) {
       if (d.valid && d.when >= now) {
         insertSorted(merged, d);
       }
     }
 
     if (use_schedule) {
-      for (int i = 0; i < 2; ++i) {
-        time_t t = schedule.hint[s].first_tomorrow[i];
+      for (const time_t t : schedule.hint[s].first_tomorrow) {
         if (t == 0 || t < now)
           continue;
         Departure d;

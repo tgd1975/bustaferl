@@ -494,7 +494,13 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 
 **[Schritt 0b, 2026-05-18]** Annahme: Die horizon-evening-Baseline wird *nicht* synchron in Group A erfasst, sondern getrennt vor Group C (Schritt 2.3) abends ab 20:00 lokal gestartet. Begründung: Der Test enforced `local.tm_hour >= 20 || local.tm_hour <= 3` als Pre-Condition; die Group-A-Umsetzung lief am Nachmittag. Die zwei anderen Baselines (`soak-15min`, `device-fetch`) sind regulär erfasst. horizon-evening ist nur für Schritt 2.3 (Smell 13, „Heute-Abend-Bridge") kritisch — wird vor 2.3 nachgeholt.
 
-**[Schritt 0c.3 / 0c.4 / 0c.5, 2026-05-18]** Annahme: Die drei restlichen 0c-Sub-Schritte (strikte Compiler-Warnings + `-Werror`, ASan/UBSan im native-Env, höhere cppcheck-Stufe) werden **nicht in Group A umgesetzt**, sondern in [Schritt 11 — Post-Refactor Tooling-Härtung](#schritt-11--post-refactor-tooling-härtung) integriert. Begründung: 0c.3 ist auf eine PlatformIO-Eigenheit gestoßen — `build_src_flags` wird auf Test-Builds mit angewandt, Unity's `unity_config.c` (C, nicht C++) kollidiert mit C++-only-Flags unter `-Werror`, und Unity-Macros expandieren in Tests zu Old-Style-Casts. Die Plan-vorgesehenen Workarounds (`-isystem` via SCons-Hook, `#pragma GCC diagnostic`) führen zu fragiler Tooling-Architektur ohne Verhältnismäßigkeit zum Refactor-Risiko. Schritt 11 hat ohnehin clang-tidy als zweite Verteidigungslinie, die dieselben Klassen abdeckt. Konsequenz: Refactor-Schritte 1–8 laufen mit dem heutigen `-Wall -Wextra`-Baseline (keine zusätzliche Härtung). 0c.1 (clang-format) + 0c.2 (`make ci` im CI) bleiben in Group A erledigt — sie waren reibungslos.
+**[Schritt 0c.3 / 0c.4 / 0c.5, 2026-05-18]** Anpassung der Plan-Reihenfolge:
+
+- **0c.5 (cppcheck-Level hoch)**: in Group A erledigt. `make lint` läuft mit `--enable=warning,style,performance,portability --inconclusive --std=c++17` und ist clean.
+- **clang-tidy aus Schritt 11.1**: in Group A vorgezogen. `.clang-tidy` eingecheckt, `make tidy` integriert in `make ci`. Library-Pfade per `-isystem` ausgeklammert (PlatformIO-`compile_commands.json` wird via `sed` rewritten, sodass `.pio/libdeps/*` als System-Header ohne Diagnose-Output gelten). `HeaderFilterRegex` ergänzt die Filterung auf `src/(data|logic|hal|render)/.*\.h$`. Alle ~60 ursprünglichen `src/`-Findings wurden behoben (Magic Numbers zu `DEFAULT_*`-`constexpr`, `enum class : std::uint8_t`, `cppcoreguidelines-init-variables`, `modernize-loop-convert`, `bugprone-implicit-widening-of-multiplication-result`); 5 verbleibende `readability-function-size`/`-cognitive-complexity`-Findings sind mit `NOLINTNEXTLINE`/`NOLINTBEGIN..END` und Begründungs-Kommentar markiert (Parser-Strukturen + Heap-Wächter-Schleife — Refactor-Anker für Schritte 4/5 + post-refactor TODO §7.1). `WarningsAsErrors: '*'` ist scharfgeschaltet.
+- **Pre-Commit-Hook (Schritt 11.3)**: ebenfalls vorgezogen. `scripts/install-pre-commit.sh` installiert einen Hook, der `make ci` vor jedem Commit fährt.
+- **0c.3 (strikte Compiler-Warnings + `-Werror`)** und **0c.4 (ASan + UBSan)**: bleiben für Schritt 11. Begründung: 0c.3 ist auf eine PlatformIO-Eigenheit gestoßen (`build_src_flags` greift auch auf Test-Builds, Unity's `unity_config.c` ist C nicht C++, Unity-Macros expandieren Old-Style-Casts in Tests). Saubere Auflösung erfordert einen SCons-Hook für selektives Flag-Routing, der den Tooling-Aufwand des Refactors substanziell vergrößert. clang-tidy (jetzt eingebaut) deckt dieselben Klassen mit dem `-isystem`-Mechanismus bereits ab — das Compiler-Strict-Set ist damit weniger dringend.
+- **0c.1 (clang-format) + 0c.2 (`make ci` im CI)** waren reibungslos und bleiben in Group A erledigt.
 
 ### 4.2 Schritt-Reihenfolge
 
@@ -632,7 +638,7 @@ build_unflags =
 
 ##### 0c.5 — `cppcheck` Level hoch
 
-- [ ] erledigt — **verschoben nach Schritt 11**, siehe §4.1-Annahme.
+- [x] erledigt — `--enable=warning,style,performance,portability --inconclusive --std=c++17`, `make lint` clean.
 
 [Makefile:145–147](../Makefile#L145):
 
@@ -965,7 +971,7 @@ Erst *nach* Schritt 8 (`main.cpp` schlank), weil sonst die ≤60-LOC-Regel die Z
 
 #### 11.1 — `.clang-tidy` einchecken
 
-- [ ] erledigt
+- [x] erledigt — **vorgezogen in Group A**, siehe §4.1-Annahme. Alle ursprünglichen `src/`-Findings behoben, `WarningsAsErrors: '*'` scharf.
 
 ```yaml
 # .clang-tidy
@@ -1014,7 +1020,7 @@ CheckOptions:
 
 #### 11.2 — `make tidy` + CI-Wiring
 
-- [ ] erledigt
+- [x] erledigt — **vorgezogen in Group A**, siehe §4.1-Annahme. `make tidy` läuft `pio run -t compiledb` → `-isystem`-Rewrite für Lib-Pfade → clang-tidy nur auf host-kompatible TUs. `make ci` ruft jetzt `format-check + lint + tidy + test-native + build`.
 
 ```text
 tidy:                  ## run clang-tidy on changed translation units
@@ -1031,7 +1037,7 @@ ci: format-check lint tidy test-native build
 
 #### 11.3 — Pre-Commit-Hook automatisch installieren
 
-- [ ] erledigt
+- [x] erledigt — **vorgezogen in Group A**. `scripts/install-pre-commit.sh` installiert den `make ci`-Hook (~30 s Pre-Commit-Runtime).
 
 `scripts/install-pre-commit.sh`:
 

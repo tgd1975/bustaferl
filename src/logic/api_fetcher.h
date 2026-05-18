@@ -7,11 +7,13 @@
 
 namespace bustaferl {
 
+constexpr int DEFAULT_FETCH_BACKOFF_MS_BASE = 500;
+
 struct FetchConfig {
   int max_attempts = 3;
   // Linear backoff: sleep `backoff_ms_base * attempt` between attempts.
   // 500ms base → 500, 1000ms waits before the 2nd and 3rd attempts.
-  int backoff_ms_base = 500;
+  int backoff_ms_base = DEFAULT_FETCH_BACKOFF_MS_BASE;
 };
 
 struct FetchOutcome {

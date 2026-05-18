@@ -10,7 +10,7 @@ namespace bustaferl {
 
 // Maximum age of a ScheduleSnapshot before its hints are treated as expired
 // and ignored. Concept §12.4.
-constexpr time_t SCHEDULE_HINT_MAX_AGE_S = 48 * 3600;
+constexpr time_t SCHEDULE_HINT_MAX_AGE_S = static_cast<time_t>(48) * 3600;
 
 // Returns a new snapshot whose per-stream slots are the chronologically first
 // two future departures drawn from the union of `snap`'s realtime slots and

@@ -8,15 +8,18 @@ namespace bustaferl {
 class IClock;
 class INetwork;
 
-enum class BootResult {
+enum class BootResult : std::uint8_t {
   Ok,         // wifi + ntp succeeded
   RetryLater, // failure, schedule short retry-sleep, increment counter
   GiveUp,     // exhausted retries; render "Start fehlgeschlagen"
 };
 
+constexpr unsigned DEFAULT_WIFI_TIMEOUT_MS = 10000;
+constexpr uint8_t DEFAULT_COLD_BOOT_MAX_RETRIES = 5;
+
 struct BootConfig {
-  unsigned wifi_timeout_ms = 10000;
-  uint8_t max_retries = 5;
+  unsigned wifi_timeout_ms = DEFAULT_WIFI_TIMEOUT_MS;
+  uint8_t max_retries = DEFAULT_COLD_BOOT_MAX_RETRIES;
 };
 
 // Drives the cold-boot sequence steps 1+2 from CONCEPT.md §8 (WiFi → NTP).

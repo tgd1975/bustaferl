@@ -3,10 +3,12 @@
 
 #include "Departure.h"
 
+#include <cstdint>
+
 namespace bustaferl {
 
 // Index into the three streams the display shows.
-enum Stream {
+enum Stream : std::uint8_t {
   STREAM_58A_ATZ = 0,
   STREAM_58A_HIETZING = 1,
   STREAM_58B_ATZ = 2,

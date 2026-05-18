@@ -1,5 +1,7 @@
 #include "filter_health.h"
 
+#include <limits>
+
 namespace bustaferl {
 
 void FilterHealth::recordCall(bool rbl_responded, bool filter_matched) {
@@ -9,7 +11,7 @@ void FilterHealth::recordCall(bool rbl_responded, bool filter_matched) {
   }
   if (filter_matched) {
     streak_ = 0;
-  } else if (streak_ < 0xFF) {
+  } else if (streak_ < std::numeric_limits<uint8_t>::max()) {
     ++streak_;
   }
 }

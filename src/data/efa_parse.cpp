@@ -1,5 +1,7 @@
 #include "efa_parse.h"
 
+#include "time_constants.h"
+
 #include <ArduinoJson.h>
 #include <cstring>
 
@@ -10,6 +12,10 @@
 namespace bustaferl {
 
 namespace {
+
+// JSON parser nesting limit; lifted from ArduinoJson's default (10) so the
+// nested EFA response (departureList → servingLine → …) is not truncated.
+constexpr int EFA_JSON_NESTING_LIMIT = 20;
 
 bool startsWith(const char *s, const std::string &prefix) {
   if (prefix.empty())
@@ -42,7 +48,7 @@ time_t parseEfaDateTime(JsonObjectConst dt) {
   if (!y || !mo || !d || !h || !mi)
     return 0;
   struct tm tm{};
-  tm.tm_year = atoiSafe(y) - 1900;
+  tm.tm_year = atoiSafe(y) - TM_YEAR_BASE;
   tm.tm_mon = atoiSafe(mo) - 1;
   tm.tm_mday = atoiSafe(d);
   tm.tm_hour = atoiSafe(h);
@@ -55,7 +61,10 @@ time_t parseEfaDateTime(JsonObjectConst dt) {
 
 // Common parse-and-filter logic shared by the std::string and Stream
 // overloads. `doc` must already hold the deserialized (filtered) EFA
-// response. Mutates `hint` in place.
+// response. Mutates `hint` in place. The branch count tracks the
+// stream/diva/line/direction match dimensions; splitting would inline-back
+// or hide that this is one parse pass per departure.
+// NOLINTNEXTLINE(readability-function-size)
 void consumeEfaDoc(JsonDocument &doc, int call_diva,
                    const ScheduleStreamFilter (&filters)[STREAM_COUNT],
                    time_t cutoff, ScheduleHint (&hint)[STREAM_COUNT]) {
@@ -128,8 +137,9 @@ bool parseEfaResponse(const std::string &json, int call_diva,
   buildEfaFilter(filter);
 
   JsonDocument doc;
-  auto err = deserializeJson(doc, json, DeserializationOption::Filter(filter),
-                             DeserializationOption::NestingLimit(20));
+  auto err = deserializeJson(
+      doc, json, DeserializationOption::Filter(filter),
+      DeserializationOption::NestingLimit(EFA_JSON_NESTING_LIMIT));
   if (err)
     return false;
 
@@ -145,8 +155,9 @@ bool parseEfaResponse(::Stream &json, int call_diva,
   buildEfaFilter(filter);
 
   JsonDocument doc;
-  auto err = deserializeJson(doc, json, DeserializationOption::Filter(filter),
-                             DeserializationOption::NestingLimit(20));
+  auto err = deserializeJson(
+      doc, json, DeserializationOption::Filter(filter),
+      DeserializationOption::NestingLimit(EFA_JSON_NESTING_LIMIT));
   if (err)
     return false;
 

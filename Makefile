@@ -14,7 +14,7 @@
         test-longterm-wake test-longterm-soak-5min test-longterm-soak-15min \
         test-longterm-soak-1h test-longterm-horizon-scan \
         test-longterm-horizon-evening test-longterm-day-full \
-        clean format format-check lint size secrets ci
+        clean format format-check lint tidy size secrets ci
 
 PIO        := pio
 TMP        := .tmp
@@ -130,7 +130,7 @@ test-longterm-day-full:                       ## ~24 h pre-release, unattended o
 
 # --- CI / quality ---
 
-ci: format-check lint test-native build       ## host only — CI has no HW
+ci: format-check lint tidy test-native build  ## host only — CI has no HW
 
 format:                ## run clang-format in place
 	@find src test -type f \( -name '*.h' -o -name '*.cpp' \) \
@@ -143,8 +143,30 @@ format-check:          ## verify formatting without writing
 	  -print0 | xargs -0 clang-format --dry-run --Werror
 
 lint:                  ## run cppcheck
-	cppcheck --enable=warning,style --error-exitcode=1 \
-	  --suppress=missingIncludeSystem --inline-suppr -q src/
+	cppcheck --enable=warning,style,performance,portability \
+	  --inconclusive \
+	  --error-exitcode=1 \
+	  --suppress=missingIncludeSystem --inline-suppr \
+	  --std=c++17 \
+	  -q src/
+
+tidy:                  ## run clang-tidy on host-compilable src/ TUs
+	@# Generate compile_commands.json from the native env. Only the
+	@# platform-neutral TUs (data/, logic/, render/rle) land in it;
+	@# ESP32-only files (main.cpp, hal/Esp32*.cpp, render/layout.cpp,
+	@# render/error_overlay.cpp) are intentionally skipped — they pull
+	@# in Adafruit_GFX / WiFi etc. which clang-tidy would either
+	@# misanalyse or flood with library findings. They are still
+	@# covered by cppcheck (`make lint`) and the on-device test set.
+	@$(PIO) run -e native -t compiledb >/dev/null
+	@# Rewrite -I paths into vendored libs to -isystem so clang-tidy
+	@# does not analyse third-party headers (would produce tens of
+	@# thousands of findings inside ArduinoJson etc.).
+	@sed -i -E 's@-I(\.pio/libdeps/[^ ]+)@-isystem \1@g' compile_commands.json
+	@# Tidy exactly the TUs the database knows about.
+	@python3 -c "import json; \
+	  print('\n'.join(e['file'] for e in json.load(open('compile_commands.json'))))" \
+	  | xargs clang-tidy -p . --quiet
 
 size:                  ## show firmware size breakdown
 	$(PIO) run -e esp32dev -t size

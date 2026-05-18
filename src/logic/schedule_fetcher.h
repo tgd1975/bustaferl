@@ -10,21 +10,25 @@
 
 namespace bustaferl {
 
+constexpr int DEFAULT_EFA_LIMIT = 50;
+constexpr int DEFAULT_EFA_QUERY_HOUR = 22;
+constexpr int DEFAULT_EFA_CUTOFF_HOUR = 3;
+
 struct ScheduleFetchConfig {
   // EFA endpoint base — caller-supplied so tests can override it. Production
   // passes WL_EFA_DM_BASE from config.h.
   std::string endpoint_base;
   // limit passed to EFA: how many planned departures to request per call.
   // 50 comfortably spans evening + next morning at our stops.
-  int limit = 50;
+  int limit = DEFAULT_EFA_LIMIT;
   // Local-time hour at which we anchor the EFA query window. 22:00 catches
   // both today's late departures and tomorrow's first ones in one response.
-  int query_hour = 22;
+  int query_hour = DEFAULT_EFA_QUERY_HOUR;
   int query_minute = 0;
   // Cutoff between "today" and "tomorrow" for splitting hints, expressed as
   // local-time hour of the next day. 03:00 is past the latest Wiener-Linien
   // service and before the earliest morning bus.
-  int cutoff_hour = 3;
+  int cutoff_hour = DEFAULT_EFA_CUTOFF_HOUR;
 };
 
 struct ScheduleFetchResult {
