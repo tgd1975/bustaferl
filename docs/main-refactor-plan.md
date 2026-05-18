@@ -767,7 +767,7 @@ Das ist der substantielle Schritt — eine **Anforderungslücke** schließen, ni
 
 ### Schritt 4 — `logic/snapshot_fetcher.{h,cpp}`
 
-- [ ] erledigt
+- [x] erledigt
 
 - Verschiebe `apiUrlForBatch` (intern) und `fetchSnapshot` (public) ohne Logik-Änderung.
 - Argumente: `(INetwork&, const StreamFilter (&)[N], StreamSnapshot& out, FetchSummary& summary)`.

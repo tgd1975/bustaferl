@@ -19,6 +19,7 @@
 #include "logic/schedule_refresh.h"
 #include "logic/sleep_planner.h"
 #include "logic/slot_merger.h"
+#include "logic/snapshot_fetcher.h"
 #include "logic/snapshot_logger.h"
 #include "logic/stale_policy.h"
 #include "render/error_overlay.h"
@@ -44,98 +45,15 @@ Esp32Display g_display;
 Frame g_frame_new;
 Frame g_frame_prev;
 
-// Maximum stopIds per OGD monitor query. Smaller batches are empirically
-// more stable — the all-five-at-once call occasionally dropped individual
-// entries (observed: U1 Oberlaa missing on one call, present on the next).
-// 2 stopIds per call → 3 batches for our 5 streams.
-constexpr int STOPIDS_PER_QUERY = 2;
-
-// Order in which stream slots are queried. Reversed from display/enum order
-// so STREAM_U1_OBERLAA (previously the lone 5th query) moves into the first
-// paired batch. Diagnostic: if data gaps now appear on STREAM_58A_ATZ (the
-// new singleton), the problem follows query position; if they still appear
-// on U1-Oberlaa, the problem is RBL-specific.
-constexpr int FETCH_ORDER[STREAM_COUNT] = {
-    STREAM_U1_OBERLAA,   STREAM_U1_LEOPOLDAU, STREAM_58B_ATZ,
-    STREAM_58A_HIETZING, STREAM_58A_ATZ,
-};
-
-std::string apiUrlForBatch(const int *stop_ids, int count) {
-  std::string url = WL_API_BASE;
-  char buf[24];
-  for (int i = 0; i < count; ++i) {
-    snprintf(buf, sizeof(buf), "&stopId=%d", stop_ids[i]);
-    url += buf;
-  }
-  return url;
-}
-
-bool fetchSnapshot(StreamSnapshot &out) {
-  out = StreamSnapshot{};
+bool fetchSnapshotAndLog(StreamSnapshot &out) {
   StreamFilter filters[STREAM_COUNT];
   buildStreamFilters(filters);
-
-  int total_batches = 0;
-  int failed_batches = 0;
-
-  for (int start = 0; start < STREAM_COUNT; start += STOPIDS_PER_QUERY) {
-    int batch_size = STREAM_COUNT - start;
-    if (batch_size > STOPIDS_PER_QUERY)
-      batch_size = STOPIDS_PER_QUERY;
-
-    int stop_ids[STOPIDS_PER_QUERY] = {0};
-    for (int j = 0; j < batch_size; ++j) {
-      stop_ids[j] = filters[FETCH_ORDER[start + j]].rbl;
-    }
-    char batch_label[40] = "";
-    {
-      int pos = 0;
-      for (int j = 0; j < batch_size; ++j) {
-        pos += snprintf(batch_label + pos, sizeof(batch_label) - pos,
-                        j == 0 ? "%d" : ",%d", stop_ids[j]);
-      }
-    }
-
-    std::string body;
-    FetchConfig fc;
-    FetchOutcome fo =
-        fetchWithRetry(g_net, apiUrlForBatch(stop_ids, batch_size), body, fc);
-    ++total_batches;
-
-    if (!fo.ok) {
-      Serial.printf("[api] batch [%s] httpGet failed after %d attempts\n",
-                    batch_label, fo.attempts_taken);
-      ++failed_batches;
-      continue;
-    }
-    if (fo.attempts_taken > 1) {
-      Serial.printf("[api] batch [%s] succeeded on attempt %d/%d\n",
-                    batch_label, fo.attempts_taken, fc.max_attempts);
-    }
-
-    StreamSnapshot partial;
-    if (!parseMonitorResponse(body, filters, partial)) {
-      Serial.printf("[api] batch [%s] parse failed\n", batch_label);
-      ++failed_batches;
-      continue;
-    }
-
-    // Copy out only the streams we asked for in this batch — other indices
-    // in `partial` are default-empty by construction.
-    for (int j = 0; j < batch_size; ++j) {
-      int idx = FETCH_ORDER[start + j];
-      out.stream[idx] = partial.stream[idx];
-    }
-  }
-
-  // api_ok if at least one batch returned valid JSON. A complete network
-  // failure (all batches failed httpGet/parse) falls through to api_ok=false
-  // and warmCyclePath's short-retry policy.
-  out.api_ok = (failed_batches < total_batches);
-
+  FetchSummary summary;
+  bool ok = fetchSnapshot(g_net, WL_API_BASE, filters, out, summary);
   Serial.print(
-      formatSnapshotSummary(out, total_batches, failed_batches).c_str());
-  return out.api_ok;
+      formatSnapshotSummary(out, summary.total_batches, summary.failed_batches)
+          .c_str());
+  return ok;
 }
 
 void registerWifiCredentials() {
@@ -230,7 +148,7 @@ void coldBootPath(PersistedMeta &meta) {
 
   // First-ever render after a cold boot: deep clean for a known-good panel.
   StreamSnapshot snap;
-  bool ok = fetchSnapshot(snap);
+  bool ok = fetchSnapshotAndLog(snap);
   if (ok) {
     meta.last_api_success = g_clock.now();
   }
@@ -298,7 +216,7 @@ void warmCyclePath(PersistedMeta &meta) {
   }
 
   StreamSnapshot snap;
-  bool ok = fetchSnapshot(snap);
+  bool ok = fetchSnapshotAndLog(snap);
   time_t now = g_clock.now();
 
   static FilterHealth fh(FILTER_HEALTH_DEAD_AFTER);
