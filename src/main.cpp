@@ -19,6 +19,7 @@
 #include "logic/schedule_refresh.h"
 #include "logic/sleep_planner.h"
 #include "logic/slot_merger.h"
+#include "logic/snapshot_logger.h"
 #include "logic/stale_policy.h"
 #include "render/error_overlay.h"
 #include "render/layout.h"
@@ -67,32 +68,6 @@ std::string apiUrlForBatch(const int *stop_ids, int count) {
     url += buf;
   }
   return url;
-}
-
-const char *sourceTag(DepartureSource s) {
-  switch (s) {
-  case DepartureSource::Realtime:
-    return "RT";
-  case DepartureSource::Plan:
-    return "PLAN";
-  case DepartureSource::Hint:
-    return "HINT";
-  case DepartureSource::Unknown:
-  default:
-    return "??";
-  }
-}
-
-void logSlot(const char *tag, const Departure &d) {
-  if (!d.valid) {
-    Serial.printf("[api]   %s: --:--\n", tag);
-    return;
-  }
-  struct tm local;
-  localtime_r(&d.when, &local);
-  Serial.printf("[api]   %s: %02d:%02d %s epoch=%lld\n", tag, local.tm_hour,
-                local.tm_min, sourceTag(d.source),
-                static_cast<long long>(d.when));
 }
 
 bool fetchSnapshot(StreamSnapshot &out) {
@@ -158,30 +133,8 @@ bool fetchSnapshot(StreamSnapshot &out) {
   // and warmCyclePath's short-retry policy.
   out.api_ok = (failed_batches < total_batches);
 
-  Serial.printf("[api] batches=%d failed=%d api_ok=%d  streams: "
-                "58A-Atz r=%d f=%d | 58A-Hie r=%d f=%d | 58B r=%d f=%d | "
-                "U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
-                total_batches, failed_batches, out.api_ok,
-                out.stream[STREAM_58A_ATZ].endpoint_responded,
-                out.stream[STREAM_58A_ATZ].filter_matched,
-                out.stream[STREAM_58A_HIETZING].endpoint_responded,
-                out.stream[STREAM_58A_HIETZING].filter_matched,
-                out.stream[STREAM_58B_ATZ].endpoint_responded,
-                out.stream[STREAM_58B_ATZ].filter_matched,
-                out.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
-                out.stream[STREAM_U1_LEOPOLDAU].filter_matched,
-                out.stream[STREAM_U1_OBERLAA].endpoint_responded,
-                out.stream[STREAM_U1_OBERLAA].filter_matched);
-  logSlot("58A-Atz[0]", out.stream[STREAM_58A_ATZ].slot[0]);
-  logSlot("58A-Atz[1]", out.stream[STREAM_58A_ATZ].slot[1]);
-  logSlot("58A-Hie[0]", out.stream[STREAM_58A_HIETZING].slot[0]);
-  logSlot("58A-Hie[1]", out.stream[STREAM_58A_HIETZING].slot[1]);
-  logSlot("58B-Atz[0]", out.stream[STREAM_58B_ATZ].slot[0]);
-  logSlot("58B-Atz[1]", out.stream[STREAM_58B_ATZ].slot[1]);
-  logSlot("U1-Leo[0]", out.stream[STREAM_U1_LEOPOLDAU].slot[0]);
-  logSlot("U1-Leo[1]", out.stream[STREAM_U1_LEOPOLDAU].slot[1]);
-  logSlot("U1-Obe[0]", out.stream[STREAM_U1_OBERLAA].slot[0]);
-  logSlot("U1-Obe[1]", out.stream[STREAM_U1_OBERLAA].slot[1]);
+  Serial.print(
+      formatSnapshotSummary(out, total_batches, failed_batches).c_str());
   return out.api_ok;
 }
 

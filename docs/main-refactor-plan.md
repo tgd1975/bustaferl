@@ -508,6 +508,8 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 - **Mapping in `schedule_fetcher.cpp` (Plan-Schritt 3)**: nicht nötig. `fetchSchedule` ruft `parseEfaResponse(..., out.hint)` direkt mit einer Referenz auf den Ergebnis-`ScheduleHint`-Array auf. `next_today` wandert transparent durch — keine Mapping-Schicht dazwischen. Plan-Schritt 3 ist damit ein No-op.
 - **`test_longterm_horizon_evening`-Erweiterung**: Test fetcht jetzt einmal zu Beginn einen echten EFA-Schedule, mergt ihn pro Cycle und zählt `g_bridge_hits` (Cycles wo realtime leer aber merged via Hint gefüllt). Neuer Assert: `g_bridge_hits > 0`. Der `planSleep`-Aufruf bleibt bewusst auf dem *unmerged* `snap` (NO_DATA-Assert unabhängig vom Bridge-Verhalten — Test-Diskrepanz zur Prod-Pipeline ist im Test-Kommentar dokumentiert).
 
+**[Schritt 3, 2026-05-18]** Drift gegen 0b-Baseline in der Summary-Header-Zeile akzeptiert: das alte `fetchSnapshot`-Log nannte den 58B-Stream im Header inkonsistent „58B" (Per-Slot-Logs benutzten schon „58B-Atz[0]"). `streamLabel()` ist jetzt die einzige Quelle der Stream-Bezeichnung; alle Vorkommen lesen „58B-Atz". Begründung: §4.0.4 erlaubt opportunistische Konsolidierungen im jeweiligen Touch-Set, und Plan-Schritt 3 macht explizit die Single-Source-Tag-Ablage zum Ziel. Die zwei externen Stellen mit eigener `58B`-Kopie (`test_longterm_soak/test_main.cpp:165`, `test_device_fetch/test_main.cpp:102`) bleiben unangefasst, weil sie ihren eigenen Summary-String bauen und kein Baseline-Vergleich auf sie zeigt.
+
 ### 4.2 Schritt-Reihenfolge
 
 Optimiert auf: **früh Tests, klein zerlegt, jeder Schritt grün lassbar**.
@@ -753,7 +755,7 @@ Das ist der substantielle Schritt — eine **Anforderungslücke** schließen, ni
 
 ### Schritt 3 — `logic/snapshot_logger.{h,cpp}` + `data/stream_labels.h`
 
-- [ ] erledigt
+- [x] erledigt
 
 - Neue Mini-Datei `data/stream_labels.h` mit `STREAM_LABEL[]` und `streamLabel(int)`. **Einzige Stelle**, an der v2 die zwei letzten Stream-Labels ersetzt.
 - Extrahiere `logSlot` als `formatSlot(const Departure&) → std::string`. Drei Tags (`RT`/`PLAN`/`HINT`) dank Schritt 2.1.
