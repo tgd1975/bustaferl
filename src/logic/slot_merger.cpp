@@ -1,5 +1,7 @@
 #include "slot_merger.h"
 
+#include "../data/time_constants.h"
+
 #include <algorithm>
 #include <iterator>
 
@@ -14,14 +16,17 @@ bool scheduleUsable(const ScheduleSnapshot &s, time_t now) {
 }
 
 // Insert `cand` into the descending-merit (i.e. ascending-time) slot list
-// `out`. Drops duplicate `when` values; realtime wins ties because realtime
-// entries are pushed first. A slot is considered occupied iff `valid`.
+// `out`. Drops duplicates that round to the same wall-clock minute; realtime
+// wins because realtime entries are pushed first (a Hint arriving for the
+// same minute is silently dropped). A slot is considered occupied iff
+// `valid`.
 void insertSorted(Departure (&out)[SLOTS_PER_STREAM], const Departure &cand) {
   if (!cand.valid)
     return;
+  const time_t cand_min = cand.when / SECONDS_PER_MINUTE;
   const bool duplicate =
       std::any_of(std::begin(out), std::end(out), [&](const Departure &slot) {
-        return slot.valid && slot.when == cand.when;
+        return slot.valid && (slot.when / SECONDS_PER_MINUTE) == cand_min;
       });
   if (duplicate)
     return;
@@ -53,7 +58,8 @@ void insertSorted(Departure (&out)[SLOTS_PER_STREAM], const Departure &cand) {
 
 StreamSnapshot mergeSlots(const StreamSnapshot &snap,
                           const ScheduleSnapshot &schedule, time_t now) {
-  StreamSnapshot out = snap; // carries api_ok, rbl_responded, filter_matched
+  StreamSnapshot out =
+      snap; // carries api_ok, endpoint_responded, filter_matched
   const bool use_schedule = scheduleUsable(schedule, now);
 
   for (int s = 0; s < STREAM_COUNT; ++s) {
@@ -72,7 +78,7 @@ StreamSnapshot mergeSlots(const StreamSnapshot &snap,
           continue;
         Departure d;
         d.when = t;
-        d.is_realtime = false;
+        d.source = DepartureSource::Hint;
         d.valid = true;
         insertSorted(merged, d);
       }

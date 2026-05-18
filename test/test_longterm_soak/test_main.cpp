@@ -167,15 +167,15 @@ void test_run_soak_cycles(void) {
         fo.attempts_taken, static_cast<unsigned>(body.size()), heap_before,
         heap_after,
         static_cast<int>(heap_after) - static_cast<int>(heap_before),
-        snap.stream[STREAM_58A_ATZ].rbl_responded,
+        snap.stream[STREAM_58A_ATZ].endpoint_responded,
         snap.stream[STREAM_58A_ATZ].filter_matched,
-        snap.stream[STREAM_58A_HIETZING].rbl_responded,
+        snap.stream[STREAM_58A_HIETZING].endpoint_responded,
         snap.stream[STREAM_58A_HIETZING].filter_matched,
-        snap.stream[STREAM_58B_ATZ].rbl_responded,
+        snap.stream[STREAM_58B_ATZ].endpoint_responded,
         snap.stream[STREAM_58B_ATZ].filter_matched,
-        snap.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
+        snap.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
         snap.stream[STREAM_U1_LEOPOLDAU].filter_matched,
-        snap.stream[STREAM_U1_OBERLAA].rbl_responded,
+        snap.stream[STREAM_U1_OBERLAA].endpoint_responded,
         snap.stream[STREAM_U1_OBERLAA].filter_matched);
 
     // Monotonic clock check — catches NTP storms / DST math regressions.

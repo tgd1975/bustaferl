@@ -1,5 +1,6 @@
 #include "efa_parse.h"
 
+#include "string_util.h"
 #include "time_constants.h"
 
 #include <ArduinoJson.h>
@@ -16,14 +17,6 @@ namespace {
 // JSON parser nesting limit; lifted from ArduinoJson's default (10) so the
 // nested EFA response (departureList → servingLine → …) is not truncated.
 constexpr int EFA_JSON_NESTING_LIMIT = 20;
-
-bool startsWith(const char *s, const std::string &prefix) {
-  if (prefix.empty())
-    return true;
-  if (!s)
-    return false;
-  return std::strncmp(s, prefix.c_str(), prefix.size()) == 0;
-}
 
 int atoiSafe(const char *s) { return (s && *s) ? std::atoi(s) : 0; }
 

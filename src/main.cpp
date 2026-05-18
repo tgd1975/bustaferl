@@ -12,9 +12,11 @@
 #include "logic/api_fetcher.h"
 #include "logic/boot_sequencer.h"
 #include "logic/display_apply.h"
+#include "logic/filter_builder.h"
 #include "logic/filter_health.h"
 #include "logic/refresh_planner.h"
 #include "logic/schedule_fetcher.h"
+#include "logic/schedule_refresh.h"
 #include "logic/sleep_planner.h"
 #include "logic/slot_merger.h"
 #include "logic/stale_policy.h"
@@ -40,26 +42,6 @@ Esp32Display g_display;
 
 Frame g_frame_new;
 Frame g_frame_prev;
-
-void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
-  f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
-  f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
-  f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
-  f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
-                            TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
-}
-
-void buildScheduleFilters(ScheduleStreamFilter (&f)[STREAM_COUNT]) {
-  f[STREAM_58A_ATZ] = {DIVA_TULLNERTALGASSE, LINE_58A, EFA_TOWARDS_58A_ATZ};
-  f[STREAM_58A_HIETZING] = {DIVA_TULLNERTALGASSE, LINE_58A,
-                            EFA_TOWARDS_58A_HIETZING};
-  f[STREAM_58B_ATZ] = {DIVA_ENDEMANNGASSE, LINE_58B, EFA_TOWARDS_58B_ATZ};
-  f[STREAM_U1_LEOPOLDAU] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
-                            EFA_TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
-                          EFA_TOWARDS_U1_OBERLAA};
-}
 
 // Maximum stopIds per OGD monitor query. Smaller batches are empirically
 // more stable — the all-five-at-once call occasionally dropped individual
@@ -87,6 +69,20 @@ std::string apiUrlForBatch(const int *stop_ids, int count) {
   return url;
 }
 
+const char *sourceTag(DepartureSource s) {
+  switch (s) {
+  case DepartureSource::Realtime:
+    return "RT";
+  case DepartureSource::Plan:
+    return "PLAN";
+  case DepartureSource::Hint:
+    return "HINT";
+  case DepartureSource::Unknown:
+  default:
+    return "??";
+  }
+}
+
 void logSlot(const char *tag, const Departure &d) {
   if (!d.valid) {
     Serial.printf("[api]   %s: --:--\n", tag);
@@ -95,14 +91,14 @@ void logSlot(const char *tag, const Departure &d) {
   struct tm local;
   localtime_r(&d.when, &local);
   Serial.printf("[api]   %s: %02d:%02d %s epoch=%lld\n", tag, local.tm_hour,
-                local.tm_min, d.is_realtime ? "RT" : "PLAN",
+                local.tm_min, sourceTag(d.source),
                 static_cast<long long>(d.when));
 }
 
 bool fetchSnapshot(StreamSnapshot &out) {
   out = StreamSnapshot{};
   StreamFilter filters[STREAM_COUNT];
-  buildFilters(filters);
+  buildStreamFilters(filters);
 
   int total_batches = 0;
   int failed_batches = 0;
@@ -166,15 +162,15 @@ bool fetchSnapshot(StreamSnapshot &out) {
                 "58A-Atz r=%d f=%d | 58A-Hie r=%d f=%d | 58B r=%d f=%d | "
                 "U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
                 total_batches, failed_batches, out.api_ok,
-                out.stream[STREAM_58A_ATZ].rbl_responded,
+                out.stream[STREAM_58A_ATZ].endpoint_responded,
                 out.stream[STREAM_58A_ATZ].filter_matched,
-                out.stream[STREAM_58A_HIETZING].rbl_responded,
+                out.stream[STREAM_58A_HIETZING].endpoint_responded,
                 out.stream[STREAM_58A_HIETZING].filter_matched,
-                out.stream[STREAM_58B_ATZ].rbl_responded,
+                out.stream[STREAM_58B_ATZ].endpoint_responded,
                 out.stream[STREAM_58B_ATZ].filter_matched,
-                out.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
+                out.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
                 out.stream[STREAM_U1_LEOPOLDAU].filter_matched,
-                out.stream[STREAM_U1_OBERLAA].rbl_responded,
+                out.stream[STREAM_U1_OBERLAA].endpoint_responded,
                 out.stream[STREAM_U1_OBERLAA].filter_matched);
   logSlot("58A-Atz[0]", out.stream[STREAM_58A_ATZ].slot[0]);
   logSlot("58A-Atz[1]", out.stream[STREAM_58A_ATZ].slot[1]);
@@ -205,47 +201,11 @@ bool refreshSchedule(ScheduleSnapshot &out) {
   buildScheduleFilters(sf);
   ScheduleFetchConfig cfg;
   cfg.endpoint_base = WL_EFA_DM_BASE;
-  ScheduleFetchResult r = fetchSchedule(g_net, g_clock.now(), sf, cfg);
+  time_t now = g_clock.now();
+  ScheduleFetchResult r = fetchSchedule(g_net, now, sf, cfg);
   Serial.printf("[sched] calls=%d failed=%d ok=%d\n", r.calls_attempted,
                 r.calls_failed, r.ok);
-  if (!r.ok)
-    return false;
-  // Only overwrite hints for streams whose DIVA call actually returned —
-  // streams whose call failed keep their previous values (carried in `out`).
-  for (int i = 0; i < STREAM_COUNT; ++i) {
-    // calls_failed > 0 means at least one DIVA missed; we cannot tell from
-    // ScheduleFetchResult which one. Cheap-and-correct: only overwrite slot
-    // if the parser actually wrote a non-zero first_tomorrow[0] for it.
-    if (r.hint[i].first_tomorrow[0] != 0 || r.hint[i].last_today != 0) {
-      out.hint[i] = r.hint[i];
-    }
-  }
-  out.fetched_at = g_clock.now();
-  return true;
-}
-
-bool needScheduleRefresh(const ScheduleSnapshot &s, time_t now) {
-  if (s.fetched_at == 0)
-    return true;
-  if (now - s.fetched_at >= SCHEDULE_HINT_MAX_AGE_S)
-    return true;
-  // Refresh once today's last departure has passed for any stream we still
-  // have data for, and we have not already refreshed since today's local
-  // midnight.
-  struct tm local;
-  localtime_r(&now, &local);
-  local.tm_hour = 0;
-  local.tm_min = 0;
-  local.tm_sec = 0;
-  local.tm_isdst = -1;
-  time_t midnight = mktime(&local);
-  if (s.fetched_at >= midnight)
-    return false;
-  for (int i = 0; i < STREAM_COUNT; ++i) {
-    if (s.hint[i].last_today != 0 && now > s.hint[i].last_today)
-      return true;
-  }
-  return false;
+  return applyScheduleFetchResult(r, now, out);
 }
 
 void renderAndPush(const StreamSnapshot &snap, OverlayKind overlay,
@@ -409,7 +369,7 @@ void warmCyclePath(PersistedMeta &meta) {
       }
     }
     if (any_service) {
-      fh.recordCall(snap.stream[STREAM_58B_ATZ].rbl_responded,
+      fh.recordCall(snap.stream[STREAM_58B_ATZ].endpoint_responded,
                     snap.stream[STREAM_58B_ATZ].filter_matched);
       meta.filter_miss_streak = fh.streak();
       if (fh.isDead())

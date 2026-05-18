@@ -4,13 +4,15 @@
 #include "../data/StreamSnapshot.h"
 #include "frame_buffer.h"
 
+#include <cstdint>
+
 namespace bustaferl {
 
 constexpr int FB_W = 400;
 constexpr int FB_H = 300;
 using Frame = FrameBuffer<FB_W, FB_H>;
 
-enum class OverlayKind {
+enum class OverlayKind : std::uint8_t {
   None,
   Stale,       // "veraltet"
   FilterDead,  // "58B Filter ungültig"

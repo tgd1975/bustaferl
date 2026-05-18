@@ -4,8 +4,8 @@
 
 namespace bustaferl {
 
-void FilterHealth::recordCall(bool rbl_responded, bool filter_matched) {
-  if (!rbl_responded) {
+void FilterHealth::recordCall(bool endpoint_responded, bool filter_matched) {
+  if (!endpoint_responded) {
     // No signal — leave streak untouched.
     return;
   }

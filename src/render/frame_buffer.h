@@ -17,7 +17,9 @@ public:
   FrameBuffer() { clear(); }
 
   void clear(bool white = true) {
-    std::memset(buf_, white ? 0xFF : 0x00, bytes);
+    constexpr std::uint8_t WHITE_BYTE = 0xFF;
+    constexpr std::uint8_t BLACK_BYTE = 0x00;
+    std::memset(buf_, white ? WHITE_BYTE : BLACK_BYTE, bytes);
   }
 
   uint8_t *data() { return buf_; }

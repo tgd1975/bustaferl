@@ -1,5 +1,6 @@
 #include "wienerlinien_parse.h"
 
+#include "string_util.h"
 #include "time_constants.h"
 
 #include <ArduinoJson.h>
@@ -86,14 +87,6 @@ static int findFilterForRbl(int rbl,
   return -1;
 }
 
-static bool startsWith(const char *s, const std::string &prefix) {
-  if (prefix.empty())
-    return true;
-  if (!s)
-    return false;
-  return std::strncmp(s, prefix.c_str(), prefix.size()) == 0;
-}
-
 // The depth/branch count tracks the OGD response shape — monitors → lines →
 // departures → time → fields. Refactor would either inline back via helpers
 // taking 7+ args or fragment the parse into helpers that share private state.
@@ -126,7 +119,7 @@ bool parseMonitorResponse(const std::string &json,
     if (fi < 0)
       continue;
 
-    out.stream[fi].rbl_responded = true;
+    out.stream[fi].endpoint_responded = true;
 
     for (JsonObjectConst line : mon["lines"].as<JsonArrayConst>()) {
       const char *name = line["name"] | "";
@@ -162,7 +155,8 @@ bool parseMonitorResponse(const std::string &json,
           continue;
 
         out.stream[fi].slot[slot].when = t;
-        out.stream[fi].slot[slot].is_realtime = rt;
+        out.stream[fi].slot[slot].source =
+            rt ? DepartureSource::Realtime : DepartureSource::Plan;
         out.stream[fi].slot[slot].valid = true;
         ++slot;
       }

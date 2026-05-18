@@ -107,13 +107,14 @@ void test_pipeline_one_full_cycle(void) {
   bool parsed = parseMonitorResponse(body, filters, snap);
   TEST_ASSERT_TRUE_MESSAGE(parsed, "smoke: parse of live body failed");
 
-  int rbls_responded = 0;
+  int endpoints_responded = 0;
   for (int i = 0; i < STREAM_COUNT; ++i)
-    rbls_responded += snap.stream[i].rbl_responded ? 1 : 0;
-  Serial.printf("[smoke] rbls_responded=%d/%d\n", rbls_responded, STREAM_COUNT);
+    endpoints_responded += snap.stream[i].endpoint_responded ? 1 : 0;
+  Serial.printf("[smoke] endpoints_responded=%d/%d\n", endpoints_responded,
+                STREAM_COUNT);
   TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(
-      3, rbls_responded,
-      "smoke: fewer than 3 RBLs responded — hardware/network suspect");
+      3, endpoints_responded,
+      "smoke: fewer than 3 endpoints responded — hardware/network suspect");
 
   // Walk the render + planRefresh + RecordingDisplay (RLE roundtrip)
   // path once on the live parse result. Catches "renderFrame blows up
