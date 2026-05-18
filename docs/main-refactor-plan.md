@@ -499,7 +499,7 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 - **0c.5 (cppcheck-Level hoch)**: in Group A erledigt. `make lint` läuft mit `--enable=warning,style,performance,portability --inconclusive --std=c++17` und ist clean.
 - **clang-tidy aus Schritt 11.1**: in Group A vorgezogen. `.clang-tidy` eingecheckt, `make tidy` integriert in `make ci`. Library-Pfade per `-isystem` ausgeklammert (PlatformIO-`compile_commands.json` wird via `sed` rewritten, sodass `.pio/libdeps/*` als System-Header ohne Diagnose-Output gelten). `HeaderFilterRegex` ergänzt die Filterung auf `src/(data|logic|hal|render)/.*\.h$`. Alle ~60 ursprünglichen `src/`-Findings wurden behoben (Magic Numbers zu `DEFAULT_*`-`constexpr`, `enum class : std::uint8_t`, `cppcoreguidelines-init-variables`, `modernize-loop-convert`, `bugprone-implicit-widening-of-multiplication-result`); 5 verbleibende `readability-function-size`/`-cognitive-complexity`-Findings sind mit `NOLINTNEXTLINE`/`NOLINTBEGIN..END` und Begründungs-Kommentar markiert (Parser-Strukturen + Heap-Wächter-Schleife — Refactor-Anker für Schritte 4/5 + post-refactor TODO §7.1). `WarningsAsErrors: '*'` ist scharfgeschaltet.
 - **Pre-Commit-Hook (Schritt 11.3)**: ebenfalls vorgezogen. `scripts/install-pre-commit.sh` installiert einen Hook, der `make ci` vor jedem Commit fährt.
-- **0c.3 (strikte Compiler-Warnings + `-Werror`)** und **0c.4 (ASan + UBSan)**: bleiben für Schritt 11. Begründung: 0c.3 ist auf eine PlatformIO-Eigenheit gestoßen (`build_src_flags` greift auch auf Test-Builds, Unity's `unity_config.c` ist C nicht C++, Unity-Macros expandieren Old-Style-Casts in Tests). Saubere Auflösung erfordert einen SCons-Hook für selektives Flag-Routing, der den Tooling-Aufwand des Refactors substanziell vergrößert. clang-tidy (jetzt eingebaut) deckt dieselben Klassen mit dem `-isystem`-Mechanismus bereits ab — das Compiler-Strict-Set ist damit weniger dringend.
+- **0c.3 (strikte Compiler-Warnings + `-Werror`)** und **0c.4 (ASan + UBSan)**: nach Schritt 11 verschoben und dort erledigt — Scope-Details siehe §4.1 [Schritt 11, 2026-05-18].
 - **0c.1 (clang-format) + 0c.2 (`make ci` im CI)** waren reibungslos und bleiben in Group A erledigt.
 
 **[Schritt 2.3, 2026-05-18]** Anpassungen während der Umsetzung:
@@ -525,6 +525,17 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 **[Schritt 9.5, 2026-05-18]** `make ci` bleibt unverändert (~30-45 s, pre-commit-tauglich). Neuer separater Target `make ci-heavy` ruft `ci + native-runtime-smoke` (~5-6 min). Begründung: Plan §9.5 schlug Smoke-in-`ci` vor, aber das macht den Pre-Commit-Hook (installiert via `scripts/install-pre-commit.sh`) auf ~6 min — klares Anti-Pattern (Memory `feedback-no-tooling-rabbit-holes`). Auftraggeber hat in der Vor-Umsetzungs-Frage explizit für die `ci-heavy`-Trennung entschieden.
 
 **[Schritt 10, 2026-05-18]** Group H reduziert sich auf den Doku-Schritt: 11.1–11.3 wurden in Group A vorgezogen (siehe §4.1-Annahmen oben), das Plan-übergeordnete `[ ] erledigt` an Schritt 11 ist deshalb mit dem Group-A-Verweis abgehakt. CONCEPT.md §12.4 ist konsistent (Update kam in Schritt 2.3); die übrigen Schritte berühren CONCEPT nicht. `ARCHITECTURE.md` bekam die elf neuen `logic/`-Module in der Modulkarte plus einen Host-Engine-Abschnitt (Adapter-Tabelle `test/test_native_runtime/`); die `POLL_INTERVAL_S` + `NTP_INTERVAL_S`-Zeilen der Konstanten-Tabelle wurden von `main.cpp` auf `logic/cycle_runner` verschoben (entspricht dem Schritt-7-Ergebnis). `TESTING.md` bekam (a) den `native-runtime`-Bucket in die Bucket-Übersicht + einen eigenen Abschnitt zwischen Long-term und Testbar/nicht-testbar, (b) drei neue Zeilen in der Test-Pair-Tabelle (`runtime_diskstore`, `runtime_renderer`, `cycle_runner_*`); die Bucket-Zahl `(12)` wurde auf `(25)` korrigiert.
+
+**[Schritt 11, 2026-05-18]** 0c.3 (strikte Compiler-Warnings + `-Werror`) und 0c.4 (ASan + UBSan) sind jetzt umgesetzt — **host-only** statt der ursprünglichen Plan-Skizze in `[env]`:
+
+- **Scope-Entscheidung**: Strict warnings und Sanitizer landen in `[env:native]`, **nicht** in `[env]`. Begründung: das Schwesterprojekt `~/Dokumente/Projekte/AwesomeStudioPedal` fährt denselben Workaround — `platformio.ini` dort hält jedes ESP32-Env auf `-std=gnu++14 -I…`, die strict-Flags (`-Werror -Wpedantic -Wconversion -Wsign-conversion`) leben ausschließlich im host-side `CMakeLists.txt`. Das vermeidet R14 (Library-Pedantic-Warnings via Arduino-Framework / GxEPD2 / ArduinoJson) ohne Pragma-Walls.
+- **Trennung `build_flags` vs. `build_src_flags`**: Sanitizer + `-isystem`-Markierungen in `build_flags` (greifen auf Lib- und Link-Linie), Warning-Set in `build_src_flags` (greift nur auf unsere TUs). `ArduinoJson` und `Unity` sind per `-isystem .pio/libdeps/native/{ArduinoJson,Unity}/src` ausgenommen.
+- **Verworfene Flag-Klassen mit Begründung**:
+  - C++-only (`-Wold-style-cast`, `-Wnon-virtual-dtor`, `-Woverloaded-virtual`, `-Wsuggest-override`): PIO 6.x generiert `unity_config.c` (reines C) und routet `build_src_flags` auch dorthin — `cc1` failed auf C++-only Optionen. Selektives Flag-Routing wäre SCons-Hook (Memory `feedback-no-tooling-rabbit-holes`). Coverage via `.clang-tidy`: `cppcoreguidelines-pro-type-cstyle-cast`, `modernize-use-override`, `cppcoreguidelines-pro-type-static-cast-downcast`.
+  - GCC-only (`-Wduplicated-cond`, `-Wduplicated-branches`, `-Wlogical-op`): `make tidy` re-used die Flags über `compile_commands.json` an clang-tidy, der sie als `unknown warning option` rejected. Coverage via `bugprone-branch-clone`.
+  - `-Wconversion` / `-Wsign-conversion`: PIO-generated `unity_config.c:39` (`putchar(c)` mit `unsigned int`) trippt beide. Trade-off akzeptiert: ASan/UBSan fangen die Laufzeit-Form derselben Bug-Klasse; explizite narrowing-Casts auf den realen src/-Sites bleiben über `.clang-tidy` enforced. Schwesterprojekt ASP hat exakt dasselbe Subset.
+- **Schritt-11-Fixes im selben Touch-Set**: `DEFAULT_FILTER_HEALTH_DEAD_AFTER` + `CycleConfig::filter_health_dead_after` von `int` auf `uint8_t` umgestellt (Konsistenz mit `FilterHealth(uint8_t)`-Ctor, gefangen vom strict-Build).
+- **Validation**: `make ci` (format-check + lint + tidy + test-native mit ASan/UBSan + ESP32-build) grün; 138/138 native Tests passieren mit aktivierten Sanitizern.
 
 ### 4.2 Schritt-Reihenfolge
 
@@ -590,7 +601,7 @@ Fix: ein einziger Step `make ci` ersetzt beide. Voraussetzung: `make ci` ist auf
 
 ##### 0c.3 — Strikte Compiler-Warnings + `-Werror`
 
-- [ ] erledigt — **verschoben nach Schritt 11**, siehe §4.1-Annahme.
+- [x] erledigt — **host-only** (nicht in `[env]`, sondern nur `[env:native]`), siehe §4.1 [Schritt 11, 2026-05-18].
 
 Heute in [platformio.ini:18](../platformio.ini#L18) nur `-Wall -Wextra`. Erweiterung in `[env]` build_flags:
 
@@ -640,7 +651,7 @@ build_unflags =
 
 ##### 0c.4 — ASan + UBSan in `env:native`
 
-- [ ] erledigt — **verschoben nach Schritt 11**, siehe §4.1-Annahme.
+- [x] erledigt — siehe §4.1 [Schritt 11, 2026-05-18].
 
 Catches OOB-Access, Use-after-free, Integer-Overflow, Null-Deref *at-test-time*. Native-Tests werden ~2× langsamer (5 s → 10 s), irrelevant.
 
@@ -989,7 +1000,7 @@ Glue + Doku, ~50 LOC, 0.5 d.
 
 ### Schritt 11 — Post-Refactor Tooling-Härtung
 
-- [x] erledigt (alle drei Unter-Schritte 11.1/11.2/11.3 in Group A vorgezogen, siehe §4.1)
+- [x] erledigt: 11.1/11.2/11.3 in Group A vorgezogen, plus die nach Schritt 11 verschobenen Sub-Schritte 0c.3 + 0c.4 (host-only Scope, siehe §4.1 [Schritt 11, 2026-05-18])
 
 Erst *nach* Schritt 8 (`main.cpp` schlank), weil sonst die ≤60-LOC-Regel die Zwischenzustände der Schritte 1–7 blockieren würde.
 

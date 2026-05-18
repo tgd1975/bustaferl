@@ -26,7 +26,7 @@ constexpr unsigned DEFAULT_COLD_BOOT_GIVEUP_SLEEP_S = 300;
 constexpr unsigned DEFAULT_POLL_INTERVAL_S = 30;
 constexpr int DEFAULT_STALE_THRESHOLD_S = 180;
 constexpr int DEFAULT_NTP_INTERVAL_S = 86400;
-constexpr int DEFAULT_FILTER_HEALTH_DEAD_AFTER = 3;
+constexpr uint8_t DEFAULT_FILTER_HEALTH_DEAD_AFTER = 3;
 constexpr unsigned DEFAULT_LONG_SLEEP_FOR_NIGHTLY_CLEAN_S = 4U * 3600U;
 constexpr int DEFAULT_NIGHTLY_DEEP_CLEAN_INTERVAL_S = 20 * 3600;
 constexpr unsigned DEFAULT_BTN_LONG_PRESS_MS = 2000;
@@ -44,7 +44,7 @@ struct CycleConfig {
   unsigned poll_interval_s = DEFAULT_POLL_INTERVAL_S;
   int stale_threshold_s = DEFAULT_STALE_THRESHOLD_S;
   int ntp_interval_s = DEFAULT_NTP_INTERVAL_S;
-  int filter_health_dead_after = DEFAULT_FILTER_HEALTH_DEAD_AFTER;
+  uint8_t filter_health_dead_after = DEFAULT_FILTER_HEALTH_DEAD_AFTER;
   int wake_before_bus_s = DEFAULT_WAKE_BEFORE_BUS_S;
   int boot_margin_s = DEFAULT_BOOT_MARGIN_S;
   int active_threshold_s = DEFAULT_ACTIVE_THRESHOLD_S;
