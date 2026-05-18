@@ -15,14 +15,21 @@
 
 #include <Arduino.h>
 #include <cstdio>
+#include <cstring>
 #include <unity.h>
 
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
+#include "hal/Esp32Display.h"
 #include "hal/Esp32Network.h"
+#include "hal/IPersistentStore.h"
 #include "logic/api_fetcher.h"
+#include "logic/display_apply.h"
+#include "logic/refresh_planner.h"
 #include "logic/sleep_planner.h"
+#include "logic/slot_merger.h"
+#include "render/layout.h"
 #include "secrets.h"
 
 using namespace bustaferl;
@@ -35,10 +42,19 @@ constexpr int HEAP_LEAK_BUDGET_BYTES = 40 * 1024; // 5 h budget
 
 Esp32Network g_net;
 Esp32Clock g_clock{NTP_SERVER, TZ_INFO};
+Esp32Display g_display;
+// 15 KB framebuffers must live in BSS, not on the stack — see
+// claude-code memory `frame-must-be-heap`.
+Frame g_frame_new;
+Frame g_frame_prev;
+PersistedMeta g_disp_meta; // local-only: drives partial/light-full bookkeeping
 
 uint32_t g_initial_heap = 0;
 int g_successes = 0;
 int g_no_data_sleep_decisions = 0;
+int g_partial_count = 0;
+int g_light_full_count = 0;
+int g_deep_clean_count = 0;
 int g_stream_dryup_observed[STREAM_COUNT] = {0}; // counts cycles a stream
                                                  // went from non-empty
                                                  // to empty
@@ -83,6 +99,10 @@ void test_evening_start_conditions(void) {
   TEST_ASSERT_TRUE_MESSAGE(
       local.tm_hour >= 20 || local.tm_hour <= 3,
       "evening: launched outside the 20:00–03:00 window the test expects");
+  // Bring the e-paper panel up so per-cycle refresh has a target. Heap
+  // for the GxEPD2 panel is reserved here, before g_initial_heap is
+  // sampled, so it doesn't show up as drift later.
+  g_display.init();
   g_initial_heap = ESP.getFreeHeap();
 }
 
@@ -122,6 +142,36 @@ void test_dryup_and_sleep_decisions(void) {
                    decision.seconds == (unsigned)cfg.no_data_sleep_s;
     if (no_data)
       ++g_no_data_sleep_decisions;
+
+    // Drive the production render+display pipeline. We feed an empty
+    // ScheduleSnapshot — this test isn't exercising the EFA hint path,
+    // it's exercising the heap behaviour of renderFrame + planRefresh +
+    // GxEPD2 partial/light-full across the evening transition. The
+    // previous implementation skipped the whole render+display arm,
+    // which kept the largest heap-consuming code path out of the soak.
+    StreamSnapshot merged_for_render = snap;
+    if (parsed) {
+      ScheduleSnapshot empty_schedule;
+      merged_for_render = mergeSlots(snap, empty_schedule, t_cycle);
+    }
+    RenderInput in{merged_for_render, OverlayKind::None};
+    renderFrame(in, g_frame_new);
+    bool prev_valid = (cycle > 1);
+    RefreshConfig rc;
+    RefreshDecision rd =
+        planRefresh(g_frame_prev.data(), g_frame_new.data(), prev_valid,
+                    t_cycle, g_disp_meta.last_light_full,
+                    g_disp_meta.partial_count, rc);
+    applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta,
+                         t_cycle);
+    if (rd.kind == RefreshKind::Partial)
+      ++g_partial_count;
+    else if (rd.kind == RefreshKind::LightFull)
+      ++g_light_full_count;
+    else if (rd.kind == RefreshKind::DeepClean)
+      ++g_deep_clean_count;
+    // Roll g_frame_new into g_frame_prev for the next iteration's diff.
+    std::memcpy(g_frame_prev.data(), g_frame_new.data(), Frame::bytes);
 
     if (cycle % 10 == 0 || active_count == 0) {
       struct tm local;

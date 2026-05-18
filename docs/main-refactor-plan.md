@@ -490,7 +490,7 @@ Reihenfolge ist linear (A → I). Session-Übergänge dazwischen sind Kontext-Re
 
 Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründung: …`
 
-Noch keine Annahmen.
+**[Schritt 0a.2, 2026-05-18]** Annahme: `RecordingDisplay.h` lebt in `test/test_longterm_soak/` und wird in `test/test_longterm_smoke/test_main.cpp` per relativem `../test_longterm_soak/RecordingDisplay.h` inkludiert. Begründung: PlatformIO 6.x bietet kein offizielles `test_common/`-Verzeichnis; Alternativen wären Header-Duplikation (rot-tendiert) oder ein neues `src/test_support/`-Modul, das im Native-Build mitkompiliert würde. Cross-Include lokalisiert die Kopplung auf zwei Files und bleibt bei späterer Refactor-Bewegung sofort sichtbar.
 
 ### 4.2 Schritt-Reihenfolge
 
@@ -500,7 +500,7 @@ Optimiert auf: **früh Tests, klein zerlegt, jeder Schritt grün lassbar**.
 
 #### Schritt 0a — Long-term-Tests benutzen `IDisplay`
 
-- [ ] erledigt
+- [x] erledigt
 
 Heute fehlt der Display-Pfad in den Long-term-Tests; Heap-Spitzen aus `renderFrame`+`drawPartial`/`lightFull` bleiben damit unsichtbar. Vor dem Refactor fixen, sonst sind Schritte 7+8-Validierungen blind.
 

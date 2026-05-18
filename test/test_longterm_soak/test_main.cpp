@@ -15,14 +15,21 @@
 
 #include <Arduino.h>
 #include <cstdio>
+#include <cstring>
 #include <unity.h>
 
+#include "RecordingDisplay.h"
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Network.h"
+#include "hal/IPersistentStore.h"
 #include "logic/api_fetcher.h"
+#include "logic/display_apply.h"
 #include "logic/filter_health.h"
+#include "logic/refresh_planner.h"
+#include "logic/slot_merger.h"
+#include "render/layout.h"
 #include "secrets.h"
 
 using namespace bustaferl;
@@ -42,6 +49,10 @@ constexpr int MIN_SUCCESS_PCT = 85; // tolerate transient outages
 
 Esp32Network g_net;
 Esp32Clock g_clock{NTP_SERVER, TZ_INFO};
+bustaferl::test::RecordingDisplay g_display;
+Frame g_frame_new;
+Frame g_frame_prev;
+PersistedMeta g_disp_meta;
 
 uint32_t g_initial_heap = 0;
 uint32_t g_min_heap = 0xFFFFFFFFu;
@@ -110,6 +121,27 @@ void test_run_soak_cycles(void) {
     bool parsed = false;
     if (fo.ok) {
       parsed = parseMonitorResponse(body, filters, snap);
+    }
+
+    // Drive the production render pipeline + RLE save/load on every
+    // cycle so the soak's heap-leak budget covers renderFrame and the
+    // partial/light-full bookkeeping path (Schritt 0a.2). RecordingDisplay
+    // walks the RLE roundtrip without abusing the panel.
+    if (parsed) {
+      ScheduleSnapshot empty_schedule;
+      StreamSnapshot merged_for_render =
+          mergeSlots(snap, empty_schedule, t_cycle);
+      RenderInput in{merged_for_render, OverlayKind::None};
+      renderFrame(in, g_frame_new);
+      bool prev_valid = (cycle > 1);
+      RefreshConfig rc;
+      RefreshDecision rd =
+          planRefresh(g_frame_prev.data(), g_frame_new.data(), prev_valid,
+                      t_cycle, g_disp_meta.last_light_full,
+                      g_disp_meta.partial_count, rc);
+      applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta,
+                           t_cycle);
+      std::memcpy(g_frame_prev.data(), g_frame_new.data(), Frame::bytes);
     }
 
     uint32_t heap_after = ESP.getFreeHeap();

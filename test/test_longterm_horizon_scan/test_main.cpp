@@ -14,13 +14,20 @@
 
 #include <Arduino.h>
 #include <cstdio>
+#include <cstring>
 #include <unity.h>
 
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
+#include "hal/Esp32Display.h"
 #include "hal/Esp32Network.h"
+#include "hal/IPersistentStore.h"
 #include "logic/api_fetcher.h"
+#include "logic/display_apply.h"
+#include "logic/refresh_planner.h"
+#include "logic/slot_merger.h"
+#include "render/layout.h"
 #include "secrets.h"
 
 using namespace bustaferl;
@@ -33,6 +40,10 @@ constexpr int MIN_SUCCESS_PCT = 90;  // daytime API is reliable
 
 Esp32Network g_net;
 Esp32Clock g_clock{NTP_SERVER, TZ_INFO};
+Esp32Display g_display;
+Frame g_frame_new;
+Frame g_frame_prev;
+PersistedMeta g_disp_meta;
 
 int g_successes = 0;
 int g_upward_jumps = 0; // ETA jumped up without a plausible new arrival
@@ -85,6 +96,7 @@ void test_setup_wifi_and_clock(void) {
                            "horizon_scan: initial WiFi failed");
   TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(),
                            "horizon_scan: initial NTP sync failed");
+  g_display.init();
 }
 
 void test_horizon_cliff_loop(void) {
@@ -130,6 +142,26 @@ void test_horizon_cliff_loop(void) {
                       cycle, streamName(s), delta);
       }
       g_prev_first_slot[s] = first;
+    }
+
+    // Drive renderFrame + planRefresh + GxEPD2 partial/light-full on
+    // every cycle so heap behaviour of the display pipeline is visible
+    // in this rolling-window test (Schritt 0a).
+    if (parsed) {
+      ScheduleSnapshot empty_schedule;
+      StreamSnapshot merged_for_render =
+          mergeSlots(snap, empty_schedule, t_cycle);
+      RenderInput in{merged_for_render, OverlayKind::None};
+      renderFrame(in, g_frame_new);
+      bool prev_valid = (cycle > 1);
+      RefreshConfig rc;
+      RefreshDecision rd =
+          planRefresh(g_frame_prev.data(), g_frame_new.data(), prev_valid,
+                      t_cycle, g_disp_meta.last_light_full,
+                      g_disp_meta.partial_count, rc);
+      applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta,
+                           t_cycle);
+      std::memcpy(g_frame_prev.data(), g_frame_new.data(), Frame::bytes);
     }
 
     while (g_clock.now() < t_cycle + CYCLE_INTERVAL_S)
