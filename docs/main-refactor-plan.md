@@ -510,6 +510,10 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 
 **[Schritt 3, 2026-05-18]** Drift gegen 0b-Baseline in der Summary-Header-Zeile akzeptiert: das alte `fetchSnapshot`-Log nannte den 58B-Stream im Header inkonsistent „58B" (Per-Slot-Logs benutzten schon „58B-Atz[0]"). `streamLabel()` ist jetzt die einzige Quelle der Stream-Bezeichnung; alle Vorkommen lesen „58B-Atz". Begründung: §4.0.4 erlaubt opportunistische Konsolidierungen im jeweiligen Touch-Set, und Plan-Schritt 3 macht explizit die Single-Source-Tag-Ablage zum Ziel. Die zwei externen Stellen mit eigener `58B`-Kopie (`test_longterm_soak/test_main.cpp:165`, `test_device_fetch/test_main.cpp:102`) bleiben unangefasst, weil sie ihren eigenen Summary-String bauen und kein Baseline-Vergleich auf sie zeigt.
 
+**[Schritt 7.2, 2026-05-18]** `[[noreturn]]` auf `ISleep::deepSleep` entfernt (bleibt auf `Esp32Sleep`-Override). Begründung: Tier-2/3-Recording-Tests in 7.3 brauchen eine Fake-`ISleep`, deren `deepSleep` zurückkehrt; mit `[[noreturn]]` an der virtuellen Funktion ist das UB. Auf Hardware kehrt `deepSleep` real nicht zurück — der `[[noreturn]]` auf `Esp32Sleep` bleibt für lokale Dead-Code-Optimierung. Konsequenz für `runColdCycle`/`runWarmCycle`: nach jedem `deepSleep`-Aufruf jetzt explizites `return;` statt impliziter Unreachability.
+
+**[Schritt 7.2, 2026-05-18]** `CycleConfig`-Defaults reuse existing module-level `DEFAULT_*`-constexpr: `DEFAULT_WIFI_TIMEOUT_MS` + `DEFAULT_COLD_BOOT_MAX_RETRIES` aus `boot_sequencer.h`, `DEFAULT_WAKE_BEFORE_BUS_S` / `DEFAULT_BOOT_MARGIN_S` / `DEFAULT_ACTIVE_THRESHOLD_S` / `DEFAULT_NO_DATA_SLEEP_S` / `DEFAULT_API_FAILURE_RETRY_S` aus `sleep_planner.h`. Nur die cycle-spezifischen Werte (poll-interval, stale-threshold, nightly-clean-fenster, button-long-press, NTP-intervall, filter-health-streak, cold-boot-retry/giveup) sind neu in `cycle_runner.h` definiert. Begründung: Schritt-0c.5-Magic-Number-Regel verlangt Single-Source, und das hätte sonst zwei Quellen für dieselben Konstanten geschaffen.
+
 ### 4.2 Schritt-Reihenfolge
 
 Optimiert auf: **früh Tests, klein zerlegt, jeder Schritt grün lassbar**.
@@ -827,7 +831,7 @@ class IRenderer {
 
 #### Schritt 7.2 — `cycle_runner`-Grundgerüst + Tier 1 Tests
 
-- [ ] erledigt
+- [x] erledigt
 
 Das eigentliche Tragwerk: HAL-Globals → CycleDeps → freie Funktionen, Code-Wanderung aus `main.cpp`.
 

@@ -89,6 +89,13 @@
 
 #define FILTER_HEALTH_DEAD_AFTER 3 // consecutive misses → dead
 
+// Nightly deep-clean trigger thresholds. When the next planned sleep is at
+// least LONG_SLEEP_FOR_NIGHTLY_CLEAN_S and the last deep clean is older than
+// NIGHTLY_DEEP_CLEAN_INTERVAL_S, the cycle promotes the upcoming partial to
+// a full deep clean instead.
+#define LONG_SLEEP_FOR_NIGHTLY_CLEAN_S (4 * 3600)
+#define NIGHTLY_DEEP_CLEAN_INTERVAL_S (20 * 3600)
+
 // Display geometry — used everywhere; do not change without re-laying out.
 #define EPD_WIDTH 400
 #define EPD_HEIGHT 300

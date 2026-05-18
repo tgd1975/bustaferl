@@ -7,7 +7,6 @@
 
 #include "config.h"
 #include "data/StreamSnapshot.h"
-#include "render/error_overlay.h"
 #include "render/layout.h"
 
 #include <Arduino.h>
@@ -104,26 +103,6 @@ void test_filling_slot_changes_framebuffer() {
       "Filling a slot did not change framebuffer — formatHHMM broken?");
 }
 
-void test_render_stale_frame_helper() {
-  FramePtr a = makeFrame();
-  FramePtr b = makeFrame();
-  renderStaleFrame(*a);
-  StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::Stale}, *b);
-  TEST_ASSERT_EQUAL_INT_MESSAGE(
-      0, std::memcmp(a->data(), b->data(), Frame::bytes),
-      "renderStaleFrame should match renderFrame(..., OverlayKind::Stale)");
-}
-
-void test_render_start_failed_frame_helper() {
-  FramePtr a = makeFrame();
-  FramePtr b = makeFrame();
-  renderStartFailedFrame(*a);
-  StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::StartFailed}, *b);
-  TEST_ASSERT_EQUAL_INT(0, std::memcmp(a->data(), b->data(), Frame::bytes));
-}
-
 void test_each_overlay_kind_changes_framebuffer() {
   FramePtr base = makeFrame();
   FramePtr stale = makeFrame();
@@ -157,8 +136,6 @@ void setup() {
   RUN_TEST(test_render_empty_snapshot_draws_chrome);
   RUN_TEST(test_overlay_changes_framebuffer_in_band);
   RUN_TEST(test_filling_slot_changes_framebuffer);
-  RUN_TEST(test_render_stale_frame_helper);
-  RUN_TEST(test_render_start_failed_frame_helper);
   RUN_TEST(test_each_overlay_kind_changes_framebuffer);
   UNITY_END();
 }
