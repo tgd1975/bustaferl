@@ -806,7 +806,7 @@ In drei Sub-Schritten aufgegliedert. **Native-Clean-Pflicht für alle drei**: ke
 
 #### Schritt 7.1 — `IRenderer`-Abstraktion + `Esp32Renderer`
 
-- [ ] erledigt
+- [x] erledigt
 
 Isolierter erster Schnitt: nur die HAL-Abstraktion für den Renderer, damit `cycle_runner` (7.2) ohne `render/layout.cpp`-Touch native-kompilierbar wird.
 

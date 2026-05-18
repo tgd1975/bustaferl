@@ -9,6 +9,7 @@
 #include "hal/Esp32Display.h"
 #include "hal/Esp32Network.h"
 #include "hal/Esp32PersistentStore.h"
+#include "hal/Esp32Renderer.h"
 #include "hal/Esp32Sleep.h"
 #include "logic/api_fetcher.h"
 #include "logic/boot_sequencer.h"
@@ -44,6 +45,7 @@ Esp32Sleep g_sleep;
 Esp32PersistentStore g_store;
 Esp32Display g_display;
 Esp32Button g_button{BTN_BOOT_PIN};
+Esp32Renderer g_renderer;
 
 Frame g_frame_new;
 Frame g_frame_prev;
