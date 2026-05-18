@@ -39,8 +39,8 @@ public:
 
 private:
   void sleepScaled(unsigned seconds) {
-    const auto ms = static_cast<std::int64_t>(
-        static_cast<double>(seconds) * 1000.0 * time_scale_);
+    const auto ms = static_cast<std::int64_t>(static_cast<double>(seconds) *
+                                              1000.0 * time_scale_);
     if (ms <= 0)
       return;
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));

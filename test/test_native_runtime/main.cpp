@@ -7,15 +7,14 @@
 // `native-runtime-smoke` (10 cycles, valgrind-wrapped) and
 // `native-runtime-day` (24h). See test/test_native_runtime/README.md.
 
+#include "../../src/logic/cycle_runner.h"
+#include "../../src/render/layout.h"
 #include "DiskStore.h"
 #include "HttpsNet.h"
 #include "NoOpDisplay.h"
 #include "NoOpSleep.h"
 #include "RecordingRenderer.h"
 #include "WallClockClock.h"
-
-#include "../../src/logic/cycle_runner.h"
-#include "../../src/render/layout.h"
 
 #include <atomic>
 #include <csignal>
@@ -28,7 +27,9 @@ namespace {
 
 std::atomic<bool> g_should_exit{false};
 
-void sigHandler(int /*sig*/) { g_should_exit.store(true, std::memory_order_relaxed); }
+void sigHandler(int /*sig*/) {
+  g_should_exit.store(true, std::memory_order_relaxed);
+}
 
 const char *envOr(const char *name, const char *fallback) {
   const char *v = std::getenv(name);
@@ -71,14 +72,16 @@ int main() {
   CycleConfig cfg{};
   cfg.api_base = envOr("BUSTAFERL_API_BASE",
                        "https://www.wienerlinien.at/ogd_realtime/monitor");
-  cfg.efa_base = envOr("BUSTAFERL_EFA_BASE",
-                       "https://www.wienerlinien.at/ogd_routing/XSLT_DM_REQUEST");
+  cfg.efa_base =
+      envOr("BUSTAFERL_EFA_BASE",
+            "https://www.wienerlinien.at/ogd_routing/XSLT_DM_REQUEST");
 
   const double time_scale = envDouble("BUSTAFERL_TIME_SCALE", 1.0);
   const unsigned max_cycles = envUint("BUSTAFERL_MAX_CYCLES", 0);
   const std::string persist_path =
       envOr("BUSTAFERL_PERSIST_PATH", ".tmp/native-runtime/persist.bin");
-  const bool fresh_boot = std::string{envOr("BUSTAFERL_FRESH_BOOT", "1")} == "1";
+  const bool fresh_boot =
+      std::string{envOr("BUSTAFERL_FRESH_BOOT", "1")} == "1";
 
   if (fresh_boot)
     std::remove(persist_path.c_str());
@@ -95,7 +98,7 @@ int main() {
   Frame frame_new;
   Frame frame_prev;
 
-  CycleDeps deps{clock,    net,       sleep,      store,    display,
+  CycleDeps deps{clock,    net,       sleep,      store, display,
                  renderer, frame_new, frame_prev, cfg};
 
   PersistedMeta meta = store.loadMeta();

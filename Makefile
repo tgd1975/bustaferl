@@ -14,15 +14,51 @@
         test-longterm-wake test-longterm-soak-5min test-longterm-soak-15min \
         test-longterm-soak-1h test-longterm-horizon-scan \
         test-longterm-horizon-evening test-longterm-day-full \
-        clean format format-check lint tidy size secrets ci
+        native-runtime-build native-runtime-smoke native-runtime-day \
+        native-runtime-https-smoke \
+        clean format format-check lint tidy size secrets ci ci-heavy
 
 PIO        := pio
 TMP        := .tmp
 RESULTS    := $(TMP)/test-results.json
 TRACE_DIR  := $(TMP)/traces
+NR_DIR     := $(TMP)/native-runtime
+NR_BIN     := $(NR_DIR)/bustaferl-native-runtime
 
 DEVICE_ENVS := -e device-fetch -e device-persistent -e device-render \
                -e device-sleep -e device-schedule
+
+# Sources compiled into the native-runtime driver. Anything Adafruit-GFX
+# or Arduino-Core specific stays out — same constraint as env:native's
+# build_src_filter in platformio.ini.
+NR_SRC := \
+  test/test_native_runtime/main.cpp \
+  test/test_native_runtime/DiskStore.cpp \
+  test/test_native_runtime/HttpsNet.cpp \
+  test/test_native_runtime/RecordingRenderer.cpp \
+  src/data/efa_parse.cpp \
+  src/data/wienerlinien_parse.cpp \
+  src/logic/api_fetcher.cpp \
+  src/logic/boot_sequencer.cpp \
+  src/logic/button_classifier.cpp \
+  src/logic/cycle_runner.cpp \
+  src/logic/display_apply.cpp \
+  src/logic/filter_builder.cpp \
+  src/logic/filter_health.cpp \
+  src/logic/refresh_planner.cpp \
+  src/logic/render_input.cpp \
+  src/logic/schedule_fetcher.cpp \
+  src/logic/schedule_refresh.cpp \
+  src/logic/sleep_planner.cpp \
+  src/logic/slot_merger.cpp \
+  src/logic/snapshot_fetcher.cpp \
+  src/logic/snapshot_logger.cpp \
+  src/logic/stale_policy.cpp \
+  src/render/rle.cpp
+
+NR_CXXFLAGS := -std=gnu++17 -Wall -Wextra -O2 -g -DNATIVE_BUILD \
+               -I src -isystem .pio/libdeps/native/ArduinoJson/src
+NR_LDLIBS := -lcurl
 
 # write-meta TARGET JSON
 # Drops a sidecar `.tmp/<target>.meta.json` with commit SHA, epoch
@@ -130,7 +166,42 @@ test-longterm-day-full:                       ## ~24 h pre-release, unattended o
 
 # --- CI / quality ---
 
-ci: format-check lint tidy test-native build  ## host only — CI has no HW
+ci: format-check lint tidy test-native build  ## host only — fast, pre-commit-tauglich (~30-45 s)
+
+ci-heavy: ci native-runtime-smoke  ## ci + native-runtime-smoke (~5-6 min, CI-Pipeline)
+
+# --- Native runtime (Schritt 9 — host loop) ---
+
+native-runtime-build: $(NR_BIN)  ## build host loop binary
+
+$(NR_BIN): $(NR_SRC)
+	@# ArduinoJson lives under .pio/libdeps/native/; ensure it's been
+	@# fetched by triggering the native env at least once.
+	@[ -d .pio/libdeps/native/ArduinoJson ] || $(PIO) run -e native -t compiledb >/dev/null
+	@mkdir -p $(NR_DIR)
+	g++ $(NR_CXXFLAGS) $(NR_SRC) $(NR_LDLIBS) -o $(NR_BIN)
+
+native-runtime-smoke: $(NR_BIN)  ## 10 cycles unter valgrind, ~5 min
+	@mkdir -p $(NR_DIR)
+	BUSTAFERL_MAX_CYCLES=10 BUSTAFERL_TIME_SCALE=0.1 BUSTAFERL_FRESH_BOOT=1 \
+	  valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=definite \
+	           --errors-for-leak-kinds=definite \
+	           --suppressions=test/test_native_runtime/valgrind.supp \
+	           --log-file=$(NR_DIR)/valgrind.log \
+	           $(NR_BIN)
+
+native-runtime-day: $(NR_BIN)  ## 24 h Soak, schreibt PGM-Sammlung
+	@mkdir -p $(NR_DIR)
+	@echo "[runtime] 24h soak — interrupt with Ctrl-C; output in $(NR_DIR)/"
+	BUSTAFERL_TIME_SCALE=1.0 BUSTAFERL_FRESH_BOOT=1 \
+	  timeout 86400 $(NR_BIN) || true
+
+native-runtime-https-smoke:  ## live-call check gegen Wiener-Linien-Endpoints
+	@mkdir -p $(NR_DIR)
+	g++ -std=gnu++17 -Wall -Wextra -O0 -g -DNATIVE_BUILD -I src \
+	    test/test_native_runtime/https_smoke.cpp $(NR_LDLIBS) \
+	    -o $(NR_DIR)/https_smoke
+	$(NR_DIR)/https_smoke
 
 format:                ## run clang-format in place
 	@find src test -type f \( -name '*.h' -o -name '*.cpp' \) \

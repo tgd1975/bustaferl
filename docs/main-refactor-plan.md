@@ -518,6 +518,12 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 
 **[Schritt 7.3, 2026-05-18]** Tier-2-Tests sind strukturelle (`assertOrdered` über Substring-Marker im Trace + per-fake-Counter), nicht exakte `TEST_ASSERT_EQUAL_STRING_ARRAY` über die volle Sequenz wie im Plan-Sketch §5.2. Begründung: Die Default-Retry-Policy von `fetchWithRetry` (3 Versuche × 3 Batches × 2 Fetches pro Cycle) erzeugt ~30-Element-Traces mit `http_ok=false`, und die exakte Anzahl der HTTP-Calls hängt von Implementation-Details der Retries ab — ein exakter String-Vergleich würde bei jeder Retry-Justierung brechen, ohne dass die R1-Drift-Eigenschaft wirklich verletzt wurde. Die strukturellen Asserts (`renderer.render` kommt VOR `store.saveFramebuffer` VOR `sleep.deepSleep`; `save_meta_calls <= 1`; `last_deep_sleep_seconds < 24h`) fangen exakt die R1-Bug-Klasse. Recording-Fakes sind in `test/test_native_cycle_runner_warm/recording_fakes.h`; die cold + invariants-Tests inkludieren cross-relativ — gleiches Muster wie test_longterm_soak/RecordingDisplay.h vs. test_longterm_smoke/ (§0a.2-Annahme).
 
+**[Schritt 9.1, 2026-05-18]** `NoOpSleep::deepSleep` kehrt zurück, ruft *nicht* `std::exit(0)` + Re-Start-Skript wie im Plan-Sketch. Begründung: der `native-runtime-smoke`-Target soll den kumulativen Heap-Profil über N Cycles in *einem* Prozess profilen (valgrind/massif sehen sonst keinen Leak über Cycle-Grenzen). Cold-vs-Warm-Boot wird stattdessen out-of-band signalisiert: erster `wakeupCause()`-Call liefert `ColdBoot`, danach `Timer`. Konsequenz: Button-Wake bleibt im Host-Pfad ausgeklammert (R1-Plan §9 "GPIO not covered").
+
+**[Schritt 9, 2026-05-18]** Build-System: kein zweites PlatformIO-Env `native-runtime`. Plan-Sketch §9.5 schlug ein PIO-Env vor; in der Umsetzung ist das ein direktes `g++`-Target im Makefile (`make native-runtime-build`, `-smoke`, `-day`). Begründung: PIO's `platform = native` ist auf das Test-Framework Unity zugeschnitten, nicht auf Standalone-Executables; ein zweites Env hätte SCons-Hooks gebraucht, um die `test_dir`-Konvention zu umgehen — Tooling-Aufwand gegen die Memory `feedback-no-tooling-rabbit-holes`. Die ArduinoJson-Library wird trotzdem über PIO's `lib_deps`-Cache (`.pio/libdeps/native/`) bezogen, der Make-Target stellt sicher, dass das Cache vorhanden ist.
+
+**[Schritt 9.5, 2026-05-18]** `make ci` bleibt unverändert (~30-45 s, pre-commit-tauglich). Neuer separater Target `make ci-heavy` ruft `ci + native-runtime-smoke` (~5-6 min). Begründung: Plan §9.5 schlug Smoke-in-`ci` vor, aber das macht den Pre-Commit-Hook (installiert via `scripts/install-pre-commit.sh`) auf ~6 min — klares Anti-Pattern (Memory `feedback-no-tooling-rabbit-holes`). Auftraggeber hat in der Vor-Umsetzungs-Frage explizit für die `ci-heavy`-Trennung entschieden.
+
 ### 4.2 Schritt-Reihenfolge
 
 Optimiert auf: **früh Tests, klein zerlegt, jeder Schritt grün lassbar**.
@@ -875,13 +881,13 @@ Die Schwergewicht-Tests, die den eigentlichen R1-Drift-Killer aufstellen.
 
 ### Schritt 9 — `test/test_native_runtime/` — Native-Device-Loop einrichten
 
-- [ ] erledigt
+- [x] erledigt
 
 Headless-Loop, die `runWarmCycle`/`runColdCycle` auf dem Host gegen *echte* WL/EFA-Endpoints fährt. Erst jetzt möglich, weil Schritte 7+8 `cycle_runner` native-clean gemacht haben. In fünf Sub-Schritten aufgegliedert; Gesamt-Aufwand ~2.5 d (~650 LOC).
 
 #### Schritt 9.1 — Trivial-Adapter (Clock + Sleep + Display + Store)
 
-- [ ] erledigt
+- [x] erledigt
 
 Die vier HAL-Implementations ohne externe Dependencies, ~250 LOC, 0.5 d.
 
@@ -894,7 +900,7 @@ Die vier HAL-Implementations ohne externe Dependencies, ~250 LOC, 0.5 d.
 
 #### Schritt 9.2 — `HttpsNet` via libcurl
 
-- [ ] erledigt
+- [x] erledigt
 
 INetwork-Implementation gegen die echten Endpoints, ~100 LOC, 0.5 d.
 
@@ -907,7 +913,7 @@ INetwork-Implementation gegen die echten Endpoints, ~100 LOC, 0.5 d.
 
 #### Schritt 9.3 — `RecordingRenderer` mit PGM-Output
 
-- [ ] erledigt
+- [x] erledigt
 
 IRenderer-Implementation mit deterministischem Pseudo-Raster + diff-getriebenem Dump, ~150 LOC, 0.5 d.
 
@@ -934,7 +940,7 @@ Diff-getrieben: PGM-Anzahl entspricht der Anzahl der Display-Updates → Heap-Le
 
 #### Schritt 9.4 — Treiber `test/test_native_runtime/main.cpp`
 
-- [ ] erledigt
+- [x] erledigt
 
 Loop-Treiber, ~100 LOC, 0.5 d.
 
@@ -947,7 +953,7 @@ Loop-Treiber, ~100 LOC, 0.5 d.
 
 #### Schritt 9.5 — Build-Setup + CI-Wiring + README
 
-- [ ] erledigt
+- [x] erledigt
 
 Glue + Doku, ~50 LOC, 0.5 d.
 
