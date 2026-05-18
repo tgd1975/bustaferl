@@ -778,7 +778,7 @@ Das ist der substantielle Schritt — eine **Anforderungslücke** schließen, ni
 
 ### Schritt 5 — `IClock::isSynced()` + NTP-Magic eliminieren + tote Konstanten
 
-- [ ] erledigt
+- [x] erledigt
 
 - `MIN_PLAUSIBLE_EPOCH` + Default-Implementation in [IClock.h](../src/hal/IClock.h).
 - Alle fünf Vorkommen der `1700000000`-Konstante ersetzen:

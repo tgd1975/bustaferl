@@ -196,7 +196,7 @@ void warmCyclePath(PersistedMeta &meta) {
   // boot, not Unix epoch. Without this guard, the periodic NTP check below
   // (a signed subtraction) underflows to a huge negative and never fires,
   // leaving planSleep to compute a 50-year deep sleep against a bogus now.
-  if (g_clock.now() < 1700000000) {
+  if (!g_clock.isSynced()) {
     Serial.printf("[warm] clock unsynced (now=%lld), forcing NTP\n",
                   static_cast<long long>(g_clock.now()));
     if (g_clock.ntpSync()) {

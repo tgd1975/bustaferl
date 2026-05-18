@@ -154,7 +154,7 @@ void test_clock_at_boot_is_unsynced(void) {
   // ESP32 cold-boots with time() near zero (seconds since boot, not Unix
   // epoch). This is also the post-deep-sleep state that bites warmCyclePath.
   printClock("boot (expected unsynced, < 1.7e9)");
-  TEST_ASSERT_LESS_THAN_MESSAGE(1700000000, g_clock.now(),
+  TEST_ASSERT_LESS_THAN_MESSAGE(MIN_PLAUSIBLE_EPOCH, g_clock.now(),
                                 "clock unexpectedly synced at boot");
 }
 
@@ -163,7 +163,7 @@ void test_ntp_sync_brings_clock_to_present(void) {
                 TZ_INFO);
   TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "ntpSync() failed");
   printClock("after ntpSync()");
-  TEST_ASSERT_GREATER_THAN_MESSAGE(1700000000, g_clock.now(),
+  TEST_ASSERT_GREATER_THAN_MESSAGE(MIN_PLAUSIBLE_EPOCH, g_clock.now(),
                                    "clock still bogus after NTP");
 }
 
@@ -193,16 +193,16 @@ void test_warm_boot_recovery_sequence(void) {
   // is also the post-deep-sleep symptom): clock < 1.7e9 -> force ntpSync ->
   // planSleep must now compute a sane interval, not 50 years.
   printClock("sim warm-boot pre-recovery");
-  TEST_ASSERT_LESS_THAN_MESSAGE(1700000000, g_clock.now(),
+  TEST_ASSERT_LESS_THAN_MESSAGE(MIN_PLAUSIBLE_EPOCH, g_clock.now(),
                                 "precondition: clock must be bogus");
 
   // Production guard, literal copy from warmCyclePath:
-  if (g_clock.now() < 1700000000) {
+  if (!g_clock.isSynced()) {
     TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "recovery NTP failed");
   }
   time_t after = g_clock.now();
   printClock("post-recovery");
-  TEST_ASSERT_GREATER_THAN_MESSAGE(1700000000, after,
+  TEST_ASSERT_GREATER_THAN_MESSAGE(MIN_PLAUSIBLE_EPOCH, after,
                                    "recovery did not produce a valid clock");
 
   // planSleep with recovered clock against a bus 20 minutes out should be a
@@ -248,14 +248,14 @@ void test_ntp_completes_before_api_query(void) {
                            "precondition: WiFi must be up");
 
   // Production guard (literal copy of warmCyclePath's check):
-  if (g_clock.now() < 1700000000) {
+  if (!g_clock.isSynced()) {
     TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "guard NTP failed");
   }
   time_t clock_at_query_start = g_clock.now();
   Serial.printf("[engine] ordering: clock=%lld at query start\n",
                 static_cast<long long>(clock_at_query_start));
   TEST_ASSERT_GREATER_THAN_MESSAGE(
-      1700000000, clock_at_query_start,
+      MIN_PLAUSIBLE_EPOCH, clock_at_query_start,
       "ORDERING VIOLATION: clock bogus when query begins");
 
   std::string body;

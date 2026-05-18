@@ -59,7 +59,7 @@ void test_ntp_syncs() {
   TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "ntpSync failed");
   time_t t = g_clock.now();
   Serial.printf("[ntp] now=%lld\n", static_cast<long long>(t));
-  TEST_ASSERT_GREATER_THAN_MESSAGE(1700000000, t, "clock not synced");
+  TEST_ASSERT_GREATER_THAN_MESSAGE(MIN_PLAUSIBLE_EPOCH, t, "clock not synced");
 }
 
 void test_single_efa_call_does_not_crash() {

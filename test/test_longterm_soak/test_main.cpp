@@ -89,7 +89,7 @@ void test_setup_wifi_and_clock(void) {
   g_net.addAp(WIFI_SSID_SECONDARY, WIFI_PASSWORD_SECONDARY);
 #endif
   TEST_ASSERT_TRUE_MESSAGE(g_net.connect(15000), "initial WiFi failed");
-  if (g_clock.now() < 1700000000) {
+  if (!g_clock.isSynced()) {
     TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "initial NTP failed");
   }
   g_initial_heap = ESP.getFreeHeap();

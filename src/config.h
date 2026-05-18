@@ -94,9 +94,9 @@
 #define EPD_HEIGHT 300
 #define FB_BYTES (EPD_WIDTH * EPD_HEIGHT / 8) // 15000
 
-// RLE persistence: ~3kB budget for the compressed framebuffer in RTC slow
-// memory. Above this we force a light full refresh next cycle.
-#define RLE_BUDGET_BYTES 3072
+// RLE persistence hard cap. The compressed framebuffer must fit into the
+// RTC-slow-memory slot reserved by Esp32PersistentStore; encodes that exceed
+// this size are rejected (the next cycle falls back to a light full refresh).
 #define RLE_HARDCAP_BYTES 7168
 
 // Time zone for display formatting (Vienna with DST).

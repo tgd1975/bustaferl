@@ -25,9 +25,8 @@ bool Esp32Clock::ntpSync() {
   configTzTime(tz_info_, ntp_server_, "pool.ntp.org", "time.google.com");
   // Wait up to 10s for the SNTP daemon to set the system clock.
   for (int i = 0; i < 50; ++i) {
-    time_t t = now();
-    if (t > 1700000000) { // anything past 2023 is plausibly real
-      last_sync_ = t;
+    if (isSynced()) {
+      last_sync_ = now();
       return true;
     }
     delay(200);

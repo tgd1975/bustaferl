@@ -87,7 +87,7 @@ void test_ntp_syncs(void) {
   time_t t = g_clock.now();
   Serial.printf("[smoke] clock_epoch=%lld\n", static_cast<long long>(t));
   TEST_ASSERT_GREATER_THAN_INT_MESSAGE(
-      1700000000, static_cast<int>(t),
+      MIN_PLAUSIBLE_EPOCH, static_cast<int>(t),
       "smoke: clock is bogus after NTP sync (real time should be >= 2023)");
 }
 
