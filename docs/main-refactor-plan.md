@@ -524,6 +524,8 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 
 **[Schritt 9.5, 2026-05-18]** `make ci` bleibt unverändert (~30-45 s, pre-commit-tauglich). Neuer separater Target `make ci-heavy` ruft `ci + native-runtime-smoke` (~5-6 min). Begründung: Plan §9.5 schlug Smoke-in-`ci` vor, aber das macht den Pre-Commit-Hook (installiert via `scripts/install-pre-commit.sh`) auf ~6 min — klares Anti-Pattern (Memory `feedback-no-tooling-rabbit-holes`). Auftraggeber hat in der Vor-Umsetzungs-Frage explizit für die `ci-heavy`-Trennung entschieden.
 
+**[Schritt 10, 2026-05-18]** Group H reduziert sich auf den Doku-Schritt: 11.1–11.3 wurden in Group A vorgezogen (siehe §4.1-Annahmen oben), das Plan-übergeordnete `[ ] erledigt` an Schritt 11 ist deshalb mit dem Group-A-Verweis abgehakt. CONCEPT.md §12.4 ist konsistent (Update kam in Schritt 2.3); die übrigen Schritte berühren CONCEPT nicht. `ARCHITECTURE.md` bekam die elf neuen `logic/`-Module in der Modulkarte plus einen Host-Engine-Abschnitt (Adapter-Tabelle `test/test_native_runtime/`); die `POLL_INTERVAL_S` + `NTP_INTERVAL_S`-Zeilen der Konstanten-Tabelle wurden von `main.cpp` auf `logic/cycle_runner` verschoben (entspricht dem Schritt-7-Ergebnis). `TESTING.md` bekam (a) den `native-runtime`-Bucket in die Bucket-Übersicht + einen eigenen Abschnitt zwischen Long-term und Testbar/nicht-testbar, (b) drei neue Zeilen in der Test-Pair-Tabelle (`runtime_diskstore`, `runtime_renderer`, `cycle_runner_*`); die Bucket-Zahl `(12)` wurde auf `(25)` korrigiert.
+
 ### 4.2 Schritt-Reihenfolge
 
 Optimiert auf: **früh Tests, klein zerlegt, jeder Schritt grün lassbar**.
@@ -978,7 +980,7 @@ Glue + Doku, ~50 LOC, 0.5 d.
 
 ### Schritt 10 — Doku
 
-- [ ] erledigt
+- [x] erledigt
 
 - [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) §Modulkarte um die neuen `logic/`-Module und das `test_native_runtime/`-Setup ergänzen.
 - [docs/TESTING.md](../docs/TESTING.md) Test-Pair-Tabelle ergänzen, `native-runtime`-Bucket aufnehmen.
@@ -987,7 +989,7 @@ Glue + Doku, ~50 LOC, 0.5 d.
 
 ### Schritt 11 — Post-Refactor Tooling-Härtung
 
-- [ ] erledigt
+- [x] erledigt (alle drei Unter-Schritte 11.1/11.2/11.3 in Group A vorgezogen, siehe §4.1)
 
 Erst *nach* Schritt 8 (`main.cpp` schlank), weil sonst die ≤60-LOC-Regel die Zwischenzustände der Schritte 1–7 blockieren würde.
 
