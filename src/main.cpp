@@ -4,6 +4,7 @@
 #include "data/ScheduleHint.h"
 #include "data/efa_parse.h"
 #include "data/wienerlinien_parse.h"
+#include "hal/Esp32Button.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Display.h"
 #include "hal/Esp32Network.h"
@@ -11,6 +12,7 @@
 #include "hal/Esp32Sleep.h"
 #include "logic/api_fetcher.h"
 #include "logic/boot_sequencer.h"
+#include "logic/button_classifier.h"
 #include "logic/display_apply.h"
 #include "logic/filter_builder.h"
 #include "logic/filter_health.h"
@@ -41,6 +43,7 @@ Esp32Network g_net;
 Esp32Sleep g_sleep;
 Esp32PersistentStore g_store;
 Esp32Display g_display;
+Esp32Button g_button{BTN_BOOT_PIN};
 
 Frame g_frame_new;
 Frame g_frame_prev;
@@ -291,32 +294,6 @@ void warmCyclePath(PersistedMeta &meta) {
   doSleepOrLoop(pre, meta);
 }
 
-enum class ButtonPress { None, Short, Long };
-
-// Block until the boot button is released; classify as short or long based
-// on BTN_LONG_PRESS_MS. Assumes the button is currently held LOW (we got
-// here because of an EXT0/GPIO wake or a positive poll). If it's already
-// HIGH on entry, treat as a transient press (Short).
-ButtonPress measureButtonPress() {
-  pinMode(BTN_BOOT_PIN, INPUT_PULLUP);
-  delay(20); // debounce settle
-  if (digitalRead(BTN_BOOT_PIN) == HIGH) {
-    return ButtonPress::Short;
-  }
-  uint32_t t0 = millis();
-  bool long_latched = false;
-  while (digitalRead(BTN_BOOT_PIN) == LOW) {
-    if (!long_latched && millis() - t0 >= BTN_LONG_PRESS_MS) {
-      long_latched = true;
-      Serial.println("[btn] long-press threshold reached, waiting for release");
-    }
-    delay(10);
-  }
-  Serial.printf("[btn] released after %u ms\n",
-                static_cast<unsigned>(millis() - t0));
-  return long_latched ? ButtonPress::Long : ButtonPress::Short;
-}
-
 // Long-press action: flush the panel with a B/W deep clean and redraw the
 // last good framebuffer. If we have nothing persisted, render an empty
 // frame and clean. Caller still runs the regular warm cycle afterwards to
@@ -348,13 +325,13 @@ void runBwReset(PersistedMeta &meta) {
 // if a press is in progress, classify + dispatch. Returns the classified
 // press for the caller's logging convenience.
 ButtonPress handleButtonIfPressed(PersistedMeta &meta) {
-  pinMode(BTN_BOOT_PIN, INPUT_PULLUP);
-  delay(5);
-  if (digitalRead(BTN_BOOT_PIN) != LOW) {
+  g_button.init();
+  g_button.sleepMs(5);
+  if (!g_button.isPressed()) {
     return ButtonPress::None;
   }
   Serial.println("[btn] press detected");
-  ButtonPress p = measureButtonPress();
+  ButtonPress p = classifyHeld(g_button, BTN_LONG_PRESS_MS);
   if (p == ButtonPress::Long) {
     runBwReset(meta);
   } else {
@@ -369,7 +346,7 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
-  pinMode(BTN_BOOT_PIN, INPUT_PULLUP);
+  g_button.init();
 
   registerWifiCredentials();
   g_display.init();
@@ -382,7 +359,7 @@ void setup() {
     coldBootPath(meta);
   } else if (cause == WakeCause::Button) {
     Serial.println("[boot] button-wake");
-    ButtonPress p = measureButtonPress();
+    ButtonPress p = classifyHeld(g_button, BTN_LONG_PRESS_MS);
     if (p == ButtonPress::Long) {
       runBwReset(meta);
     } else {

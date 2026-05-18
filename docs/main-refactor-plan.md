@@ -791,7 +791,7 @@ Das ist der substantielle Schritt — eine **Anforderungslücke** schließen, ni
 
 ### Schritt 6 — `logic/button_classifier.{h,cpp}` + `Esp32Button` Adapter
 
-- [ ] erledigt
+- [x] erledigt
 
 - `classifyHeld(IButton&, uint32_t long_press_ms) → ButtonPress`.
 - `Esp32Button` Adapter mit `pinMode/digitalRead/millis/delay`.
