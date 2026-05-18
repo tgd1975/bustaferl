@@ -1,11 +1,11 @@
 #ifndef BUSTAFERL_IPERSISTENTSTORE_H
 #define BUSTAFERL_IPERSISTENTSTORE_H
 
+#include "../data/ScheduleHint.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
-
-#include "../data/ScheduleHint.h"
 
 namespace bustaferl {
 

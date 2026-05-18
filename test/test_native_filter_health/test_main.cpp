@@ -1,6 +1,6 @@
-#include <unity.h>
-
 #include "logic/filter_health.h"
+
+#include <unity.h>
 
 using namespace bustaferl;
 

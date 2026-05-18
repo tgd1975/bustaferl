@@ -1,6 +1,6 @@
-#include <unity.h>
-
 #include "logic/stale_policy.h"
+
+#include <unity.h>
 
 using namespace bustaferl;
 

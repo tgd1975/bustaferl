@@ -12,11 +12,11 @@
 // in main.cpp's setup(); the deep-sleep CALL itself is just one esp-idf
 // function and would be exercised by an integration run, not a unit test.
 
+#include "hal/Esp32Sleep.h"
+
 #include <Arduino.h>
 #include <esp_sleep.h>
 #include <unity.h>
-
-#include "hal/Esp32Sleep.h"
 
 using namespace bustaferl;
 

@@ -1,9 +1,9 @@
 #ifndef BUSTAFERL_SCHEDULEHINT_H
 #define BUSTAFERL_SCHEDULEHINT_H
 
-#include <ctime>
-
 #include "StreamSnapshot.h"
+
+#include <ctime>
 
 namespace bustaferl {
 

@@ -22,9 +22,11 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
       - name: Install PlatformIO
         run: pip install --upgrade platformio
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+      - name: Install cppcheck
+        run: sudo apt-get install -y cppcheck
       - name: Provide dummy secrets.h
         run: cp secrets.h.example src/secrets.h
-      - name: Unit tests (host)
-        run: make test
-      - name: Build firmware
-        run: make build
+      - name: CI (format-check + lint + test-native + build)
+        run: make ci

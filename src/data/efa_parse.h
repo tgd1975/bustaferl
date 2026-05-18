@@ -1,10 +1,10 @@
 #ifndef BUSTAFERL_EFA_PARSE_H
 #define BUSTAFERL_EFA_PARSE_H
 
-#include <string>
-
 #include "ScheduleHint.h"
 #include "StreamSnapshot.h"
+
+#include <string>
 
 #ifndef NATIVE_BUILD
 #include <Stream.h>

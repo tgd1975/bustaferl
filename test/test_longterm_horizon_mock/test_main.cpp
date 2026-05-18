@@ -16,13 +16,6 @@
 // `longterm-horizon-mock-firmware` is firmware-only and not in the
 // device test set. See test/README.md.
 
-#include <Arduino.h>
-#include <HTTPClient.h>
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <cstdio>
-#include <cstring>
-
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Display.h"
@@ -32,6 +25,13 @@
 #include "logic/slot_merger.h"
 #include "render/layout.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <HTTPClient.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <cstdio>
+#include <cstring>
 
 #ifndef MOCK_API_BASE
 #error                                                                         \
@@ -155,10 +155,9 @@ void setup() {
       renderFrame(in, g_frame_new);
       bool prev_valid = (cycle > 1);
       RefreshConfig rc;
-      RefreshDecision rd =
-          planRefresh(g_frame_prev.data(), g_frame_new.data(), prev_valid,
-                      now_t, g_disp_meta.last_light_full,
-                      g_disp_meta.partial_count, rc);
+      RefreshDecision rd = planRefresh(
+          g_frame_prev.data(), g_frame_new.data(), prev_valid, now_t,
+          g_disp_meta.last_light_full, g_disp_meta.partial_count, rc);
       applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta,
                            now_t);
       std::memcpy(g_frame_prev.data(), g_frame_new.data(), Frame::bytes);

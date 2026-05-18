@@ -1,12 +1,12 @@
 #ifndef BUSTAFERL_SCHEDULE_FETCHER_H
 #define BUSTAFERL_SCHEDULE_FETCHER_H
 
-#include <ctime>
-#include <string>
-
 #include "../data/ScheduleHint.h"
 #include "../data/efa_parse.h"
 #include "../hal/INetwork.h"
+
+#include <ctime>
+#include <string>
 
 namespace bustaferl {
 

@@ -5,10 +5,6 @@
 // 3rd call" is visible in the Unity report instead of disappearing into a
 // reboot loop.
 
-#include <Arduino.h>
-#include <esp_system.h>
-#include <unity.h>
-
 #include "config.h"
 #include "data/ScheduleHint.h"
 #include "data/efa_parse.h"
@@ -16,6 +12,10 @@
 #include "hal/Esp32Network.h"
 #include "logic/schedule_fetcher.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <esp_system.h>
+#include <unity.h>
 
 using namespace bustaferl;
 

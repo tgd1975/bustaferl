@@ -12,11 +12,6 @@
 // Run via `make test-longterm-horizon-scan` (env:longterm-horizon-scan).
 // Start during daytime (08:00–17:00) when realtime feeds are densest.
 
-#include <Arduino.h>
-#include <cstdio>
-#include <cstring>
-#include <unity.h>
-
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
@@ -29,6 +24,11 @@
 #include "logic/slot_merger.h"
 #include "render/layout.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <cstdio>
+#include <cstring>
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -155,10 +155,9 @@ void test_horizon_cliff_loop(void) {
       renderFrame(in, g_frame_new);
       bool prev_valid = (cycle > 1);
       RefreshConfig rc;
-      RefreshDecision rd =
-          planRefresh(g_frame_prev.data(), g_frame_new.data(), prev_valid,
-                      t_cycle, g_disp_meta.last_light_full,
-                      g_disp_meta.partial_count, rc);
+      RefreshDecision rd = planRefresh(
+          g_frame_prev.data(), g_frame_new.data(), prev_valid, t_cycle,
+          g_disp_meta.last_light_full, g_disp_meta.partial_count, rc);
       applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta,
                            t_cycle);
       std::memcpy(g_frame_prev.data(), g_frame_new.data(), Frame::bytes);

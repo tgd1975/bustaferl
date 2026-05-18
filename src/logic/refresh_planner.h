@@ -1,11 +1,11 @@
 #ifndef BUSTAFERL_REFRESH_PLANNER_H
 #define BUSTAFERL_REFRESH_PLANNER_H
 
+#include "../hal/IDisplay.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
-
-#include "../hal/IDisplay.h"
 
 namespace bustaferl {
 

@@ -1,10 +1,10 @@
 #ifndef BUSTAFERL_SLOT_MERGER_H
 #define BUSTAFERL_SLOT_MERGER_H
 
-#include <ctime>
-
 #include "../data/ScheduleHint.h"
 #include "../data/StreamSnapshot.h"
+
+#include <ctime>
 
 namespace bustaferl {
 

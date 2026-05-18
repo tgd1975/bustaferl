@@ -5,12 +5,12 @@
 // framebuffer_valid (after which the store state is poisoned for the rest of
 // the suite — keep it last).
 
+#include "config.h"
+#include "hal/Esp32PersistentStore.h"
+
 #include <Arduino.h>
 #include <cstring>
 #include <unity.h>
-
-#include "config.h"
-#include "hal/Esp32PersistentStore.h"
 
 using namespace bustaferl;
 

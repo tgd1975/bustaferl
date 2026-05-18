@@ -1,10 +1,10 @@
+#include "config.h"
+#include "data/efa_parse.h"
+
 #include <cstdlib>
 #include <ctime>
 #include <string>
 #include <unity.h>
-
-#include "config.h"
-#include "data/efa_parse.h"
 
 using namespace bustaferl;
 

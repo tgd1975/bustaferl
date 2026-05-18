@@ -5,15 +5,15 @@
 // font metrics can shift across Adafruit_GFX versions, but the gross
 // invariants stay stable.
 
-#include <Arduino.h>
-#include <cstring>
-#include <memory>
-#include <unity.h>
-
 #include "config.h"
 #include "data/StreamSnapshot.h"
 #include "render/error_overlay.h"
 #include "render/layout.h"
+
+#include <Arduino.h>
+#include <cstring>
+#include <memory>
+#include <unity.h>
 
 using namespace bustaferl;
 

@@ -8,17 +8,17 @@
 //
 // Run via `make test-longterm-jitter` (env:longterm-jitter).
 
-#include <Arduino.h>
-#include <WiFi.h>
-#include <cstdio>
-#include <unity.h>
-
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Network.h"
 #include "logic/api_fetcher.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include <cstdio>
+#include <unity.h>
 
 using namespace bustaferl;
 

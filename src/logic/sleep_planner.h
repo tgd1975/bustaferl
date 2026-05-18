@@ -1,9 +1,9 @@
 #ifndef BUSTAFERL_SLEEP_PLANNER_H
 #define BUSTAFERL_SLEEP_PLANNER_H
 
-#include <ctime>
-
 #include "../data/StreamSnapshot.h"
+
+#include <ctime>
 
 namespace bustaferl {
 

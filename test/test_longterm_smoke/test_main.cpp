@@ -7,11 +7,6 @@
 //
 // Run via `make test-longterm-smoke` (env:longterm-smoke).
 
-#include <Arduino.h>
-#include <cstdio>
-#include <cstring>
-#include <unity.h>
-
 #include "../test_longterm_soak/RecordingDisplay.h"
 #include "config.h"
 #include "data/wienerlinien_parse.h"
@@ -24,6 +19,11 @@
 #include "logic/slot_merger.h"
 #include "render/layout.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <cstdio>
+#include <cstring>
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -125,10 +125,9 @@ void test_pipeline_one_full_cycle(void) {
   RenderInput in{merged_for_render, OverlayKind::None};
   renderFrame(in, g_frame_new);
   RefreshConfig rc;
-  RefreshDecision rd =
-      planRefresh(g_frame_prev.data(), g_frame_new.data(), /*prev_valid=*/false,
-                  now_t, g_disp_meta.last_light_full, g_disp_meta.partial_count,
-                  rc);
+  RefreshDecision rd = planRefresh(
+      g_frame_prev.data(), g_frame_new.data(), /*prev_valid=*/false, now_t,
+      g_disp_meta.last_light_full, g_disp_meta.partial_count, rc);
   applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta, now_t);
   Serial.printf("[smoke] display: full=%d partial=%d light=%d deep=%d "
                 "rle_overflow=%d\n",

@@ -2,11 +2,11 @@
 
 #ifndef NATIVE_BUILD
 
-#include <Arduino.h>
-#include <cstring>
-
 #include "../config.h"
 #include "../render/rle.h"
+
+#include <Arduino.h>
+#include <cstring>
 
 namespace bustaferl {
 

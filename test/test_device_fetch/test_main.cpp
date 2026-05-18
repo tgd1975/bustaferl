@@ -2,17 +2,17 @@
 // silent failure (HTTPS, parse, filter mismatch) names itself in the Unity
 // report instead of disappearing behind a deepSleep().
 
-#include <Arduino.h>
-#include <cstdio>
-#include <ctime>
-#include <unity.h>
-
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Network.h"
 #include "logic/sleep_planner.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <cstdio>
+#include <ctime>
+#include <unity.h>
 
 using namespace bustaferl;
 

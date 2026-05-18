@@ -1,12 +1,12 @@
+#include "hal/INetwork.h"
+#include "logic/schedule_fetcher.h"
+
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <string>
 #include <unity.h>
 #include <vector>
-
-#include "hal/INetwork.h"
-#include "logic/schedule_fetcher.h"
 
 using namespace bustaferl;
 

@@ -492,6 +492,8 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 
 **[Schritt 0a.2, 2026-05-18]** Annahme: `RecordingDisplay.h` lebt in `test/test_longterm_soak/` und wird in `test/test_longterm_smoke/test_main.cpp` per relativem `../test_longterm_soak/RecordingDisplay.h` inkludiert. Begründung: PlatformIO 6.x bietet kein offizielles `test_common/`-Verzeichnis; Alternativen wären Header-Duplikation (rot-tendiert) oder ein neues `src/test_support/`-Modul, das im Native-Build mitkompiliert würde. Cross-Include lokalisiert die Kopplung auf zwei Files und bleibt bei späterer Refactor-Bewegung sofort sichtbar.
 
+**[Schritt 0b, 2026-05-18]** Annahme: Die horizon-evening-Baseline wird *nicht* synchron in Group A erfasst, sondern getrennt vor Group C (Schritt 2.3) abends ab 20:00 lokal gestartet. Begründung: Der Test enforced `local.tm_hour >= 20 || local.tm_hour <= 3` als Pre-Condition; die Group-A-Umsetzung lief am Nachmittag. Die zwei anderen Baselines (`soak-15min`, `device-fetch`) sind regulär erfasst. horizon-evening ist nur für Schritt 2.3 (Smell 13, „Heute-Abend-Bridge") kritisch — wird vor 2.3 nachgeholt.
+
 ### 4.2 Schritt-Reihenfolge
 
 Optimiert auf: **früh Tests, klein zerlegt, jeder Schritt grün lassbar**.
@@ -511,7 +513,7 @@ Heute fehlt der Display-Pfad in den Long-term-Tests; Heap-Spitzen aus `renderFra
 
 #### Schritt 0b — Golden-Master-Baseline
 
-- [ ] erledigt
+- [x] erledigt (soak-15min + device-fetch); horizon-evening: siehe §4.1-Annahme
 
 Vor jedem Code-Eingriff einen Referenz-Snapshot anlegen, gegen den nach jedem Schritt diff-getrieben verglichen wird:
 
@@ -529,7 +531,7 @@ Tools, die *während* des Refactors greifen und Regressionen fangen. Bewusst **o
 
 ##### 0c.1 — `.clang-format` einchecken
 
-- [ ] erledigt
+- [x] erledigt
 
 Heute läuft `make format` ohne Config-File — `clang-format` nimmt seinen LLVM-Default. Über Maschinen-/Versionen-Grenzen reproduzierbar nur durch explizite Config.
 
@@ -548,7 +550,7 @@ Vorgehen: einmal `make format` damit, Diff prüfen (sollte ≈ 0 sein, weil der 
 
 ##### 0c.2 — CI ruft `make ci` (Bug-Fix)
 
-- [ ] erledigt
+- [x] erledigt
 
 [.github/workflows/ci.yml:27-30](../.github/workflows/ci.yml#L27) ruft `make test` und `make build` separat — überspringt damit `make format-check` + `make lint`. Format- und Lint-Violations blocken heute *nichts*.
 

@@ -1,6 +1,6 @@
-#include <unity.h>
-
 #include "logic/sleep_planner.h"
+
+#include <unity.h>
 
 using namespace bustaferl;
 

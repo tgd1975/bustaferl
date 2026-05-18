@@ -1,8 +1,8 @@
-#include <unity.h>
-
 #include "data/ScheduleHint.h"
 #include "data/StreamSnapshot.h"
 #include "logic/slot_merger.h"
+
+#include <unity.h>
 
 using namespace bustaferl;
 

@@ -20,13 +20,13 @@
 //
 // Run via `make test-longterm-wake` (env:longterm-wake).
 
+#include "hal/Esp32PersistentStore.h"
+#include "hal/Esp32Sleep.h"
+
 #include <Arduino.h>
 #include <esp_attr.h>
 #include <esp_sleep.h>
 #include <unity.h>
-
-#include "hal/Esp32PersistentStore.h"
-#include "hal/Esp32Sleep.h"
 
 using namespace bustaferl;
 

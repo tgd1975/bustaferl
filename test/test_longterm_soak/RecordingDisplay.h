@@ -8,12 +8,12 @@
 // synthetic data, while keeping the heap-leak detector behaviour
 // equivalent (see Schritt 0a.2 of docs/main-refactor-plan.md).
 
+#include "hal/IDisplay.h"
+#include "render/rle.h"
+
 #include <cstdint>
 #include <cstring>
 #include <vector>
-
-#include "hal/IDisplay.h"
-#include "render/rle.h"
 
 namespace bustaferl {
 namespace test {

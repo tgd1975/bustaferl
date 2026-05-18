@@ -13,11 +13,6 @@
 // HEAP_LEAK_BUDGET_BYTES scales linearly so the per-cycle drift
 // tolerance is identical across the three variants.
 
-#include <Arduino.h>
-#include <cstdio>
-#include <cstring>
-#include <unity.h>
-
 #include "RecordingDisplay.h"
 #include "config.h"
 #include "data/wienerlinien_parse.h"
@@ -31,6 +26,11 @@
 #include "logic/slot_merger.h"
 #include "render/layout.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <cstdio>
+#include <cstring>
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -135,10 +135,9 @@ void test_run_soak_cycles(void) {
       renderFrame(in, g_frame_new);
       bool prev_valid = (cycle > 1);
       RefreshConfig rc;
-      RefreshDecision rd =
-          planRefresh(g_frame_prev.data(), g_frame_new.data(), prev_valid,
-                      t_cycle, g_disp_meta.last_light_full,
-                      g_disp_meta.partial_count, rc);
+      RefreshDecision rd = planRefresh(
+          g_frame_prev.data(), g_frame_new.data(), prev_valid, t_cycle,
+          g_disp_meta.last_light_full, g_disp_meta.partial_count, rc);
       applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta,
                            t_cycle);
       std::memcpy(g_frame_prev.data(), g_frame_new.data(), Frame::bytes);

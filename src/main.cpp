@@ -1,10 +1,5 @@
 #ifndef NATIVE_BUILD
 
-#include <Arduino.h>
-#include <cstdio>
-#include <ctime>
-#include <string>
-
 #include "config.h"
 #include "data/ScheduleHint.h"
 #include "data/efa_parse.h"
@@ -27,6 +22,11 @@
 #include "render/layout.h"
 #include "render/rle.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <cstdio>
+#include <ctime>
+#include <string>
 
 using namespace bustaferl;
 

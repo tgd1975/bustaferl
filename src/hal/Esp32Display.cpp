@@ -2,10 +2,10 @@
 
 #ifndef NATIVE_BUILD
 
+#include "../config.h"
+
 #include <GxEPD2_BW.h>
 #include <cstring>
-
-#include "../config.h"
 
 namespace bustaferl {
 

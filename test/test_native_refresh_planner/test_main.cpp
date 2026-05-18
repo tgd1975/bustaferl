@@ -1,8 +1,8 @@
+#include "logic/refresh_planner.h"
+
 #include <cstring>
 #include <unity.h>
 #include <vector>
-
-#include "logic/refresh_planner.h"
 
 using namespace bustaferl;
 

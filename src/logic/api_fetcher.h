@@ -1,9 +1,9 @@
 #ifndef BUSTAFERL_API_FETCHER_H
 #define BUSTAFERL_API_FETCHER_H
 
-#include <string>
-
 #include "../hal/INetwork.h"
+
+#include <string>
 
 namespace bustaferl {
 

@@ -1,9 +1,9 @@
 #include "schedule_fetcher.h"
 
+#include "api_fetcher.h"
+
 #include <cstdint>
 #include <cstdio>
-
-#include "api_fetcher.h"
 
 #ifndef NATIVE_BUILD
 #include <Arduino.h>
