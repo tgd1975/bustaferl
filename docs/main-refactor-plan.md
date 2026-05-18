@@ -514,6 +514,8 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 
 **[Schritt 7.2, 2026-05-18]** `CycleConfig`-Defaults reuse existing module-level `DEFAULT_*`-constexpr: `DEFAULT_WIFI_TIMEOUT_MS` + `DEFAULT_COLD_BOOT_MAX_RETRIES` aus `boot_sequencer.h`, `DEFAULT_WAKE_BEFORE_BUS_S` / `DEFAULT_BOOT_MARGIN_S` / `DEFAULT_ACTIVE_THRESHOLD_S` / `DEFAULT_NO_DATA_SLEEP_S` / `DEFAULT_API_FAILURE_RETRY_S` aus `sleep_planner.h`. Nur die cycle-spezifischen Werte (poll-interval, stale-threshold, nightly-clean-fenster, button-long-press, NTP-intervall, filter-health-streak, cold-boot-retry/giveup) sind neu in `cycle_runner.h` definiert. Begründung: Schritt-0c.5-Magic-Number-Regel verlangt Single-Source, und das hätte sonst zwei Quellen für dieselben Konstanten geschaffen.
 
+**[Schritt 8, 2026-05-18]** No-op am `main.cpp`: die Datei stand am Ende von Schritt 7 bereits bei ~75 net-LOC (HAL-Globals + `makeCycleConfig()` + `makeDeps()` + `registerWifiCredentials()` + `setup()` + `loop()`), alle Includes sind aktiv genutzt. `makeCycleConfig()` bleibt bewusst in `main.cpp` als Übersetzungsschicht der `config.h`-Compile-Time-Macros zur Laufzeit-`CycleConfig` — sie nach `logic/` zu ziehen würde dort eine `config.h`-Kopplung schaffen, ohne LOC-Einsparung in `main.cpp`. Validation reduziert sich auf `make test` (138/138 grün). HW-Validation (`test-device`, `test-longterm-smoke`, `test-longterm-soak-15min`) wurde verschoben (Auftraggeber-Entscheidung: ESP32 aktuell nicht angesteckt, separate Session). Im Zuge der `make test-device`-Diagnose ist ein latenter Build-Bug aufgefallen: `test/test_device_render/test_main.cpp:94` initialisierte `Departure` noch mit dem 2-Feld-Layout (`{time_t, bool, bool}`), was seit Group B (Einführung `DepartureSource`) nicht mehr kompiliert. Fix in derselben Group F: `{1704108660, DepartureSource::Realtime, true}`. `--without-uploading --without-testing`-Build des `device-render`-Envs läuft grün.
+
 **[Schritt 7.3, 2026-05-18]** Tier-2-Tests sind strukturelle (`assertOrdered` über Substring-Marker im Trace + per-fake-Counter), nicht exakte `TEST_ASSERT_EQUAL_STRING_ARRAY` über die volle Sequenz wie im Plan-Sketch §5.2. Begründung: Die Default-Retry-Policy von `fetchWithRetry` (3 Versuche × 3 Batches × 2 Fetches pro Cycle) erzeugt ~30-Element-Traces mit `http_ok=false`, und die exakte Anzahl der HTTP-Calls hängt von Implementation-Details der Retries ab — ein exakter String-Vergleich würde bei jeder Retry-Justierung brechen, ohne dass die R1-Drift-Eigenschaft wirklich verletzt wurde. Die strukturellen Asserts (`renderer.render` kommt VOR `store.saveFramebuffer` VOR `sleep.deepSleep`; `save_meta_calls <= 1`; `last_deep_sleep_seconds < 24h`) fangen exakt die R1-Bug-Klasse. Recording-Fakes sind in `test/test_native_cycle_runner_warm/recording_fakes.h`; die cold + invariants-Tests inkludieren cross-relativ — gleiches Muster wie test_longterm_soak/RecordingDisplay.h vs. test_longterm_smoke/ (§0a.2-Annahme).
 
 ### 4.2 Schritt-Reihenfolge
@@ -864,7 +866,7 @@ Die Schwergewicht-Tests, die den eigentlichen R1-Drift-Killer aufstellen.
 
 ### Schritt 8 — `main.cpp` schlank
 
-- [ ] erledigt
+- [x] erledigt
 
 - File auf ~80 LOC reduzieren: HAL-Globals, `makeDeps()`, setup/loop, registerWifi.
 - Header-Includes ausdünnen.

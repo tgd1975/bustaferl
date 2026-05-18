@@ -121,6 +121,7 @@ Bottom anchor — gets `margin-top: auto` so it sits at the bottom of the Atzg b
 5 equal columns: `Hbf | Atzg | Ende | Tull | Hietz`.
 
 **Top marker row** — height 10 px, contains:
+
 - A 1‑px horizontal line from center of col 0 to center of col 1
 - Col 0 (Hbf): 4 × 4 px filled square (dot)
 - Col 1 (Atzg): 7 × 7 px **diamond** (square rotated 45°). Marks the transfer node.
@@ -129,6 +130,7 @@ Bottom anchor — gets `margin-top: auto` so it sits at the bottom of the Atzg b
 **Middle row** — small spacer, contains the ▼ arrow over col 3 (Tull) AND a vertical 1‑px line from the top of this row through to the bottom, positioned at the center of col 1 (Atzg). The vertical line connects the two Atzg markers, forming an L‑shaped junction.
 
 **Bottom marker row** — height 10 px, contains:
+
 - A 1‑px horizontal line from center of col 1 to center of col 4
 - Col 0: empty
 - Col 1 (Atzg): 7 × 7 px diamond

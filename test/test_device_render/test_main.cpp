@@ -91,7 +91,8 @@ void test_filling_slot_changes_framebuffer() {
   StreamSnapshot snap{};
   renderFrame({snap, OverlayKind::None}, *fb_empty);
   // 12:31 CET = 1704108660 UTC. Fills slot[0] for 58A→Atzgersdorf.
-  snap.stream[STREAM_58A_ATZ].slot[0] = {1704108660, true, true};
+  snap.stream[STREAM_58A_ATZ].slot[0] = {1704108660, DepartureSource::Realtime,
+                                         true};
   renderFrame({snap, OverlayKind::None}, *fb_filled);
   int diff = 0;
   for (size_t i = 0; i < Frame::bytes; ++i)
