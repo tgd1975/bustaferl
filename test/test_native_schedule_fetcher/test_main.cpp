@@ -128,6 +128,8 @@ void test_fetchSchedule_one_diva_two_streams() {
   TEST_ASSERT_EQUAL_INT(0, r.calls_failed);
   TEST_ASSERT_EQUAL_INT64(makeLocal(2026, 5, 16, 23, 50),
                           r.hint[STREAM_58A_ATZ].last_today);
+  TEST_ASSERT_EQUAL_INT64(makeLocal(2026, 5, 16, 23, 50),
+                          r.hint[STREAM_58A_ATZ].next_today[1]);
   TEST_ASSERT_EQUAL_INT64(makeLocal(2026, 5, 17, 5, 6),
                           r.hint[STREAM_58A_ATZ].first_tomorrow[0]);
 }

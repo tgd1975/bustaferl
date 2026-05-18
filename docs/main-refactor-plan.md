@@ -502,6 +502,12 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 - **0c.3 (strikte Compiler-Warnings + `-Werror`)** und **0c.4 (ASan + UBSan)**: bleiben für Schritt 11. Begründung: 0c.3 ist auf eine PlatformIO-Eigenheit gestoßen (`build_src_flags` greift auch auf Test-Builds, Unity's `unity_config.c` ist C nicht C++, Unity-Macros expandieren Old-Style-Casts in Tests). Saubere Auflösung erfordert einen SCons-Hook für selektives Flag-Routing, der den Tooling-Aufwand des Refactors substanziell vergrößert. clang-tidy (jetzt eingebaut) deckt dieselben Klassen mit dem `-isystem`-Mechanismus bereits ab — das Compiler-Strict-Set ist damit weniger dringend.
 - **0c.1 (clang-format) + 0c.2 (`make ci` im CI)** waren reibungslos und bleiben in Group A erledigt.
 
+**[Schritt 2.3, 2026-05-18]** Anpassungen während der Umsetzung:
+
+- **horizon-evening-Baseline (0b) übersprungen**: ein 5-h-Soak vor jedem Refactor-Schritt ist nicht praktikabel im Tagesablauf. Auftraggeber hat explizit verzichtet. Diff-Vergleich gegen Baseline entfällt für diesen Schritt; Validierung läuft über die R11-Assertumstellung im Test selbst (`g_bridge_hits > 0`).
+- **Mapping in `schedule_fetcher.cpp` (Plan-Schritt 3)**: nicht nötig. `fetchSchedule` ruft `parseEfaResponse(..., out.hint)` direkt mit einer Referenz auf den Ergebnis-`ScheduleHint`-Array auf. `next_today` wandert transparent durch — keine Mapping-Schicht dazwischen. Plan-Schritt 3 ist damit ein No-op.
+- **`test_longterm_horizon_evening`-Erweiterung**: Test fetcht jetzt einmal zu Beginn einen echten EFA-Schedule, mergt ihn pro Cycle und zählt `g_bridge_hits` (Cycles wo realtime leer aber merged via Hint gefüllt). Neuer Assert: `g_bridge_hits > 0`. Der `planSleep`-Aufruf bleibt bewusst auf dem *unmerged* `snap` (NO_DATA-Assert unabhängig vom Bridge-Verhalten — Test-Diskrepanz zur Prod-Pipeline ist im Test-Kommentar dokumentiert).
+
 ### 4.2 Schritt-Reihenfolge
 
 Optimiert auf: **früh Tests, klein zerlegt, jeder Schritt grün lassbar**.
@@ -713,7 +719,7 @@ Drei zusätzliche Check-Klassen, plus `--inconclusive` für tiefere Analyse (meh
 
 ### Schritt 2.3 — `ScheduleHint::next_today[2]` (Lücke aus Smell 13 schließen)
 
-- [ ] erledigt
+- [x] erledigt
 
 Das ist der substantielle Schritt — eine **Anforderungslücke** schließen, nicht refactoring.
 

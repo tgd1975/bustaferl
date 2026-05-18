@@ -28,10 +28,15 @@ const char *kTullJson = R"JSON({
   ]
 })JSON";
 
-// Evening fixture: one entry just before midnight (today's last) plus a few
-// next-morning entries (tomorrow's first).
+// Evening fixture: several entries before midnight (today's tail) plus a few
+// next-morning entries (tomorrow's first). The three pre-cutoff entries
+// exercise the `next_today[2]` rolling window (keeps the latest two).
 const char *kEveningJson = R"JSON({
   "departureList": [
+    { "dateTime": { "year":"2026","month":"5","day":"16","hour":"22","minute":"50" },
+      "servingLine": { "number":"58A", "direction":"Wien Atzgersdorf" } },
+    { "dateTime": { "year":"2026","month":"5","day":"16","hour":"23","minute":"15" },
+      "servingLine": { "number":"58A", "direction":"Wien Atzgersdorf" } },
     { "dateTime": { "year":"2026","month":"5","day":"16","hour":"23","minute":"45" },
       "servingLine": { "number":"58A", "direction":"Wien Atzgersdorf" } },
     { "dateTime": { "year":"2026","month":"5","day":"17","hour":"5","minute":"6" },
@@ -97,8 +102,8 @@ void test_splits_at_cutoff_into_last_today_and_first_tomorrow() {
   ScheduleStreamFilter f[STREAM_COUNT];
   buildFilters(f);
   ScheduleHint h[STREAM_COUNT]{};
-  // Cutoff = 2026-05-17 03:00: 23:45 falls below → last_today; 05:06 etc.
-  // above.
+  // Cutoff = 2026-05-17 03:00: pre-cutoff entries (22:50, 23:15, 23:45) feed
+  // last_today + next_today; 05:06 etc. above feed first_tomorrow.
   time_t cutoff = makeLocal(2026, 5, 17, 3, 0);
   TEST_ASSERT_TRUE(parseEfaResponse(kEveningJson, 60201395, f, cutoff, h));
 
@@ -112,6 +117,39 @@ void test_splits_at_cutoff_into_last_today_and_first_tomorrow() {
   // first two.
   TEST_ASSERT_NOT_EQUAL_INT64(makeLocal(2026, 5, 17, 5, 55),
                               h[STREAM_58A_ATZ].first_tomorrow[1]);
+}
+
+void test_next_today_keeps_latest_two_pre_cutoff() {
+  // Smell 13 (Schritt 2.3): evening bridge. The parser must retain the two
+  // chronologically *latest* pre-cutoff entries in `next_today` so the slot
+  // merger can fill the display in the late-evening dead zone.
+  ScheduleStreamFilter f[STREAM_COUNT];
+  buildFilters(f);
+  ScheduleHint h[STREAM_COUNT]{};
+  time_t cutoff = makeLocal(2026, 5, 17, 3, 0);
+  TEST_ASSERT_TRUE(parseEfaResponse(kEveningJson, 60201395, f, cutoff, h));
+
+  // Three pre-cutoff entries in fixture: 22:50, 23:15, 23:45 → keep
+  // 23:15+23:45.
+  TEST_ASSERT_EQUAL_INT64(makeLocal(2026, 5, 16, 23, 15),
+                          h[STREAM_58A_ATZ].next_today[0]);
+  TEST_ASSERT_EQUAL_INT64(makeLocal(2026, 5, 16, 23, 45),
+                          h[STREAM_58A_ATZ].next_today[1]);
+  // Earlier 22:50 must have been rolled out of the window.
+  TEST_ASSERT_NOT_EQUAL_INT64(makeLocal(2026, 5, 16, 22, 50),
+                              h[STREAM_58A_ATZ].next_today[0]);
+}
+
+void test_next_today_empty_when_no_pre_cutoff_match() {
+  // All entries in kTullJson sit past the 03:00 cutoff → next_today stays 0.
+  ScheduleStreamFilter f[STREAM_COUNT];
+  buildFilters(f);
+  ScheduleHint h[STREAM_COUNT]{};
+  time_t cutoff = makeLocal(2026, 5, 17, 3, 0);
+  TEST_ASSERT_TRUE(parseEfaResponse(kTullJson, 60201395, f, cutoff, h));
+
+  TEST_ASSERT_EQUAL_INT64(0, h[STREAM_58A_ATZ].next_today[0]);
+  TEST_ASSERT_EQUAL_INT64(0, h[STREAM_58A_ATZ].next_today[1]);
 }
 
 void test_unrelated_diva_leaves_other_streams_untouched() {
@@ -168,6 +206,8 @@ int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_parses_morning_into_first_tomorrow);
   RUN_TEST(test_splits_at_cutoff_into_last_today_and_first_tomorrow);
+  RUN_TEST(test_next_today_keeps_latest_two_pre_cutoff);
+  RUN_TEST(test_next_today_empty_when_no_pre_cutoff_match);
   RUN_TEST(test_unrelated_diva_leaves_other_streams_untouched);
   RUN_TEST(test_malformed_json_returns_false);
   RUN_TEST(test_empty_departure_list_is_ok);

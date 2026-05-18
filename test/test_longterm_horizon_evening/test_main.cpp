@@ -21,7 +21,9 @@
 #include "hal/IPersistentStore.h"
 #include "logic/api_fetcher.h"
 #include "logic/display_apply.h"
+#include "logic/filter_builder.h"
 #include "logic/refresh_planner.h"
+#include "logic/schedule_fetcher.h"
 #include "logic/sleep_planner.h"
 #include "logic/slot_merger.h"
 #include "render/layout.h"
@@ -59,6 +61,11 @@ int g_stream_dryup_observed[STREAM_COUNT] = {0}; // counts cycles a stream
                                                  // went from non-empty
                                                  // to empty
 bool g_stream_was_active[STREAM_COUNT] = {false};
+// Schritt 2.3 / R11: counts cycles where realtime delivered nothing for a
+// stream but the merged snapshot still surfaced a Hint slot. This is the
+// "Heute-Abend-Bridge" — the behaviour the test now enforces.
+int g_bridge_hits = 0;
+ScheduleSnapshot g_schedule; // populated once at start_conditions
 
 std::string apiUrl() {
   std::string url = WL_API_BASE;
@@ -99,6 +106,21 @@ void test_evening_start_conditions(void) {
   TEST_ASSERT_TRUE_MESSAGE(
       local.tm_hour >= 20 || local.tm_hour <= 3,
       "evening: launched outside the 20:00–03:00 window the test expects");
+  // Fetch a real schedule once at start so the evening bridge has data to
+  // surface. Schritt 2.3 — without this the test cannot observe `next_today`
+  // / `first_tomorrow` filling the slots after realtime dries up.
+  ScheduleStreamFilter sf[STREAM_COUNT];
+  buildScheduleFilters(sf);
+  ScheduleFetchConfig cfg;
+  cfg.endpoint_base = WL_EFA_DM_BASE;
+  ScheduleFetchResult sr = fetchSchedule(g_net, now, sf, cfg);
+  TEST_ASSERT_TRUE_MESSAGE(sr.ok, "evening: initial schedule fetch failed");
+  for (int i = 0; i < STREAM_COUNT; ++i)
+    g_schedule.hint[i] = sr.hint[i];
+  g_schedule.fetched_at = now;
+  Serial.printf("[evening] schedule fetched, calls=%d failed=%d\n",
+                sr.calls_attempted, sr.calls_failed);
+
   // Bring the e-paper panel up so per-cycle refresh has a target. Heap
   // for the GxEPD2 panel is reserved here, before g_initial_heap is
   // sampled, so it doesn't show up as drift later.
@@ -133,7 +155,11 @@ void test_dryup_and_sleep_decisions(void) {
         ++active_count;
     }
 
-    // Drive the production sleep planner.
+    // Drive the production sleep planner against the *unmerged* snapshot.
+    // Production passes the merged view (main.cpp), which after Schritt 2.3
+    // would mask NO_DATA_SLEEP_S whenever the bridge fires. Keeping `snap`
+    // here makes the NO_DATA assert below a clean realtime-empty signal,
+    // independent of the bridge behaviour also under test.
     SleepConfig cfg;
     if (!fo.ok)
       snap.api_ok = false;
@@ -143,16 +169,20 @@ void test_dryup_and_sleep_decisions(void) {
     if (no_data)
       ++g_no_data_sleep_decisions;
 
-    // Drive the production render+display pipeline. We feed an empty
-    // ScheduleSnapshot — this test isn't exercising the EFA hint path,
-    // it's exercising the heap behaviour of renderFrame + planRefresh +
-    // GxEPD2 partial/light-full across the evening transition. The
-    // previous implementation skipped the whole render+display arm,
-    // which kept the largest heap-consuming code path out of the soak.
+    // Drive the production render+display pipeline with the real schedule
+    // fetched once at start. Schritt 2.3 / R11: the bridge must surface
+    // hints whenever realtime is empty — count those transitions explicitly.
     StreamSnapshot merged_for_render = snap;
     if (parsed) {
-      ScheduleSnapshot empty_schedule;
-      merged_for_render = mergeSlots(snap, empty_schedule, t_cycle);
+      merged_for_render = mergeSlots(snap, g_schedule, t_cycle);
+      for (int s = 0; s < STREAM_COUNT; ++s) {
+        const bool rt_empty = !snap.stream[s].slot[0].valid;
+        const bool merged_filled =
+            merged_for_render.stream[s].slot[0].valid &&
+            merged_for_render.stream[s].slot[0].source == DepartureSource::Hint;
+        if (rt_empty && merged_filled)
+          ++g_bridge_hits;
+      }
     }
     RenderInput in{merged_for_render, OverlayKind::None};
     renderFrame(in, g_frame_new);
@@ -193,13 +223,23 @@ void test_dryup_and_sleep_decisions(void) {
   int heap_drift =
       static_cast<int>(g_initial_heap) - static_cast<int>(final_heap);
   Serial.printf("[evening] DONE successes=%d/%d total_dryups=%d "
-                "no_data_decisions=%d heap_drift=%d\n",
-                g_successes, CYCLES, total_dryups, g_no_data_sleep_decisions,
-                heap_drift);
+                "bridge_hits=%d no_data_decisions=%d heap_drift=%d\n",
+                g_successes, CYCLES, total_dryups, g_bridge_hits,
+                g_no_data_sleep_decisions, heap_drift);
 
   TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, total_dryups,
                                        "evening: no stream observed drying up "
                                        "— wrong launch time or empty data");
+  // Schritt 2.3 / R11: realtime drying up must now be covered by the
+  // bridge — at least one cycle must surface a Hint slot where realtime is
+  // empty. Before 2.3 this count was structurally 0 (only first_tomorrow
+  // existed, which only fires near midnight); after 2.3 the late-evening
+  // dead zone produces hits via next_today.
+  TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, g_bridge_hits,
+                                       "evening: no Hint bridge fired — "
+                                       "next_today / first_tomorrow never "
+                                       "filled the slot after realtime "
+                                       "emptied (Schritt 2.3 regression)");
   TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, g_no_data_sleep_decisions,
                                        "evening: NO_DATA_SLEEP_S was never "
                                        "decided — sleep-planner missed night");

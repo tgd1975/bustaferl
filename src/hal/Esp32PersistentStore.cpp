@@ -25,8 +25,11 @@ RTC_DATA_ATTR uint8_t g_rle[RLE_CAP] = {0};
 RTC_DATA_ATTR uint32_t g_sched_magic = 0;
 RTC_DATA_ATTR ScheduleSnapshot g_sched{};
 
-constexpr uint32_t MAGIC = 0xB05AFE71;       // bustaferl ;)
-constexpr uint32_t SCHED_MAGIC = 0x5CEDB051; // sched-bustaferl-1
+constexpr uint32_t MAGIC = 0xB05AFE71; // bustaferl ;)
+// Bumped to invalidate stored ScheduleSnapshots from v1, whose ScheduleHint
+// layout did not yet have `next_today[2]`. First boot after the update
+// re-fetches; the user sees one cycle with no hints.
+constexpr uint32_t SCHED_MAGIC = 0x5CEDB052; // sched-bustaferl-2
 
 } // namespace
 

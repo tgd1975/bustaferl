@@ -73,15 +73,19 @@ StreamSnapshot mergeSlots(const StreamSnapshot &snap,
     }
 
     if (use_schedule) {
-      for (const time_t t : schedule.hint[s].first_tomorrow) {
+      auto addHint = [&](time_t t) {
         if (t == 0 || t < now)
-          continue;
+          return;
         Departure d;
         d.when = t;
         d.source = DepartureSource::Hint;
         d.valid = true;
         insertSorted(merged, d);
-      }
+      };
+      for (const time_t t : schedule.hint[s].next_today)
+        addHint(t);
+      for (const time_t t : schedule.hint[s].first_tomorrow)
+        addHint(t);
     }
 
     for (int i = 0; i < SLOTS_PER_STREAM; ++i) {

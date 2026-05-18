@@ -36,10 +36,10 @@ bool applyScheduleFetchResult(const ScheduleFetchResult &r, time_t now,
     return false;
   // calls_failed > 0 means at least one DIVA missed; we cannot tell from
   // ScheduleFetchResult which one. Cheap-and-correct: only overwrite slot
-  // if the parser actually wrote a non-zero first_tomorrow[0] or last_today
-  // for it.
+  // if the parser actually wrote any non-zero hint field for it.
   for (int i = 0; i < STREAM_COUNT; ++i) {
-    if (r.hint[i].first_tomorrow[0] != 0 || r.hint[i].last_today != 0) {
+    if (r.hint[i].first_tomorrow[0] != 0 || r.hint[i].last_today != 0 ||
+        r.hint[i].next_today[0] != 0 || r.hint[i].next_today[1] != 0) {
       out.hint[i] = r.hint[i];
     }
   }

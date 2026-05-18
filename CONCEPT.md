@@ -286,14 +286,15 @@ Pro Stream (in RTC Slow Memory, ~120 Byte gesamt):
 
 ```cpp
 struct ScheduleHint {
-  time_t last_today;        // letzte planmäßige Abfahrt heute
+  time_t last_today;        // letzte planmäßige Abfahrt heute (Refresh-Trigger)
+  time_t next_today[2];     // die letzten zwei planmäßigen Abfahrten vor cutoff
   time_t first_tomorrow[2]; // erste zwei planmäßige Abfahrten morgen
 };
 ScheduleHint hint[STREAM_COUNT];
 time_t schedule_fetched_at;
 ```
 
-`last_today` ist Trigger für Refresh-Logik, kein direkter Display-Wert.
+`last_today` ist Trigger für Refresh-Logik, kein direkter Display-Wert. `next_today` schließt die Lücke am Abend: heute wäre `slot[]` nach Ende des 70-Min-Realtime-Fensters leer, obwohl der Plan noch Abfahrten kennt — diese Bridge wird nun mitgemischt.
 
 ### 12.3 Refresh-Strategie
 
@@ -304,6 +305,7 @@ time_t schedule_fetched_at;
 **Call-Schema** pro Haltestelle: ein einziger Call mit `itdTime=22:00` (heute) und `limit=50`. Die Response deckt typischerweise die letzten Abfahrten heute + die ersten morgen ab. Daraus client-seitig je Stream (Line+Direction-Filter):
 
 - `last_today` = letzter Eintrag mit `dateTime` < morgen 03:00
+- `next_today[0..1]` = die *letzten zwei* Einträge mit `dateTime` < morgen 03:00 (chronologisch); der Slot-Merger filtert die in der Vergangenheit liegenden via `t < now`, übrig bleiben die noch ausstehenden Abend-Abfahrten
 - `first_tomorrow[0..1]` = erste zwei Einträge mit `dateTime` ≥ morgen 03:00
 
 Drei Haltestellen → drei Calls pro Tag.
@@ -314,11 +316,13 @@ Eine Regel — keine Sondertypografie, keine zusätzlichen Zeilen, kein Hinweis 
 
 ```text
 slot[0..1] = die nächsten zwei Departures ab now() aus:
-             realtime ∪ {hint.first_tomorrow[0], hint.first_tomorrow[1]}
+             realtime
+               ∪ {hint.next_today[0], hint.next_today[1]}
+               ∪ {hint.first_tomorrow[0], hint.first_tomorrow[1]}
              nach Zeit sortiert, ersten beiden zeigen
 ```
 
-Bewusst keine Unterscheidung: sobald eine Morgenfahrt ins 70-Minuten-Realtime-Fenster rutscht, ersetzt der Realtime-Wert den Hint auf demselben Slot — exakt das gewünschte „schrittweise" Verhalten. Nutzer sieht keinen Bruch.
+Bewusst keine Unterscheidung: sobald eine Abfahrt ins 70-Minuten-Realtime-Fenster rutscht, ersetzt der Realtime-Wert den Hint auf demselben Slot — exakt das gewünschte „schrittweise" Verhalten. Nutzer sieht keinen Bruch zwischen Plan und Realtime, weder morgens noch abends.
 
 `hint`-Werte werden ignoriert, wenn `schedule_fetched_at == 0` (nie geladen) oder älter als 48 h. Stale-Mechanik aus §4 bleibt unverändert.
 

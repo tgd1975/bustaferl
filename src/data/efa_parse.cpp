@@ -93,9 +93,14 @@ void consumeEfaDoc(JsonDocument &doc, int call_diva,
         continue;
 
       if (t < cutoff) {
-        // Always keep the latest pre-cutoff match — EFA returns chronological
-        // order, so each subsequent hit overwrites.
+        // Track the latest pre-cutoff match (`last_today`) plus the latest
+        // two for `next_today` — the slot merger drops past times via its
+        // own `t < now` filter, so what survives are the next today
+        // departures still ahead. EFA returns chronological order, so each
+        // subsequent hit shifts the rolling window of the last two.
         hint[i].last_today = t;
+        hint[i].next_today[0] = hint[i].next_today[1];
+        hint[i].next_today[1] = t;
       } else if (tomorrow_fill[i] < 2) {
         hint[i].first_tomorrow[tomorrow_fill[i]++] = t;
       }

@@ -137,6 +137,23 @@ void test_apply_overwrites_when_only_last_today_set() {
   TEST_ASSERT_EQUAL_INT64(999, s.hint[STREAM_58A_ATZ].last_today);
 }
 
+void test_apply_overwrites_when_only_next_today_set() {
+  // Schritt 2.3 edge: parser may write next_today without last_today (the
+  // rolling window logic shares the same pre-cutoff entries, but a future
+  // refactor could decouple them). Verify the apply gate accepts that case
+  // so a fresh stream isn't silently discarded.
+  ScheduleSnapshot s;
+  s.hint[STREAM_58A_ATZ].first_tomorrow[0] = 100;
+
+  ScheduleFetchResult r;
+  r.ok = true;
+  r.hint[STREAM_58A_ATZ].next_today[1] = 777;
+
+  TEST_ASSERT_TRUE(applyScheduleFetchResult(r, 555, s));
+  TEST_ASSERT_EQUAL_INT64(777, s.hint[STREAM_58A_ATZ].next_today[1]);
+  TEST_ASSERT_EQUAL_INT64(0, s.hint[STREAM_58A_ATZ].first_tomorrow[0]);
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -153,5 +170,6 @@ int main(int, char **) {
   RUN_TEST(test_apply_ok_stamps_fetched_at);
   RUN_TEST(test_apply_only_overwrites_streams_with_real_data);
   RUN_TEST(test_apply_overwrites_when_only_last_today_set);
+  RUN_TEST(test_apply_overwrites_when_only_next_today_set);
   return UNITY_END();
 }
