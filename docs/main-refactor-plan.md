@@ -494,6 +494,8 @@ Wird laufend gefüllt. Format: `**[Schritt X.Y, Datum]** Annahme: …; Begründu
 
 **[Schritt 0b, 2026-05-18]** Annahme: Die horizon-evening-Baseline wird *nicht* synchron in Group A erfasst, sondern getrennt vor Group C (Schritt 2.3) abends ab 20:00 lokal gestartet. Begründung: Der Test enforced `local.tm_hour >= 20 || local.tm_hour <= 3` als Pre-Condition; die Group-A-Umsetzung lief am Nachmittag. Die zwei anderen Baselines (`soak-15min`, `device-fetch`) sind regulär erfasst. horizon-evening ist nur für Schritt 2.3 (Smell 13, „Heute-Abend-Bridge") kritisch — wird vor 2.3 nachgeholt.
 
+**[Schritt 0c.3 / 0c.4 / 0c.5, 2026-05-18]** Annahme: Die drei restlichen 0c-Sub-Schritte (strikte Compiler-Warnings + `-Werror`, ASan/UBSan im native-Env, höhere cppcheck-Stufe) werden **nicht in Group A umgesetzt**, sondern in [Schritt 11 — Post-Refactor Tooling-Härtung](#schritt-11--post-refactor-tooling-härtung) integriert. Begründung: 0c.3 ist auf eine PlatformIO-Eigenheit gestoßen — `build_src_flags` wird auf Test-Builds mit angewandt, Unity's `unity_config.c` (C, nicht C++) kollidiert mit C++-only-Flags unter `-Werror`, und Unity-Macros expandieren in Tests zu Old-Style-Casts. Die Plan-vorgesehenen Workarounds (`-isystem` via SCons-Hook, `#pragma GCC diagnostic`) führen zu fragiler Tooling-Architektur ohne Verhältnismäßigkeit zum Refactor-Risiko. Schritt 11 hat ohnehin clang-tidy als zweite Verteidigungslinie, die dieselben Klassen abdeckt. Konsequenz: Refactor-Schritte 1–8 laufen mit dem heutigen `-Wall -Wextra`-Baseline (keine zusätzliche Härtung). 0c.1 (clang-format) + 0c.2 (`make ci` im CI) bleiben in Group A erledigt — sie waren reibungslos.
+
 ### 4.2 Schritt-Reihenfolge
 
 Optimiert auf: **früh Tests, klein zerlegt, jeder Schritt grün lassbar**.
@@ -558,7 +560,7 @@ Fix: ein einziger Step `make ci` ersetzt beide. Voraussetzung: `make ci` ist auf
 
 ##### 0c.3 — Strikte Compiler-Warnings + `-Werror`
 
-- [ ] erledigt
+- [ ] erledigt — **verschoben nach Schritt 11**, siehe §4.1-Annahme.
 
 Heute in [platformio.ini:18](../platformio.ini#L18) nur `-Wall -Wextra`. Erweiterung in `[env]` build_flags:
 
@@ -608,7 +610,7 @@ build_unflags =
 
 ##### 0c.4 — ASan + UBSan in `env:native`
 
-- [ ] erledigt
+- [ ] erledigt — **verschoben nach Schritt 11**, siehe §4.1-Annahme.
 
 Catches OOB-Access, Use-after-free, Integer-Overflow, Null-Deref *at-test-time*. Native-Tests werden ~2× langsamer (5 s → 10 s), irrelevant.
 
@@ -630,7 +632,7 @@ build_unflags =
 
 ##### 0c.5 — `cppcheck` Level hoch
 
-- [ ] erledigt
+- [ ] erledigt — **verschoben nach Schritt 11**, siehe §4.1-Annahme.
 
 [Makefile:145–147](../Makefile#L145):
 
