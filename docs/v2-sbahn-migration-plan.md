@@ -85,7 +85,7 @@ Beide Schichten werden in **einem** Plan abgehandelt, weil sie sich Touch-Sites 
 | [src/config.h:39-40](../src/config.h#L39-L40) | `TOWARDS_U1_LEOPOLDAU`, `TOWARDS_U1_OBERLAA` | entfernen |
 | [src/config.h:47](../src/config.h#L47) | `DIVA_SUEDTIROLER_PLATZ` | entfernen |
 | [src/config.h:55-56](../src/config.h#L55-L56) | `EFA_TOWARDS_U1_LEOPOLDAU`, `EFA_TOWARDS_U1_OBERLAA` | entfernen |
-| [src/config.h](../src/config.h) (neu) | — | `EVA_WIEN_ATZGERSDORF`, `EVA_WIEN_HBF`, `OEBB_MGATE_URL`, `OEBB_HAFAS_AID`, `OEBB_HAFAS_CLIENT_JSON`, `OEBB_JNYFLTR_PRODUCTS`, `OEBB_MAX_JNY` |
+| [src/config.h](../src/config.h) (neu) | — | `OEBB_EXTID_ATZG`, `OEBB_EXTID_WIENHBF`, `OEBB_STBLOC_EXTID`, `OEBB_DIRLOC_EXTID`, `OEBB_MGATE_URL`, `OEBB_HAFAS_AID`, `OEBB_HAFAS_CLIENT_JSON`, `OEBB_HAFAS_VER`, `OEBB_JNYFLTR_PRODUCTS`, `OEBB_MAX_JNY` |
 | [src/logic/filter_builder.cpp:11-13](../src/logic/filter_builder.cpp#L11-L13) | zwei U1-Zeilen | eine S-Bahn-Zeile (neuer Filter-Typ — siehe Schritt 4) |
 | [src/logic/filter_builder.cpp:21-24](../src/logic/filter_builder.cpp#L21-L24) | zwei U1-Schedule-Zeilen | weggelassen (S-Bahn-Stream hat keinen Schedule-Filter) |
 | [src/logic/snapshot_fetcher.cpp:16-19](../src/logic/snapshot_fetcher.cpp#L16-L19) | `FETCH_ORDER` über 5 Streams | über 4 Streams; S-Bahn-Stream getrennt gefetcht (anderer Endpoint, POST) |
@@ -122,7 +122,7 @@ Zähle ich pro Datei einmal: ~14 Quellfiles und ~16 Testfiles werden angefasst.
 
 3. **`dirLoc`-Verhalten** (Punkt 3).
 
-   *Was ist `dirLoc`?* Im HAFAS-Request-Body ist `stbLoc` die **station** (StationBoard-Location — der Bahnhof, dessen Abfahrtstafel wir anfragen). `dirLoc` ist eine optionale **direction location** — ein zweiter Bahnhof, der **downstream** der Fahrt liegen muss. Setzt man `dirLoc.extId = EVA_WIEN_HBF`, antwortet der Server nur mit Zügen, deren Laufweg ab Atzgersdorf den Wiener Hauptbahnhof als (kommenden) Halt enthält. Das filtert die Gegenrichtung (Mödling, Wr. Neustadt, Liesing) automatisch heraus, ohne dass wir clientseitig Endhaltestellen-Strings vergleichen müssen. Funktional ist `dirLoc` eine *Pfad-Bedingung* („Fahrt enthält Haltepunkt X"), nicht ein *Zielfilter* („Endstation = X") — Züge mit Endstation Floridsdorf oder Praterstern sind also erlaubt, solange sie Hbf auf dem Weg streifen.
+   *Was ist `dirLoc`?* Im HAFAS-Request-Body ist `stbLoc` die **station** (StationBoard-Location — der Bahnhof, dessen Abfahrtstafel wir anfragen). `dirLoc` ist eine optionale **direction location** — ein zweiter Bahnhof, der **downstream** der Fahrt liegen muss. Setzt man `dirLoc.extId = OEBB_DIRLOC_EXTID` (= Wien Hbf), antwortet der Server nur mit Zügen, deren Laufweg ab Atzgersdorf den Wiener Hauptbahnhof als (kommenden) Halt enthält. Das filtert die Gegenrichtung (Mödling, Wr. Neustadt, Liesing) automatisch heraus, ohne dass wir clientseitig Endhaltestellen-Strings vergleichen müssen. Funktional ist `dirLoc` eine *Pfad-Bedingung* („Fahrt enthält Haltepunkt X"), nicht ein *Zielfilter* („Endstation = X") — Züge mit Endstation Floridsdorf oder Praterstern sind also erlaubt, solange sie Hbf auf dem Weg streifen.
 
    Die offene Frage: Reicht das in *allen* Fahrplan-Lagen, oder gibt es Edge-Cases, in denen HAFAS `dirLoc` ignoriert oder weniger streng auslegt? Bekannte Risiken:
    - **Triebwagen-Wende kurz nach Atzgersdorf**: Falls eine S-Bahn formal Richtung Hbf läuft, aber tatsächlich auf einem benachbarten Gleis als Leerfahrt wendet — Verhalten von HAFAS unklar, in der Praxis selten.
@@ -212,9 +212,9 @@ src/
 namespace bustaferl {
 
 struct OebbStreamFilter {
-  std::string stb_eva;   // EVA, Departure board station
-  std::string dir_eva;   // EVA, dirLoc → must touch this station downstream
-  std::string products;  // jnyFltrL "value", e.g. "63" (= S-Bahn+Regio+REX)
+  std::string stbloc_extid;  // HAFAS extId, Departure-Board station (Atzgersdorf)
+  std::string dirloc_extid;  // HAFAS extId, dirLoc → must touch this station downstream (Wien Hbf)
+  std::string products;      // jnyFltrL "value", e.g. "63" (= S-Bahn+Regio+REX)
   int max_jny = OEBB_MAX_JNY;
 };
 
@@ -291,7 +291,7 @@ Der HTTP-Status wird im Result-Struct mitgegeben (nicht via Out-Parameter, nicht
 
 `httpGet`/`httpGetStream` bekommen die gleiche `HttpResult`-Rückgabe in derselben Edit-Session (Schritt 1.2) — sonst hätten wir zwei Konventionen nebeneinander. Caller (`api_fetcher`) zählt `http_status ∈ {401,403}` über drei aufeinanderfolgende OGD-Calls und setzt damit den OGD-seitigen Auth-Tripwire (siehe State-Selector §2.2).
 
-Streaming-POST (analog zu `httpGetStream`) wird **nicht** in der ersten Iteration hinzugefügt. Begründung: HAFAS-Antworten sind 5–8 KB ([CONCEPT §v2-6](../CONCEPT.md#6-api-polling-quoten-und-wake-verhalten)), eine Größenordnung kleiner als die EFA-Antworten (~38 KB), die heute Streaming brauchen. Erst wenn Schritt 9 (Heap-Profiling) zeigt, dass die `std::string`-Variante die Heap-Reserve verletzt, kommt `httpPostStream` nach. YAGNI bis dahin.
+Streaming-POST (analog zu `httpGetStream`) wird **nicht** in der ersten Iteration hinzugefügt. Begründung: HAFAS-Antworten sind ~20.5–21.2 KB roh (Pre-Phase 2026-05-19), das ist ~½ der EFA-Antworten (~38 KB), die heute Streaming brauchen. Damit rückt der HAFAS-Pfad näher an die Streaming-Schwelle als ursprünglich aus [CONCEPT §v2-6](../CONCEPT.md#6-api-polling-quoten-und-wake-verhalten) (5–8 KB) angenommen — Schritt 9 (Heap-Profiling) misst, ob die `std::string`-Variante die Heap-Reserve verletzt. Wenn ja, kommt `httpPostStream` als Follow-up. YAGNI bis dahin, aber das Schwellen-Monitoring ist enger.
 
 `Esp32Network::httpPost` reused das bestehende `WiFiClientSecure` und die `setInsecure()`-Policy aus dem GET-Pfad — Let's-Encrypt-Cert für `fahrplan.oebb.at` liegt im Bundle, kein neues Root-Cert nötig (verifiziert via `openssl s_client -connect fahrplan.oebb.at:443` vor Schritt 1).
 
@@ -473,18 +473,26 @@ Neue Konstanten in `config.h`:
 
 ```cpp
 // ÖBB Wien Atzgersdorf → Wien Hauptbahnhof
-#define EVA_WIEN_ATZGERSDORF      "8100634"
-#define EVA_WIEN_HBF              "8100002"
+// Daten-Layer: HAFAS-interne Location-IDs pro Locality (NICHT die DB-EVAs;
+// 81xxxxxx resolvt zwar zum Namen, hat aber keine Fahrplanlegs gebunden —
+// siehe §4.1 Pre-Phase-Annahmen).
+#define OEBB_EXTID_ATZG           "1292301"   // Wien Atzgersdorf Bahnhst
+#define OEBB_EXTID_WIENHBF        "1290401"   // Wien Hbf (U)
+
+// Rollen-Layer: welche extId füllt welchen Request-Slot
+#define OEBB_STBLOC_EXTID         OEBB_EXTID_ATZG
+#define OEBB_DIRLOC_EXTID         OEBB_EXTID_WIENHBF
+
 #define OEBB_MGATE_URL            "https://fahrplan.oebb.at/bin/mgate.exe"
-#define OEBB_HAFAS_AID            "OWDL4fE4ixNiPBBm"   // TODO §0.1
+#define OEBB_HAFAS_AID            "OWDL4fE4ixNiPBBm"   // §4.1 Pre-Phase bestätigt
 #define OEBB_HAFAS_CLIENT_JSON \
   "{\"id\":\"OEBB\",\"type\":\"WEB\",\"name\":\"webapp\",\"l\":\"vs_webapp\"}"
 #define OEBB_HAFAS_VER            "1.67"
-#define OEBB_JNYFLTR_PRODUCTS     "63"                 // TODO §0.2
+#define OEBB_JNYFLTR_PRODUCTS     "63"                 // §4.1 Pre-Phase bestätigt
 #define OEBB_MAX_JNY              6
 ```
 
-`OEBB_HAFAS_AID`, `OEBB_HAFAS_CLIENT_JSON`, `OEBB_HAFAS_VER`, `OEBB_JNYFLTR_PRODUCTS` werden in Schritt 0 (Pre-Verifikation) aus der laufenden ÖBB-Webapp übernommen und in derselben Datei dokumentiert (`// confirmed against webapp on 2026-MM-DD`).
+`OEBB_HAFAS_AID`, `OEBB_HAFAS_CLIENT_JSON`, `OEBB_HAFAS_VER`, `OEBB_JNYFLTR_PRODUCTS` sind in der Pre-Phase 2026-05-19 empirisch bestätigt (siehe §4.1). Bei künftiger AID-Rotation (Tripwire feuert) hier mit neuem Wert + Kommentar `// re-confirmed against webapp on 2026-MM-DD` aktualisieren.
 
 Display-State-Schwellwerte:
 
@@ -535,7 +543,7 @@ Entfernt (Schritt 2.4 löscht **alle** U1-Konstanten, kein Reststand):
 ### 3.2 Cons
 
 - **AID/Client/jnyFltrL-Brüchigkeit.** ÖBB rotiert diese Werte ohne Vorankündigung. Mitigation: Pre-Flash-Verifikation in Schritt 0 + `FilterHealth` für S-Bahn-Stream + Fullscreen-Auth-Fehler-Screen ([docs/design_handoff_display/README.md §6](design_handoff_display/README.md)).
-- **Heap-Spitze beim HTTPS-POST** noch nicht profiled. Bestehende Heap-Wächter in [src/logic/schedule_fetcher.cpp](../src/logic/schedule_fetcher.cpp) sind auf den EFA-Fall zugeschnitten; HAFAS-Pfad braucht eigene Messung (Schritt 10). Risiko mittel — die Antwortgröße ist 5–8 KB statt 38 KB.
+- **Heap-Spitze beim HTTPS-POST** noch nicht profiled. Bestehende Heap-Wächter in [src/logic/schedule_fetcher.cpp](../src/logic/schedule_fetcher.cpp) sind auf den EFA-Fall zugeschnitten; HAFAS-Pfad braucht eigene Messung (Schritt 10). Risiko mittel-hoch — die Antwortgröße ist ~20.5–21.2 KB statt 38 KB (Pre-Phase 2026-05-19); siehe V3.
 - **Renderer-Rewrite ist substantiell.** [src/render/layout.cpp](../src/render/layout.cpp) wird nicht inkrementell patcht, sondern ersetzt durch fünf neue Sub-Module + neues `layout.cpp`. Ohne Pixel-Match-Tests (es gibt keine) ist die Validation visuell — Risiko, dass kleine Geometrie-Drift erst beim Roll-out auffällt. Mitigation: `RecordingRenderer` der Native-Runtime kann PGM-Dumps schreiben, A/B-Vergleich gegen Design-Screenshots aus `docs/design_handoff_display/screen-*.png` möglich (pixel-vergleichend, aber Glyph-Spritedaten in Bitmap-Fonts müssen 1:1 zum Design-VT323/Silkscreen passen).
 - **Font-Daten in Flash.** Zwei Bitmap-Fonts in vier bzw. fünf Größen kosten je nach Stack ~20–80 KB Flash (U8g2 packt ~1 KB pro Font-Size; Custom-PROGMEM ist enger). Bestehende Firmware ist ~600 KB, ESP32-Flash hat 4 MB — Headroom ausreichend, aber sichtbarer Anstieg in `make size`.
 - **RTC-Frame-MAGIC-Bump** verwirft beim Update den letzten gerenderten Frame → erstes Wake nach Update macht Light Full statt Partial. Einmalig, akzeptabel.
@@ -618,6 +626,16 @@ Plan-Reifungs-Stand: **2026-05-19** (alle untenstehenden Festlegungen tragen die
 | C12 | 7.6 | ▼-Glyph im Netzplan als **5×5-Custom-Triangle-Sprite**, nicht aus dem Font. | U8g2-Glyph-Verfügbarkeit auf 10-px-Höhe ist font-versionsabhängig; deterministischer 25-Pixel-Sprite ist robuster und 30 B groß. |
 | Plan-Reifung | §2.2 | Auth-State wird über **Parser-Flag** `auth_error_seen` getriggert (HAFAS `err: "AID"`/`"AUTH"`), nicht über HTTP-401/403. OGD-401/403 als sekundäre Tripwire. | HAFAS sendet auth-Failure als HTTP 200 + Body-err-Code; reine HTTP-Status-Logik liefe in den Auth-Pfad nicht hinein. |
 | Plan-Reifung | 2.7 | `first_render_ever ⇒ Boot-Screen` greift **auch nach jedem Firmware-Update** (MAGIC-Bumps invalidieren Meta). | Gewollt: visuelle Bestätigung, dass das Update gelaufen ist; einmaliges Boot-Wake nach Update ist akzeptabel. |
+| Pre-Phase 2026-05-19 | §2.4 / 0.1 | **Station-extIds sind HAFAS-interne Location-IDs, nicht die DB-EVAs.** Atzgersdorf = `1292301` („Wien Atzgersdorf Bahnhst"), Wien Hbf = `1290401` („Wien Hbf (U)"). Die 8-stelligen `81xxxxxx`-EVAs aus CONCEPT §v2 resolven zum Stationsnamen, aber HAFAS hängt keine Fahrplanlegs daran → leere `jnyL`. | LocMatch-Befund 2026-05-19 (`.tmp/poc-oebb/locmatch-atzgersdorf.json`); Variant mit neuen IDs liefert 6 jnyL, alte IDs 0. |
+| Pre-Phase 2026-05-19 | 0.1 | **AID `OWDL4fE4ixNiPBBm` empirisch bestätigt** über vier PoC-Aufrufe in 30 min: HTTP 200, `err=OK`, 6 reale Departures pro Antwort. DevTools-Mitschnitt nicht erforderlich. | C1-Weg-A erfolgreich; AID muss erst nachverifiziert werden, wenn `auth_error_seen`-Tripwire feuert. |
+| Pre-Phase 2026-05-19 | 0.2 | **`jnyFltrL.value = "63"` empirisch korrekt.** Ohne Filter liefert HAFAS 9 Treffer inkl. Bus (`cls=64`); mit „63" (Bits 0–5) bleiben 6 Bahn-Treffer (`cls=16,32`). Empirisch identisch zu „1023" → engere Maske wäre möglich, aber „63" ist robust. | C2-Weg-A erfolgreich; DevTools-Toggle entfällt. |
+| Pre-Phase 2026-05-19 | 0.3 | **`dirLoc` filtert Gegenrichtung serverseitig wie erwartet.** Variante ohne dirLoc liefert `S 2 → Mödling Bahnhof` (Gegenrichtung); mit `dirLoc.extId=1290401` listet HAFAS ausschließlich Züge Richtung Marchegg/Wolkersdorf/Absdorf/Gänserndorf/Mistelbach/Hollabrunn (via Wien Hbf). Kein clientseitiger `dirTxt`-Healthcheck nötig. | Risiko V2 entschärft; Akzept-Liste in §1.5 Daten-Schicht Item 3 wird nicht implementiert. Spätabend-Drift wird im Live-Betrieb am Display sichtbar. |
+| Pre-Phase 2026-05-19 | 0.4 | **TLS-Issuer = DigiCert Global G2 TLS RSA SHA256 2020 CA1** (im `WiFiClientSecure`-Standard-Bundle). Cert gültig bis 2026-12-08. | `setInsecure()` reicht; expliziter Root-Cert-Mitgabe nicht erforderlich. |
+| Pre-Phase 2026-05-19 | §2.4 / Schritt 3.5 | **`cfg`-Block im Request weglassen.** `{"polyEnc":"GPA","rtMode":"HYBRID"}` produziert `err=PARSE` (HTTP 200, 254 B Antwort). Der Request bleibt ohne `cfg`. | E_with_cfg-Variant 2026-05-19. |
+| Pre-Phase 2026-05-19 | Schritt 3.5 | **`line_label = whitespace_strip(prodL[i].nameS)`**, nicht `name`. `nameS` ist die kanonische Kurzform (`"S 1"`, `"REX 1"`); `name` enthält die Zugnummer als Anhang (`"S 1 (Zug-Nr. 28842)"`) und ist nicht für `line_label[6]` geeignet. Whitespace strippen → `"S1"`, `"REX1"` (passt in 5 ASCII + `\0`). | Schema-Inspektion 2026-05-19. |
+| Pre-Phase 2026-05-19 | Schritt 3.5 | **Zeit-Felder `dTimeS`/`dTimeR` sind `HHMMSS` (6-stellig)**, nicht HHMM. Parser muss die Sekunden trimmen oder als Teil der Zeit interpretieren. | Smoke-Daten zeigen `142900` = 14:29:00. |
+| Pre-Phase 2026-05-19 | V3 / §5 | **Antwortgröße liegt bei ~20.5–21.2 KB roh** (drei Samples 14:31/14:46/15:01: 20506/21133/21188 B), nicht 5–8 KB wie in V3 angenommen. Treiber: `prodL[].himIdL` enthält pro Linie 17–55 FREETEXT-Referenzen. | Risiko V3 muss nachgeschärft werden (Mitigation: Parser ignoriert `himIdL` komplett — reduziert Parse-Zeit, vermeidet unnötige ArduinoJson-DOM-Knoten). |
+| Pre-Phase 2026-05-19 | §2.4 / 2.5 | **Konstanten-Schema: Daten-Layer + Rollen-Layer.** `OEBB_EXTID_ATZG = "1292301"` und `OEBB_EXTID_WIENHBF = "1290401"` sind die physischen Tatsachen (Locality → HAFAS-extId); `OEBB_STBLOC_EXTID = OEBB_EXTID_ATZG` und `OEBB_DIRLOC_EXTID = OEBB_EXTID_WIENHBF` binden Request-Rolle an Locality. Beide Achsen unabhängig editierbar. | Auftraggeber-Festlegung 2026-05-19; Memory [`feedback-locality-names`](../.claude/projects/.../memory/feedback-locality-names.md). |
 
 Weitere Annahmen werden hier nachgetragen, sobald die Umsetzung beginnt.
 
@@ -652,8 +670,10 @@ Weitere Annahmen werden hier nachgetragen, sobald die Umsetzung beginnt.
 - **P.4** **Erkenntnisse als §4.1-Annahme einchecken.** Format-Beispiel:
 
   ```text
-  **[Pre-Phase, 2026-MM-DD]** AID "OWDL4fE4ixNiPBBm" funktioniert,
-  jnyFltrL "63" liefert S-Bahn+REX, dirLoc sauber, Antwortgröße ~5.4 KB.
+  **[Pre-Phase, 2026-05-19]** AID "OWDL4fE4ixNiPBBm" funktioniert,
+  jnyFltrL "63" liefert S-Bahn-Linien S1/S2/S3/S4, dirLoc filtert Gegenrichtung,
+  Antwortgröße ~20.5–21.2 KB roh (himIdL-Treiber). HAFAS-extIds 1292301/1290401,
+  NICHT die DB-EVAs (siehe §4.1).
   ```
 
   Damit ist Schritt 0.1/0.2/0.3 entweder **bestätigt** (DevTools-Mitschnitt entfällt) oder **rotwarnend** (DevTools-Sweep wird Pflicht).
@@ -683,7 +703,9 @@ Blocker für alle nachfolgenden Schritte. Ergebnis sind verifizierte HAFAS-Konst
 
 - **0.1** **AID/Client-Werte abfangen.** DevTools öffnen auf `https://fahrplan.oebb.at/webapp`, eine beliebige Abfahrtsabfrage Atzgersdorf → Wien Hbf machen, im Network-Tab den `mgate.exe`-Request finden, Request-Body als JSON parsen. Felder `auth.aid`, `client.id`, `client.type`, `client.name`, `client.l`, `ver` notieren. Werte als HEREDOC-Block in `docs/v2-sbahn-migration-plan.md` Anhang A einchecken (Beleg für künftige Updates), und in `config.h` als `OEBB_HAFAS_AID`, `OEBB_HAFAS_CLIENT_JSON`, `OEBB_HAFAS_VER` setzen.
 - **0.2** **`jnyFltrL`-Bitmask bestimmen.** In derselben DevTools-Session den Produktfilter der Webapp einmal toggeln (S-Bahn aus, S-Bahn an). Vergleichen, welches `jnyFltrL[].value`-Feld wechselt — das ist der Bitvektor für „nur S-Bahn", umgekehrt für die Maske inkl. Regio+REX. Wert in `config.h` als `OEBB_JNYFLTR_PRODUCTS` setzen.
-- **0.3** **`dirLoc` über zwei Werktage gestaffelt gegenchecken.** Sechs mgate-Requests (drei Tageszeiten × zwei Werktage) mit `stbLoc.extId = EVA_WIEN_ATZGERSDORF`, `dirLoc.extId = EVA_WIEN_HBF`, `maxJny = 10`: Hauptverkehr (~7:30), Mittag (~13:00) und Spätabend (~22:00). Zwei aufeinanderfolgende Werktage absichern Werktagsfahrplan-Varianz; Wochenende ist hier nicht relevant (Atzgersdorf-S-Bahn fährt Mo-Fr dichter, am Wochenende ändert sich nur die Frequenz, nicht die Richtung). Antworten aus dem Network-Tab (oder PoC-Skript-Output) in `.tmp/hafas-fixtures/` ablegen. Pro Antwort: enthält die Liste nur Züge Richtung Hauptbahnhof, oder mischen sich Gegenrichtungs-Departures (Mödling/Wr. Neustadt) durch? Wenn ja → Schritt 3 erweitert um clientseitigen Direction-Healthcheck via `jnyL[i].dirTxt`.
+- **0.3** **`dirLoc` über zwei Werktage gestaffelt gegenchecken.** Sechs mgate-Requests (drei Tageszeiten × zwei Werktage) mit `stbLoc.extId = OEBB_STBLOC_EXTID`, `dirLoc.extId = OEBB_DIRLOC_EXTID`, `maxJny = 10`: Hauptverkehr (~7:30), Mittag (~13:00) und Spätabend (~22:00). Zwei aufeinanderfolgende Werktage absichern Werktagsfahrplan-Varianz; Wochenende ist hier nicht relevant (Atzgersdorf-S-Bahn fährt Mo-Fr dichter, am Wochenende ändert sich nur die Frequenz, nicht die Richtung). Antworten aus dem Network-Tab (oder PoC-Skript-Output) in `.tmp/hafas-fixtures/` ablegen. Pro Antwort: enthält die Liste nur Züge Richtung Hauptbahnhof, oder mischen sich Gegenrichtungs-Departures (Mödling/Wr. Neustadt) durch? Wenn ja → Schritt 3 erweitert um clientseitigen Direction-Healthcheck via `jnyL[i].dirTxt`.
+
+  > **Festlegung 2026-05-19**: dirLoc-Wirksamkeit ist durch das Vergleichspaar „mit dirLoc" vs „ohne dirLoc" (Pre-Phase Debug-Varianten) belegt — Variante ohne dirLoc liefert `S 2 → Mödling`, Variante mit dirLoc filtert sie serverseitig aus. Die ursprüngliche Sechs-Request-Schleife (3 Tageszeiten × 2 Werktage) entfällt. Sparse-Mode-Drift (Spätabend) wird im echten Live-Betrieb am Display erkannt — falsche Gegenrichtungs-Departures sind visuell offensichtlich; bei Auffälligkeit wird der clientseitige `dirTxt`-Healthcheck nachgerüstet.
 - **0.4** **Cert-Check.** `openssl s_client -connect fahrplan.oebb.at:443 -servername fahrplan.oebb.at < /dev/null 2>/dev/null | openssl x509 -noout -issuer` → Issuer notieren. Wenn nicht in `WiFiClientSecure`-Bundle (Let's Encrypt, DigiCert, ISRG) → in Schritt 1 explizit ein Root-Cert mitgeben statt `setInsecure()`.
 
 **Render-Stack (0.6–0.8):**
@@ -799,7 +821,7 @@ Atomarer Schritt: Stream-Enum + `Departure::line_label` + `Departure::live()` + 
      - andere err-Codes (`"FAIL"`, `"PROBLEMS"`, …) → `result.endpoint_responded = false`, return true.
   2. `doc["svcResL"][0]["res"]["jnyL"]` als Array — wenn null → `result.endpoint_responded = true`, `result.filter_matched = false`, return true.
   3. Pro `jny`: `jny["stbStop"]["dCncl"]` → Cancelled skippen; `jny["stbStop"]["dTimeS"]` + `["dDateS"]` lesen, optional `dTimeR` + `dDateR`. Konvertieren via Howard-Hinnant + `TZ_INFO` (analog [src/data/wienerlinien_parse.cpp:32-79](../src/data/wienerlinien_parse.cpp#L32)). HAFAS liefert Zeiten in **Europe/Vienna lokal ohne TZ-Suffix**; die DST-Brüche werden serverseitig bereits aufgelöst, lokale Zeit → epoch-Konvertierung erfolgt über `TZ_INFO` ohne weitere Anpassung.
-  4. `jny["prodL"][0]` als Index in `doc["svcResL"][0]["res"]["common"]["prodL"]`, daraus `name` (oder `nameS`) lesen → `line_label` (mit `strncpy`, null-terminieren, abkürzen zu `"xx"` wenn länger als 5).
+  4. `jny["prodL"][0]` als Index in `doc["svcResL"][0]["res"]["common"]["prodL"]`, daraus `nameS` lesen, **alle Whitespaces strippen**, in `line_label` schreiben (mit `strncpy`, null-terminieren, abkürzen zu `"xx"` wenn länger als 5). Pre-Phase 2026-05-19 zeigt: `nameS = "S 1"` → `line_label = "S1"`; `nameS = "REX 1"` → `"REX1"`. Das Feld `name` enthält die Webapp-Display-Form mit angehängter Zugnummer (`"S 1 (Zug-Nr. 28842)"`) und wird nicht ausgewertet.
   5. Slot füllen, bis `SLOTS_PER_STREAM` erreicht.
   6. `result.endpoint_responded = true`, `result.filter_matched = (matched_count > 0)`, `result.auth_error_seen = false`.
 
@@ -836,8 +858,8 @@ Atomarer Schritt: Stream-Enum + `Departure::line_label` + `Departure::live()` + 
   ```cpp
   OebbStreamFilter buildOebbFilter() {
     OebbStreamFilter f;
-    f.stb_eva = EVA_WIEN_ATZGERSDORF;
-    f.dir_eva = EVA_WIEN_HBF;
+    f.stbloc_extid = OEBB_STBLOC_EXTID;
+    f.dirloc_extid = OEBB_DIRLOC_EXTID;
     f.products = OEBB_JNYFLTR_PRODUCTS;
     f.max_jny = OEBB_MAX_JNY;
     return f;
@@ -1119,7 +1141,7 @@ Sammelschritt für alle Test-Touch-Sites, die durch STREAM_COUNT-Änderung, neue
 
 - [ ] erledigt
 
-- **10.1** [CONCEPT.md §v2-11](../CONCEPT.md#11-migrationsschritte-zur-späteren-umsetzung-nicht-teil-dieses-konzepts): Header von „Migrationsschritte (zur späteren Umsetzung, nicht Teil dieses Konzepts)" auf „Migrationsschritte (umgesetzt, siehe [docs/v2-sbahn-migration-plan.md](docs/v2-sbahn-migration-plan.md))" ändern. Liste der elf Sub-Steps abhaken oder durch Verweis auf diesen Plan ersetzen. Zusätzlich: CONCEPT.md §v2-7 (Layout-Block 3) durch Verweis auf `docs/design_handoff_display/` ersetzen oder synchronisieren — das alte Block-3-Mockup ist nach Schritt 7 nicht mehr aktuell.
+- **10.1** [CONCEPT.md §v2-11](../CONCEPT.md#11-migrationsschritte-zur-späteren-umsetzung-nicht-teil-dieses-konzepts): Header von „Migrationsschritte (zur späteren Umsetzung, nicht Teil dieses Konzepts)" auf „Migrationsschritte (umgesetzt, siehe [docs/v2-sbahn-migration-plan.md](docs/v2-sbahn-migration-plan.md))" ändern. Liste der elf Sub-Steps abhaken oder durch Verweis auf diesen Plan ersetzen. Zusätzlich: CONCEPT.md §v2-7 (Layout-Block 3) durch Verweis auf `docs/design_handoff_display/` ersetzen oder synchronisieren — das alte Block-3-Mockup ist nach Schritt 7 nicht mehr aktuell. **Zusätzlich (Pre-Phase 2026-05-19)**: CONCEPT.md §v2-3 (Datenquellen-Tabelle, ca. Z. 420–425) und §v2-4 (Request-Schema, ca. Z. 445–457, 493–494, 603) korrigieren bzw. ergänzen, dass die 8-stelligen EVAs (`8100634` / `8100002`) nur für die Legacy-`stboard.exe`-HTML-Schnittstelle gelten; für `mgate.exe` benötigt HAFAS die internen Location-IDs `1292301` (Atzgersdorf) und `1290401` (Wien Hbf). Belege-Block ergänzen: LocMatch-Query gegen `mgate.exe` als nachvollziehbarer Weg, die HAFAS-IDs zu beschaffen.
 - **10.2** [README.md](../README.md) Zeile 4: „nächste Abfahrten der Wiener-Linien-Buslinien 58A, 58B" um „und der ÖBB-S-Bahn Atzgersdorf → Wien Hbf" ergänzen. Display-ASCII-Block (Zeile 10-18) komplett ersetzen durch das neue Layout-Schema aus [docs/design_handoff_display/README.md](design_handoff_display/README.md). Banner-Liste entfällt (Stale ist jetzt `--:--`-Signal statt Banner); stattdessen die 7 Display-States in zwei Sätzen erklären, mit Verweis auf USER.md.
 - **10.3** [docs/ARCHITECTURE.md](ARCHITECTURE.md) Modulkarte: `oebb_hafas_parse.{h,cpp}` in `data/` eintragen; in `render/` die fünf neuen Sub-Module (`bitmap_fonts`, `badge`, `plan_marker`, `network_plan`, `display_state`). „Wo welche Konstante wirkt"-Tabelle ergänzen (`OEBB_*`, `OFFLINE_THRESHOLD_S`, `QUIET_HORIZON_S` …). Speicher-Layout: `Departure::line_label` als zusätzliche 6 B pro Slot + Font-Daten in Flash (~20–80 KB) vermerken. Zustandsmaschine: `OverlayKind` → `DisplayState` aktualisieren.
 - **10.4** [docs/HANDBUCH.md](HANDBUCH.md): **kompletter Rewrite des Display-Abschnitts** — alle 7 States dokumentieren, Screenshots aus `docs/design_handoff_display/screen-*.png` einbetten (sind schon im Repo, müssen nicht neu erzeugt werden). Plan-Marker-Erklärung. Netzplan-Erklärung mit „you are here"-Marker.
@@ -1225,7 +1247,7 @@ Sieben Sessions, abwechselnd Auftraggeber-getrieben (HW-/Netzwerk-Zugang) und Co
 |---|---|---|---|---|
 | V1 | **AID/Client-Wert rotiert nach Release.** ÖBB ändert die Webapp-AID, unsere hartkodierte funktioniert nicht mehr. | mittel | Banner „Auth ungültig" auf dem Display, Re-Flash nötig | Schritt 0.1 dokumentiert die Werte mit Datum; FilterHealth fängt Drift; Auth-Screen ist Auftrag, AID zu aktualisieren — kein stilles Versagen |
 | V2 | **`dirLoc`-Filter lässt Gegenrichtung durch.** HAFAS zeigt trotz `dirLoc.extId = Hbf` Züge Richtung Mödling/Wr. Neustadt. | gering (PoC-Antworten in der Webapp sauber) | falsche Züge im Display, Vorzimmer-User verpasst tatsächliche Abfahrt | Pre-Phase P.3 sweep über drei Tageszeiten; wenn auch nur einmal Gegenrichtung sichtbar → clientseitiger `dirTxt`-Check in Schritt 3 (Akzept-Liste in §1.5 Daten-Schicht Item 3) |
-| V3 | **HTTPS-Antwort sprengt ESP32-Heap.** HAFAS-Antworten sind 5–8 KB groß. Während TLS-Handshake aktiv ist, fragmentiert der Heap; sinkt der freie Heap unter ~50 KB, crasht mbedtls. Der bestehende EFA-Pfad (38 KB) hat dafür Streaming + Heap-Wächter — der neue HAFAS-Pfad startet ohne. | mittel (Antwort 5× kleiner als EFA, aber neue Allocation-Klasse) | OOM-Crash beim ersten HAFAS-Call, ESP32 rebootet | Schritt 9 misst Peak-Heap auf Device + Native-Runtime mit valgrind; wenn Spitze gefährlich → `httpPostStream` als Follow-up (Streaming-Pendant zu `httpGetStream`) |
+| V3 | **HTTPS-Antwort sprengt ESP32-Heap.** HAFAS-Antworten sind ~20.5–21.2 KB roh (Pre-Phase 2026-05-19: 20506/21133/21188 B über 30 min), **nicht** die ursprünglich angenommenen 5–8 KB — Treiber sind `prodL[].himIdL`-Listen mit 17–55 FREETEXT-Referenzen pro Linie. Während TLS-Handshake aktiv ist, fragmentiert der Heap; sinkt der freie Heap unter ~50 KB, crasht mbedtls. Der bestehende EFA-Pfad (38 KB) hat dafür Streaming + Heap-Wächter — der neue HAFAS-Pfad startet ohne. | mittel-hoch (Antwort ~2× kleiner als EFA, aber neue Allocation-Klasse + näher an der Streaming-Schwelle als angenommen) | OOM-Crash beim ersten HAFAS-Call, ESP32 rebootet | Schritt 9 misst Peak-Heap auf Device + Native-Runtime mit valgrind; wenn Spitze gefährlich → `httpPostStream` als Follow-up (Streaming-Pendant zu `httpGetStream`) ODER Parser ignoriert `himIdL` komplett (reduziert Parse-Zeit, vermeidet unnötige ArduinoJson-DOM-Knoten — Body bleibt aber im `std::string`-Buffer, kein RTC-/Heap-Vorteil bei der Pufferung selbst). |
 | V4 | **RTC-Slow-Memory-Reserve wird eng.** ESP32 hat 8 KB RTC-Slow-Memory; nutzen heute ~7.3 KB. Nach v2 zusätzlich `Departure::line_label` (48 B über alle Slots) und etwas Display-Frame-Varianz. Bleiben ~864 B Reserve — für künftige Features (mehr Slots, mehr Meta-Felder) eng. | gering | nächste Erweiterung muss RLE-Hardcap senken oder ein anderes Feld kürzen, kein direktes v2-Problem | Bilanz in [Anhang B](#anhang-b--rtc-bilanz-nach-v2) führt die Belegung; Schritt 9 misst die tatsächliche RLE-Größe nach Display-Redesign |
 | V5 | **`STREAM_COUNT == 5`-Annahmen werden übersehen.** Heute haben wir 5 Streams (3 Bus + 2 U1), nach v2 nur 4. Wenn irgendwo im Code `Departure foo[5]` statt `Departure foo[STREAM_COUNT]` steht, kompiliert es weiter, liest aber Garbage am Ende. Tests sind die häufigste Stelle. | mittel | Compile-Fehler oder stiller Garbage-Read im betroffenen Test/Modul | Schritt 8 ist Sammelschritt für Test-Touch-Sites; `make ci` enforced alle Buckets nach jeder Stream-Index-Änderung |
 | V6 | **Bestehende Hint-Tests brechen, weil Stream-Index 3 die Bedeutung wechselt.** `test_longterm_horizon_evening` prüft heute, dass am Abend an Index 3 (U1-Leopoldau) EFA-Hint-Daten erscheinen. Nach v2 ist Index 3 die S-Bahn — die hat *keinen* Hint-Pfad (Variante 1). Der Test schlägt fehl. | hoch | rote Tests bis aktiv umgestellt | Schritt 8.4 listet die fünf betroffenen `test_longterm_*`-Buckets und ihre konkreten Anpassungen |
@@ -1284,6 +1306,8 @@ Coverage-Ziel bleibt: `logic/` + `data/` ≥ 90 %; neue `oebb_hafas_parse.cpp` b
 
 Format wird in Schritt 0.1 finalisiert. Hier der Vor-Verifikations-Stand aus [CONCEPT §v2-4](../CONCEPT.md#4-request-schema-primär-mgateexe):
 
+Pre-Phase 2026-05-19 hat den Vertrag empirisch verifiziert (Fixtures unter `.tmp/poc-oebb/sample-{1,2,3}.json`). Die Werte unten sind die bestätigten Konstanten — bei künftiger AID-Rotation oder ID-Drift diesen Block aktualisieren mit Datum.
+
 **Request-Body** (POST `https://fahrplan.oebb.at/bin/mgate.exe`):
 
 ```json
@@ -1298,8 +1322,8 @@ Format wird in Schritt 0.1 finalisiert. Hier der Vor-Verifikations-Stand aus [CO
     "meth": "StationBoard",
     "req": {
       "type": "DEP",
-      "stbLoc": { "type": "S", "extId": "8100634" },
-      "dirLoc": { "type": "S", "extId": "8100002" },
+      "stbLoc": { "type": "S", "extId": "1292301" },
+      "dirLoc": { "type": "S", "extId": "1290401" },
       "maxJny": 6,
       "jnyFltrL": [{ "type": "PROD", "mode": "INC", "value": "63" }]
     }
@@ -1307,18 +1331,27 @@ Format wird in Schritt 0.1 finalisiert. Hier der Vor-Verifikations-Stand aus [CO
 }
 ```
 
+Die `extId`-Werte sind HAFAS-interne Location-IDs für „Wien Atzgersdorf Bahnhst" (`1292301`) und „Wien Hbf (U)" (`1290401`). Sie unterscheiden sich von den 8-stelligen DB-EVAs (`8100634` / `8100002`), die nur für die Legacy-`stboard.exe`-HTML-Schnittstelle funktionieren. Quelle: `mgate.exe`-`LocMatch`-Service.
+
+**Optional NICHT setzen:**
+
+- `cfg`-Block (z. B. `{"polyEnc":"GPA","rtMode":"HYBRID"}`) führt zu `err=PARSE`. Pre-Phase 2026-05-19 verifiziert.
+
 **Response-Felder, die geparst werden**:
 
 - `err` — Wert-abhängige Auswertung:
   - `"OK"` → erfolgreicher Parse, weiter mit `svcResL`
   - `"AID"` / `"AUTH"` → `OebbParseResult.auth_error_seen = true` (triggert Auth-Screen, siehe State-Selector §2.2)
-  - alle anderen (`"FAIL"`, `"PROBLEMS"`, …) → `OebbParseResult.endpoint_responded = false`, Stale/Offline-Pfad
+  - alle anderen (`"FAIL"`, `"PROBLEMS"`, `"PARSE"`, …) → `OebbParseResult.endpoint_responded = false`, Stale/Offline-Pfad
 - `svcResL[0].res.jnyL[i]` — Liste der Departures
   - `.stbStop.dCncl` — Cancelled
   - `.stbStop.dDateS` (`YYYYMMDD`) + `.stbStop.dTimeS` (`HHMMSS`) — Plan-Abfahrt
   - `.stbStop.dDateR` + `.stbStop.dTimeR` — Echtzeit-Abfahrt (optional)
   - `.prodL[0]` — Index in `svcResL[0].res.common.prodL[]`
-- `svcResL[0].res.common.prodL[i].name` (oder `nameS`) — Linienkennung wie `"S2"`, `"REX1"`
+  - `.dirTxt` — vom Server gerenderte Ziel-Anzeige (z. B. `"Wolkersdorf im Weinviertel Bahnhof"`). Nicht in `line_label` übernehmen — zu lang; nur für optionalen Direction-Healthcheck, falls künftig dirLoc unzuverlässig wird.
+- `svcResL[0].res.common.prodL[i].nameS` — Linienkennung im Format `"S 1"` / `"REX 1"` (mit Leerzeichen); Parser strippt Whitespace zu `"S1"` / `"REX1"`. Das Feld `name` ist die Webapp-Display-Form mit angehängter Zugnummer (`"S 1 (Zug-Nr. 28842)"`) und wird nicht ausgewertet.
+- `svcResL[0].res.common.prodL[i].prodCtx.lineId` (optional) — stabiler Linien-Schlüssel im Format `"at:obb:vor|S1:"`, nützlich falls künftig Deduplizierung oder Linien-Cache nötig wird. Aktuell nicht ausgewertet.
+- `svcResL[0].res.common.prodL[i].himIdL` — Service-Meldungs-Referenzen (FREETEXT-IDs). Aktuell **nicht ausgewertet**; Parser sollte das Array überspringen, weil es ~80 % der Antwortgröße ausmacht (siehe V3 in §5).
 
 **HTTP-Layer** — `HttpResult.http_status` aus [Schritt 1.1](#schritt-1--inetworkhttppost--esp32networkhttppost):
 
@@ -1365,10 +1398,10 @@ ESP32-Flash 4 MB — beide Optionen weit unter Limit.
 
 | # | Frage | Antwort-Schritt / Festlegung |
 |---|---|---|
-| C1 | Aktuelle AID/Client/ver-Werte der ÖBB-Webapp? | 0.1 — **Festlegung 2026-05-19: Weg A** (PoC-Skript mit CONCEPT-Default-AID; DevTools nur als Fallback, wenn PoC scheitert) |
-| C2 | Bitmask-Wert von `jnyFltrL` für S-Bahn+Regio+REX? | 0.2 — Default `"63"` aus CONCEPT; empirisch via PoC-Antwort-Sichtung bestätigen |
-| C3 | Reicht `dirLoc` als Gegenrichtungs-Filter (Hauptverkehr/Mittag/Spätabend)? | 0.3 — entscheidet sich in Pre-Phase P.3; clientseitiger `dirTxt`-Healthcheck nur falls Gegenrichtung durchsickert |
-| C4 | TLS-Cert-Issuer von `fahrplan.oebb.at` im `WiFiClientSecure`-Bundle? | 0.4 |
+| C1 | Aktuelle AID/Client/ver-Werte der ÖBB-Webapp? | 0.1 — **bestätigt 2026-05-19** via PoC-Smoke: AID `OWDL4fE4ixNiPBBm` + Client-Werte aus CONCEPT §v2-4 liefern HTTP 200 + `err=OK` + reale Departures über vier Aufrufe in 30 min. |
+| C2 | Bitmask-Wert von `jnyFltrL` für S-Bahn+Regio+REX? | 0.2 — **bestätigt 2026-05-19**: `"63"` filtert Bus (`cls=64`) zuverlässig aus, lässt Bahn (`cls=16,32`) durch; identisch zu `"1023"`-Antwort. |
+| C3 | Reicht `dirLoc` als Gegenrichtungs-Filter (Hauptverkehr/Mittag/Spätabend)? | 0.3 — **bestätigt 2026-05-19** (Mittag-Sample): Variante ohne dirLoc zeigt `S 2 → Mödling`, mit `dirLoc.extId=1290401` filtert HAFAS Gegenrichtung serverseitig aus. Sparse-Mode-Drift wird im Live-Betrieb am Display sichtbar; bei Auffälligkeit `dirTxt`-Healthcheck nachrüsten. |
+| C4 | TLS-Cert-Issuer von `fahrplan.oebb.at` im `WiFiClientSecure`-Bundle? | 0.4 — **bestätigt 2026-05-19**: DigiCert Global G2 TLS RSA SHA256 2020 CA1 (im Standard-Bundle); Cert gültig bis 2026-12-08. |
 | C5 | Variante 1 (kein Hint) oder Variante 2 (HAFAS-Hint-Call) für S-Bahn? | bleibt bei Variante 1 (Default aus CONCEPT §v2-8); Re-Eval nach v2-Roll-out wenn Bedarf |
 | C6 | 2 oder 3 Slots für den S-Bahn-Stream? | bleibt bei 2 (Variante A aus CONCEPT §v2-5.2); Re-Eval nach v2-Roll-out |
 | C7 | Heap-Verhalten des HAFAS-Calls? | misst Schritt 9 |
