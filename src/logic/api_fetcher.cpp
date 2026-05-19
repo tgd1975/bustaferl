@@ -25,10 +25,16 @@ FetchOutcome fetchWithRetry(INetwork &net, const std::string &url,
   for (int attempt = 1; attempt <= cfg.max_attempts; ++attempt) {
     out.attempts_taken = attempt;
     body.clear();
-    if (net.httpGet(url, body)) {
+    HttpResult r = net.httpGet(url, body);
+    out.http_status = r.http_status;
+    if (r.ok && r.http_status >= 200 && r.http_status < 300) {
       out.ok = true;
       return out;
     }
+    // Auth-class statuses (401/403) are not retried in Schritt 5.6's policy,
+    // but Session B keeps the conservative behavior (retry-everything) until
+    // the OEBB pipeline lands. The OGD path has been retrying transport-fails
+    // for months without issue, so no churn here.
     if (attempt < cfg.max_attempts) {
       sleepMsBetweenAttempts(cfg.backoff_ms_base * attempt);
     }

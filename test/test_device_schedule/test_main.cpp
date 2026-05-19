@@ -87,7 +87,12 @@ void test_single_efa_call_does_not_crash() {
                                 query_time, cfg.limit);
   logHeap("pre-single-call");
   std::string body;
-  TEST_ASSERT_TRUE_MESSAGE(g_net.httpGet(url, body), "single EFA GET failed");
+  {
+    auto _r = g_net.httpGet(url, body);
+    TEST_ASSERT_TRUE_MESSAGE(_r.ok && _r.http_status >= 200 &&
+                                 _r.http_status < 300,
+                             "single EFA GET non-2xx");
+  }
   Serial.printf("[efa] single body=%u bytes\n",
                 static_cast<unsigned>(body.size()));
   logHeap("post-single-call");

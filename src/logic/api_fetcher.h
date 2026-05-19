@@ -19,12 +19,15 @@ struct FetchConfig {
 struct FetchOutcome {
   bool ok = false;
   int attempts_taken = 0; // populated whether or not ok is true
+  int http_status = 0;    // last observed HTTP status (0 on transport error)
 };
 
 // Calls `net.httpGet(url, body)` up to `cfg.max_attempts` times. Returns the
 // outcome including how many attempts were taken so callers (and tests) can
 // surface "succeeded on the 2nd try" in logs. Linear backoff between
 // attempts; on host build the backoff is a no-op so tests stay fast.
+// `ok == true` means at least one attempt produced a 2xx response;
+// `http_status` carries the final HTTP status (also for non-2xx terminations).
 FetchOutcome fetchWithRetry(INetwork &net, const std::string &url,
                             std::string &body, const FetchConfig &cfg);
 

@@ -184,7 +184,7 @@ bool Esp32Network::connect(unsigned timeout_ms) {
 
 bool Esp32Network::isConnected() { return WiFi.status() == WL_CONNECTED; }
 
-bool Esp32Network::httpGet(const std::string &url, std::string &out) {
+HttpResult Esp32Network::httpGet(const std::string &url, std::string &out) {
   // Release dangling capacity from a previous body — otherwise a 37 KB EFA
   // response stays allocated across the next iteration even though the
   // visible string was assigned to.
@@ -198,14 +198,17 @@ bool Esp32Network::httpGet(const std::string &url, std::string &out) {
   client.setInsecure(); // OGD/EFA Let's Encrypt; CA bundle not shipped
   if (!http.begin(client, url.c_str())) {
     Serial.println("[net] http.begin() failed");
-    return false;
+    return {false, 0};
   }
   http.setTimeout(8000);
   int code = http.GET();
   if (code < 200 || code >= 300) {
     Serial.printf("[net] HTTP %d (non-2xx, aborting)\n", code);
     http.end();
-    return false;
+    // Auth/4xx/5xx counts as "transport ok, semantic error" — pass status up
+    // so callers can drive the auth-tripwire. Transport errors (negative
+    // codes from HTTPClient) collapse to {false, 0}.
+    return {code > 0, code > 0 ? code : 0};
   }
   int content_length = http.getSize();
   if (content_length > 0) {
@@ -216,11 +219,67 @@ bool Esp32Network::httpGet(const std::string &url, std::string &out) {
   http.end();
   if (written < 0) {
     Serial.printf("[net] writeToStream failed: %d\n", written);
-    return false;
+    return {false, 0};
   }
   Serial.printf("[net] HTTP %d, %u bytes\n", code,
                 static_cast<unsigned>(out.size()));
-  return true;
+  return {true, code};
+}
+
+HttpResult Esp32Network::httpPost(const std::string &url,
+                                  const std::string &body,
+                                  const std::string &content_type,
+                                  std::string &out) {
+  std::string().swap(out);
+  Serial.printf("[net] POST %s (%u B) heap_free=%u largest=%u\n", url.c_str(),
+                static_cast<unsigned>(body.size()),
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(
+                    heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT)));
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure(); // HAFAS Let's Encrypt / DigiCert in system bundle
+  if (!http.begin(client, url.c_str())) {
+    Serial.println("[net] http.begin() failed");
+    return {false, 0};
+  }
+  http.setTimeout(8000);
+  http.addHeader("Content-Type", content_type.empty()
+                                     ? String("application/json")
+                                     : String(content_type.c_str()));
+  int code = http.POST(reinterpret_cast<uint8_t *>(const_cast<char *>(
+                           body.data())),
+                       body.size());
+  if (code < 200 || code >= 300) {
+    Serial.printf("[net] HTTP %d (non-2xx, aborting)\n", code);
+    // Still read the body — HAFAS error responses (err="AID"/"AUTH") are JSON
+    // and the parser needs them. But only attempt if the transport handshake
+    // produced a status; negative codes mean no body to read.
+    if (code > 0) {
+      int content_length = http.getSize();
+      if (content_length > 0) {
+        out.reserve(static_cast<size_t>(content_length));
+      }
+      StringAppender appender(out);
+      http.writeToStream(&appender);
+    }
+    http.end();
+    return {code > 0, code > 0 ? code : 0};
+  }
+  int content_length = http.getSize();
+  if (content_length > 0) {
+    out.reserve(static_cast<size_t>(content_length));
+  }
+  StringAppender appender(out);
+  int written = http.writeToStream(&appender);
+  http.end();
+  if (written < 0) {
+    Serial.printf("[net] writeToStream failed: %d\n", written);
+    return {false, 0};
+  }
+  Serial.printf("[net] HTTP %d, %u bytes\n", code,
+                static_cast<unsigned>(out.size()));
+  return {true, code};
 }
 
 bool Esp32Network::httpGetStream(const std::string &url,

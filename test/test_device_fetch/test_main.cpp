@@ -71,8 +71,12 @@ void test_wifi_connects(void) {
 
 void test_http_get_returns_body(void) {
   Serial.printf("[api] GET %s\n", apiUrl().c_str());
-  TEST_ASSERT_TRUE_MESSAGE(g_net.httpGet(apiUrl(), g_body),
-                           "httpGet returned false");
+  {
+    auto _r = g_net.httpGet(apiUrl(), g_body);
+    TEST_ASSERT_TRUE_MESSAGE(_r.ok && _r.http_status >= 200 &&
+                                 _r.http_status < 300,
+                             "httpGet returned non-2xx");
+  }
   Serial.printf("[api] body size = %u bytes, free heap = %u\n",
                 static_cast<unsigned>(g_body.size()), ESP.getFreeHeap());
   // Print a head + tail snippet so a malformed/truncated response is obvious
@@ -259,8 +263,12 @@ void test_ntp_completes_before_api_query(void) {
       "ORDERING VIOLATION: clock bogus when query begins");
 
   std::string body;
-  TEST_ASSERT_TRUE_MESSAGE(g_net.httpGet(apiUrl(), body),
-                           "ordering test: httpGet failed");
+  {
+    auto _r = g_net.httpGet(apiUrl(), body);
+    TEST_ASSERT_TRUE_MESSAGE(_r.ok && _r.http_status >= 200 &&
+                                 _r.http_status < 300,
+                             "ordering test: httpGet non-2xx");
+  }
 
   time_t clock_after_query = g_clock.now();
   Serial.printf(

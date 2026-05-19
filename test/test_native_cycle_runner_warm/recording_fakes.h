@@ -77,13 +77,23 @@ public:
     trace_.emplace_back("net.isConnected");
     return wifi_ok_;
   }
-  bool httpGet(const std::string &url, std::string &out) override {
+  HttpResult httpGet(const std::string &url, std::string &out) override {
     trace_.emplace_back("net.httpGet(" + truncate(url, 40) + ")");
     ++http_calls;
     if (!http_ok_)
-      return false;
+      return {false, 0};
     out = body_;
-    return true;
+    return {true, 200};
+  }
+  HttpResult httpPost(const std::string &url, const std::string & /*body*/,
+                      const std::string & /*content_type*/,
+                      std::string &out) override {
+    trace_.emplace_back("net.httpPost(" + truncate(url, 40) + ")");
+    ++http_calls;
+    if (!http_ok_)
+      return {false, 0};
+    out = body_;
+    return {true, 200};
   }
 
 private:

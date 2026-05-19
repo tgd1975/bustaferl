@@ -21,17 +21,21 @@ public:
 
   bool connect(unsigned) override { return true; }
   bool isConnected() override { return true; }
-  bool httpGet(const std::string &url, std::string &out) override {
+  HttpResult httpGet(const std::string &url, std::string &out) override {
     urls_seen.push_back(url);
     if (fail_all)
-      return false;
+      return {false, 0};
     for (const auto &r : routes) {
       if (url.find(r.first) != std::string::npos) {
         out = r.second;
-        return true;
+        return {true, 200};
       }
     }
-    return false;
+    return {false, 0};
+  }
+  HttpResult httpPost(const std::string &, const std::string &,
+                      const std::string &, std::string &) override {
+    return {false, 0};
   }
 };
 

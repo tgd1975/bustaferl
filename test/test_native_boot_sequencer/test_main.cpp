@@ -13,7 +13,13 @@ public:
   bool will_connect = true;
   bool connect(unsigned) override { return will_connect; }
   bool isConnected() override { return will_connect; }
-  bool httpGet(const std::string &, std::string &) override { return false; }
+  HttpResult httpGet(const std::string &, std::string &) override {
+    return {false, 0};
+  }
+  HttpResult httpPost(const std::string &, const std::string &,
+                      const std::string &, std::string &) override {
+    return {false, 0};
+  }
 };
 
 class FakeClock : public IClock {

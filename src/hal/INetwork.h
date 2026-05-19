@@ -10,14 +10,29 @@
 
 namespace bustaferl {
 
+// Atomic result of an HTTP request. `ok` reflects whether the request
+// completed at the transport level (no DNS/TLS/socket error); `http_status`
+// carries the HTTP response code (0 on transport error). Callers must inspect
+// both — `ok && http_status == 401` means "request went through, server said
+// unauthenticated", which is the auth-tripwire path.
+struct HttpResult {
+  bool ok = false;
+  int http_status = 0;
+};
+
 class INetwork {
 public:
   virtual ~INetwork() = default;
   // Brings up WiFi with timeout in ms. Returns true if connected.
   virtual bool connect(unsigned timeout_ms) = 0;
   virtual bool isConnected() = 0;
-  // GET, writes body to `out`. Returns true on HTTP 2xx.
-  virtual bool httpGet(const std::string &url, std::string &out) = 0;
+  // GET, writes body to `out`. Returns HttpResult with transport flag + status.
+  virtual HttpResult httpGet(const std::string &url, std::string &out) = 0;
+  // POST, writes response body to `out`. Default content-type
+  // "application/json".
+  virtual HttpResult httpPost(const std::string &url, const std::string &body,
+                              const std::string &content_type,
+                              std::string &out) = 0;
 
 #ifndef NATIVE_BUILD
   // Streaming GET: invokes `consumer(stream)` with the response body
