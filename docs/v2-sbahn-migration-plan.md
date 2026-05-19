@@ -20,6 +20,7 @@ Beide Schichten werden in **einem** Plan abgehandelt, weil sie sich Touch-Sites 
   - [Pre-Phase — PoC isoliert](#pre-phase--poc-öbb-fetch-isoliert-host-skript)
   - [Schritt 0–11 — Umsetzung](#schritt-0--pre-flash-verifikation-der-hafas-parameter--render-stack-entscheidung)
   - [Schritt 12 — Release](#schritt-12--release-v200)
+  - [4.3 Session-Gruppierung A-G](#43-session-gruppierung-a-g)
 - [5. Risiken](#5-risiken)
 - [6. Tests](#6-tests)
 - [Anhang A — HAFAS-Request-/Response-Vertrag](#anhang-a--hafas-request-response-vertrag)
@@ -602,7 +603,7 @@ Analog [main-refactor-plan §4.0](main-refactor-plan.md). Zusammenhängende Umse
 | Schritt 12 (Release) | 0.5 d |
 | **Summe** | **≈ 13–17 Tage** netto, realistisch ≈ 3 Kalenderwochen bei Vollzeit-Verfügbarkeit |
 
-Session-Gruppierung folgt am Ende der Plan-Reifung, sobald Schritt-Granularität stabil ist.
+Konkrete Session-Gruppierung in [§4.3 — Session-Gruppierung A-G](#43-session-gruppierung-a-g).
 
 ### 4.1 Annahmen während der Umsetzung
 
@@ -1190,6 +1191,31 @@ Major-Release wegen RTC-MAGIC-Bump (alle Geräte verwerfen ihren persistenten Zu
 **Validation**: Tag erscheint im `git log`, `make release` (falls vorhanden) idempotent grün, Display am Gerät zeigt unveränderten Normal-State über ≥ 48 h.
 
 **Reversibel**: nein — sobald getaggt und gemergt, gilt das als Release. Rollback erfordert neuen Branch und neue Major-Version.
+
+### 4.3 Session-Gruppierung A-G
+
+Sieben Sessions, abwechselnd Auftraggeber-getrieben (HW-/Netzwerk-Zugang) und Code-getrieben (vollständig autonom durch Claude). Ein Code-Session-Commit pro Sub-Step, eine HW-Session = ein Beobachtungs-Block mit Foto-Dokumentation in `.tmp/v2-rollout/`. Reihenfolge ist gerichtet: jede Session hat ein Gate, das die nächste freischaltet.
+
+| Session | Schritte | Driver | Aufwand | Inhalt | Gate zur nächsten |
+|---|---|---|---|---|---|
+| **A** | Pre-Phase + 0 | Auftraggeber | 1–2 d (Kalender; Sample-Lauf über zwei Werktage) | PoC-Skript drei Tageszeiten; HAFAS-Konstanten + Cert-Check; Render-Stack-Entscheidung (C8) bestätigt | §4.1 Annahmen mit AID/jnyFltrL/dirLoc-Befunden + Antwort-Fixtures unter `.tmp/hafas-fixtures/`; `config.h` HAFAS-Werte gesetzt |
+| **B** | 1, 2, 6 | Claude | ~1.5 d | HAL: `HttpResult` + `httpPost`; Datenmodell: `Departure::line_label`, `PersistedMeta`-Erweiterung, Stream-Enum, MAGIC-Bumps; `schedule_fetcher` skip-Guard | `make ci` baut (einzelne Test-Buckets bleiben rot — werden in F gefixt); `env:esp32dev` linkt |
+| **C** | 3, 4, 5 | Claude | ~2.5–3 d | `data/oebb_hafas_parse.{h,cpp}` + native Tests aus den Fixtures aus A; `filter_builder` mit `buildOebbFilter`; `snapshot_fetcher` mit `fetchOebbStream` + OGD-Auth-Streak | `make test` grün für `test_native_oebb_hafas_parse`, `_filter_builder`, `_snapshot_fetcher`, `_api_fetcher` |
+| **D** | 7 | Claude | ~3–4 d | Display-Rewrite: `bitmap_fonts`, `badge`, `plan_marker`, `network_plan`, `display_state`, neuer `layout.cpp`, State-Selector in `render_input.cpp` + Cold-Boot-Pre-Render-Sequenz in `cycle_runner` | `make ci` grün inkl. Render-Pixel-Asserts; PGM-Dumps der Native-Runtime zeigen alle 7 States erkennbar |
+| **E** | 11.1–11.8 | Auftraggeber + Claude (Patches) | 1 d + Iterationen | HW-Sichtkontrolle aller 7 States gegen `design_handoff_display/screen-*.png`; Glyph-/Y-Drift-Korrekturen iterativ; Plan-Marker-Sichtbarkeit; Netzplan-Geometrie | Alle 7 States vom Auftraggeber abgenommen; Fotos in `.tmp/v2-rollout/screen-*.jpg` |
+| **F** | 8, 10 | Claude | ~3 d | Restliche Test-Buckets umstellen (`cycle_runner_*`, `slot_merger`, `filter_health`, `longterm_*`); neue Render-Primitive-Buckets + Snapshot-Files; vollständiger Doku-Sync (CONCEPT, README, ARCHITECTURE, HANDBUCH, USER, TESTING, CHANGELOG) | `make ci` + `make test-device` + `make test-longterm-soak-15min` alle grün; `markdownlint-cli2` clean über alle .md |
+| **G** | 9, 11.9–11.10, 12 | Auftraggeber + Claude (Auswertung) | 1 d + ggf. 24 h Soak | Heap-Profiling (Native + Device); Sleep-Budget-Messung; Linien-Längen-Stress mit live REX-Antwort; optionaler 24h-Soak; Release-Merge nach `main` + Tag `v2.0.0` + Plan-Datei archivieren (12.7) | Tag gesetzt, Branch eine Woche Beobachtungsfenster |
+
+**Branch-Disziplin pro Session**:
+
+- Sessions B/C/D/F sind je ein logischer „Commit-Block" auf `v2/sbahn-atzgersdorf`. Innerhalb der Session ein Commit pro Sub-Step (Konvention aus §4.0).
+- Session A produziert nur `.tmp/`-Artefakte + `config.h`-Werte; ein einzelner Commit für `config.h` reicht.
+- Session E produziert Render-Korrektur-Patches (kleine Commits, je 1–10 Z. Pixel-Tuning); diese werden nach Abschluss von E zu einem Squash-Block „Render: §11 Sichtkontroll-Anpassungen" zusammengefasst.
+- Session G: ein letzter Commit (Doku-Archivierung 12.7), dann Tag.
+
+**Pausen zwischen Sessions sind erlaubt** — der Plan ist nicht für „in einem Schwung" gemacht. Sinnvolle Pause-Punkte: nach A (Daten in der Hand), nach C (Daten-Layer steht), nach D (Display kompiliert, vor erstem HW-Check), nach E (Display final), nach F (Tests grün).
+
+**Kalender-Erwartung**: brutto ca. 2–3 Wochen, davon ca. 11 d Claude-Code-Arbeit + 3–4 d Auftraggeber-getrieben. Wenn A und G sich über mehrere Tage strecken (HAFAS-Sampling, 24h-Soak), kann sich die Kalenderzeit auf 3–4 Wochen ausdehnen — die Netto-Aktiv-Zeit bleibt gleich.
 
 ---
 
