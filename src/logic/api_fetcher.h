@@ -16,20 +16,45 @@ struct FetchConfig {
   int backoff_ms_base = DEFAULT_FETCH_BACKOFF_MS_BASE;
 };
 
+// Per-call outcome.
+//
+//   - `ok == true`  → at least one attempt produced a 2xx response. `body`
+//     holds that response.
+//   - `ok == false` → no 2xx attempt; either transport-fail (`http_status`
+//     == 0) or the server returned 4xx/5xx. `body` may carry the last
+//     error body for log inspection on 5xx termination.
+//
+// The retry policy (see fetchWithRetry / fetchPostWithRetry) terminates
+// after the first 401/403/non-retryable-4xx — callers see the auth status
+// without waiting for max_attempts.
 struct FetchOutcome {
   bool ok = false;
   int attempts_taken = 0; // populated whether or not ok is true
   int http_status = 0;    // last observed HTTP status (0 on transport error)
 };
 
-// Calls `net.httpGet(url, body)` up to `cfg.max_attempts` times. Returns the
-// outcome including how many attempts were taken so callers (and tests) can
-// surface "succeeded on the 2nd try" in logs. Linear backoff between
-// attempts; on host build the backoff is a no-op so tests stay fast.
-// `ok == true` means at least one attempt produced a 2xx response;
-// `http_status` carries the final HTTP status (also for non-2xx terminations).
+// Calls `net.httpGet(url, body)` up to `cfg.max_attempts` times. Retry
+// policy (matches the table in v2-sbahn-migration-plan §5.6):
+//
+//   http_status == 0                  → retry (transport-class failure)
+//   2xx                               → return immediately (success)
+//   401 / 403                         → return immediately (auth tripwire)
+//   408 / 429 / 5xx                   → retry (server-class transient)
+//   other 4xx                         → return immediately (client bug)
+//
+// After max_attempts of transport failures the result is `{false, 0}` with
+// an empty body. After max_attempts of 5xx the result is `{true,
+// last_status}` and `body` holds the last error body (for log inspection).
 FetchOutcome fetchWithRetry(INetwork &net, const std::string &url,
                             std::string &body, const FetchConfig &cfg);
+
+// Same retry policy, POST semantics. `content_type` typically
+// "application/json; charset=UTF-8" for HAFAS.
+FetchOutcome fetchPostWithRetry(INetwork &net, const std::string &url,
+                                const std::string &request_body,
+                                const std::string &content_type,
+                                std::string &response_body,
+                                const FetchConfig &cfg);
 
 } // namespace bustaferl
 

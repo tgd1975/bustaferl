@@ -143,19 +143,114 @@ void test_success_carries_http_status_200() {
 }
 
 // 401 stays visible to the caller (auth-tripwire prep — Schritt 5 will use
-// this to drive PersistedMeta::ogd_auth_streak). Session B verifies only the
-// status-propagation; retry-policy refinements come with Schritt 5.6.
-void test_auth_401_status_visible_to_caller() {
+// this to drive PersistedMeta::ogd_auth_streak). With the §5.6 retry-policy
+// auth-codes terminate after the first attempt — no need to burn three
+// 401s on a clearly-broken AID.
+void test_auth_401_short_circuits_no_retry() {
   FakeNet net;
   net.succeed_on_attempt = 99; // never succeeds via 2xx
   net.fail_status = 401;       // every call returns 401
   std::string body;
   FetchConfig cfg;
-  cfg.max_attempts = 2;
+  cfg.max_attempts = 3;
   cfg.backoff_ms_base = 0;
   FetchOutcome r = fetchWithRetry(net, "http://x", body, cfg);
   TEST_ASSERT_FALSE(r.ok); // 401 is not a 2xx success
   TEST_ASSERT_EQUAL_INT(401, r.http_status);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(1, r.attempts_taken,
+                                "401 should short-circuit, not retry");
+  TEST_ASSERT_EQUAL_INT(1, net.call_count);
+}
+
+void test_auth_403_short_circuits_no_retry() {
+  FakeNet net;
+  net.succeed_on_attempt = 99;
+  net.fail_status = 403;
+  std::string body;
+  FetchConfig cfg;
+  cfg.max_attempts = 3;
+  cfg.backoff_ms_base = 0;
+  FetchOutcome r = fetchWithRetry(net, "http://x", body, cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_INT(403, r.http_status);
+  TEST_ASSERT_EQUAL_INT(1, r.attempts_taken);
+}
+
+// 5xx is a server-side transient — burn the full attempt budget.
+void test_5xx_retries_to_max_attempts() {
+  FakeNet net;
+  net.succeed_on_attempt = 99;
+  net.fail_status = 503;
+  std::string body;
+  FetchConfig cfg;
+  cfg.max_attempts = 3;
+  cfg.backoff_ms_base = 0;
+  FetchOutcome r = fetchWithRetry(net, "http://x", body, cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_INT(503, r.http_status);
+  TEST_ASSERT_EQUAL_INT(3, r.attempts_taken);
+}
+
+// 429 (rate limit) → same retry treatment as 5xx.
+void test_429_retries_to_max_attempts() {
+  FakeNet net;
+  net.succeed_on_attempt = 99;
+  net.fail_status = 429;
+  std::string body;
+  FetchConfig cfg;
+  cfg.max_attempts = 3;
+  cfg.backoff_ms_base = 0;
+  FetchOutcome r = fetchWithRetry(net, "http://x", body, cfg);
+  TEST_ASSERT_EQUAL_INT(3, r.attempts_taken);
+  TEST_ASSERT_EQUAL_INT(429, r.http_status);
+}
+
+// 404 (or any other 4xx that isn't auth) → caller bug, no retry.
+void test_404_short_circuits_no_retry() {
+  FakeNet net;
+  net.succeed_on_attempt = 99;
+  net.fail_status = 404;
+  std::string body;
+  FetchConfig cfg;
+  cfg.max_attempts = 3;
+  cfg.backoff_ms_base = 0;
+  FetchOutcome r = fetchWithRetry(net, "http://x", body, cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_INT(404, r.http_status);
+  TEST_ASSERT_EQUAL_INT(1, r.attempts_taken);
+}
+
+// fetchPostWithRetry: same retry plumbing, POST body forwarded.
+void test_post_retry_succeeds_on_second_attempt() {
+  FakeNet net;
+  net.succeed_on_attempt = 2;
+  net.body_to_return = "{\"err\":\"OK\"}";
+  std::string resp;
+  FetchConfig cfg;
+  cfg.max_attempts = 3;
+  cfg.backoff_ms_base = 0;
+  FetchOutcome r = fetchPostWithRetry(net, "http://x", "{\"req\":1}",
+                                      "application/json", resp, cfg);
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL_INT(200, r.http_status);
+  TEST_ASSERT_EQUAL_INT(2, r.attempts_taken);
+  TEST_ASSERT_EQUAL_STRING("{\"req\":1}", net.last_post_body.c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"err\":\"OK\"}", resp.c_str());
+}
+
+void test_post_retry_401_short_circuits() {
+  FakeNet net;
+  net.succeed_on_attempt = 99;
+  net.fail_status = 401;
+  std::string resp;
+  FetchConfig cfg;
+  cfg.max_attempts = 3;
+  cfg.backoff_ms_base = 0;
+  FetchOutcome r = fetchPostWithRetry(net, "http://x", "{}",
+                                      "application/json", resp, cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_INT(401, r.http_status);
+  TEST_ASSERT_EQUAL_INT(1, r.attempts_taken);
 }
 
 // POST direct-call: FakeNet records the body so the caller can verify the
@@ -185,7 +280,13 @@ int main(int, char **) {
   RUN_TEST(test_single_attempt_no_retry);
   RUN_TEST(test_body_overwritten_on_success);
   RUN_TEST(test_success_carries_http_status_200);
-  RUN_TEST(test_auth_401_status_visible_to_caller);
+  RUN_TEST(test_auth_401_short_circuits_no_retry);
+  RUN_TEST(test_auth_403_short_circuits_no_retry);
+  RUN_TEST(test_5xx_retries_to_max_attempts);
+  RUN_TEST(test_429_retries_to_max_attempts);
+  RUN_TEST(test_404_short_circuits_no_retry);
   RUN_TEST(test_post_direct_call_sees_body_and_status);
+  RUN_TEST(test_post_retry_succeeds_on_second_attempt);
+  RUN_TEST(test_post_retry_401_short_circuits);
   return UNITY_END();
 }
