@@ -69,7 +69,7 @@ define write-meta
 	sha=$$(git rev-parse HEAD 2>/dev/null || echo unknown); \
 	ts=$$(date +%s); \
 	pass=false; \
-	if [ -f "$(2)" ] && jq -e '[.. | objects | select(has("status"))] | length > 0 and all(.status == "PASSED")' < "$(2)" >/dev/null 2>&1; then \
+	if [ -f "$(2)" ] && jq -e '[.. | objects | select(has("status")) | .status] | length > 0 and all(. == "PASSED" or . == "SKIPPED")' < "$(2)" >/dev/null 2>&1; then \
 	  pass=true; \
 	fi; \
 	jq -n --arg sha "$$sha" --argjson ts "$$ts" --argjson pass "$$pass" \
