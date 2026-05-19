@@ -15,12 +15,12 @@ namespace bustaferl {
 // per call → 3 batches for our 5 streams.
 constexpr int STOPIDS_PER_QUERY = 2;
 
-// Order in which stream slots are queried. Reversed from display/enum order so
-// STREAM_U1_OBERLAA moves into the first paired batch instead of being the
-// lone 5th query. Diagnostic: if data gaps now appear on STREAM_58A_ATZ (the
-// new singleton), the problem follows query position; if they still appear on
-// U1-Oberlaa, the problem is RBL-specific.
-extern const int FETCH_ORDER[STREAM_COUNT];
+// Order in which OGD stream slots are queried. v2: only the three bus
+// streams. STREAM_SBAHN_HBF is handled out-of-band by Schritt 5's
+// `fetchOebbStream` (HAFAS mgate), so it is intentionally absent here —
+// re-adding it would issue an OGD call with stopId=0.
+constexpr int OGD_FETCH_COUNT = 3;
+extern const int FETCH_ORDER[OGD_FETCH_COUNT];
 
 struct FetchSummary {
   int total_batches = 0;

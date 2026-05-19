@@ -7,14 +7,15 @@
 
 namespace bustaferl {
 
-// Index into the three streams the display shows.
+// Index into the four streams the display shows after v2 (3 OGD bus streams
+// + 1 ÖBB HAFAS S-Bahn stream). Old U1 indices intentionally removed without
+// alias — re-using them would silently mask drift in legacy test fixtures.
 enum Stream : std::uint8_t {
   STREAM_58A_ATZ = 0,
   STREAM_58A_HIETZING = 1,
   STREAM_58B_ATZ = 2,
-  STREAM_U1_LEOPOLDAU = 3,
-  STREAM_U1_OBERLAA = 4,
-  STREAM_COUNT = 5,
+  STREAM_SBAHN_HBF = 3,
+  STREAM_COUNT = 4,
 };
 
 constexpr int SLOTS_PER_STREAM = 2;

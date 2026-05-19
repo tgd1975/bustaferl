@@ -147,14 +147,14 @@ void test_success_carries_http_status_200() {
 // status-propagation; retry-policy refinements come with Schritt 5.6.
 void test_auth_401_status_visible_to_caller() {
   FakeNet net;
-  net.succeed_on_attempt = 99;   // never succeeds via 2xx
-  net.fail_status = 401;         // every call returns 401
+  net.succeed_on_attempt = 99; // never succeeds via 2xx
+  net.fail_status = 401;       // every call returns 401
   std::string body;
   FetchConfig cfg;
   cfg.max_attempts = 2;
   cfg.backoff_ms_base = 0;
   FetchOutcome r = fetchWithRetry(net, "http://x", body, cfg);
-  TEST_ASSERT_FALSE(r.ok);       // 401 is not a 2xx success
+  TEST_ASSERT_FALSE(r.ok); // 401 is not a 2xx success
   TEST_ASSERT_EQUAL_INT(401, r.http_status);
 }
 
@@ -165,8 +165,8 @@ void test_post_direct_call_sees_body_and_status() {
   net.success_status = 200;
   net.body_to_return = "{\"ok\":true}";
   std::string out;
-  HttpResult r = net.httpPost("http://x", "{\"req\":1}", "application/json",
-                              out);
+  HttpResult r =
+      net.httpPost("http://x", "{\"req\":1}", "application/json", out);
   TEST_ASSERT_TRUE(r.ok);
   TEST_ASSERT_EQUAL_INT(200, r.http_status);
   TEST_ASSERT_EQUAL_STRING("{\"ok\":true}", out.c_str());

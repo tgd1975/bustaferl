@@ -5,7 +5,7 @@
 
 namespace bustaferl {
 
-// Short human labels for the five streams, indexed by `Stream`. Used for
+// Short human labels for the four streams, indexed by `Stream`. Used for
 // per-slot log lines and the summary block. Single source of truth — v2 only
 // has to touch this file (and STREAM_COUNT) to relabel/extend streams.
 inline const char *streamLabel(int idx) {
@@ -16,13 +16,31 @@ inline const char *streamLabel(int idx) {
     return "58A-Hie";
   case STREAM_58B_ATZ:
     return "58B-Atz";
-  case STREAM_U1_LEOPOLDAU:
-    return "U1-Leo";
-  case STREAM_U1_OBERLAA:
-    return "U1-Obe";
+  case STREAM_SBAHN_HBF:
+    return "SBahn-Hbf";
   default:
     return "?";
   }
+}
+
+// Renderer-side direction label, max 8 characters (TG/EG row layout
+// constraint, see docs/design_handoff_display/README.md). Static on purpose:
+// the OGD `towards` string is too long and shifts occasionally
+// ("Bhf. Atzgersdorf S (üb. Atzgersdorfer Str.)") — the display column needs
+// a stable short form. The S-Bahn stream returns "" because the S-Bahn
+// header carries the direction.
+inline const char *display_dir(int idx) {
+  // Both Atzgersdorf-bound bus streams share the same display label;
+  // Hietzing is its own. S-Bahn returns empty because the header carries
+  // the direction. Switch-with-fallthrough triggered bugprone-branch-clone,
+  // so resolve via early ifs — the small table makes that readable.
+  if (idx == STREAM_58A_HIETZING) {
+    return "Hietzing";
+  }
+  if (idx == STREAM_58A_ATZ || idx == STREAM_58B_ATZ) {
+    return "Atzgers.";
+  }
+  return "";
 }
 
 } // namespace bustaferl

@@ -8,6 +8,9 @@ namespace bustaferl {
 
 namespace {
 
+constexpr int HTTP_2XX_MIN = 200;
+constexpr int HTTP_3XX_MIN = 300;
+
 void sleepMsBetweenAttempts(int ms) {
 #ifndef NATIVE_BUILD
   if (ms > 0)
@@ -27,7 +30,8 @@ FetchOutcome fetchWithRetry(INetwork &net, const std::string &url,
     body.clear();
     HttpResult r = net.httpGet(url, body);
     out.http_status = r.http_status;
-    if (r.ok && r.http_status >= 200 && r.http_status < 300) {
+    if (r.ok && r.http_status >= HTTP_2XX_MIN &&
+        r.http_status < HTTP_3XX_MIN) {
       out.ok = true;
       return out;
     }

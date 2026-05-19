@@ -124,10 +124,13 @@ void renderFrame(const RenderInput &in, Frame &fb) {
                  stale);
   drawText(c, 8, 174, 1, "(nach Schleife)");
 
-  drawHeader(c, 196, "SUEDTIROLER PLATZ");
-  drawStreamLine(c, 222, "U1 -> Leopoldau",
-                 in.snapshot.stream[STREAM_U1_LEOPOLDAU], stale);
-  drawStreamLine(c, 246, "U1 -> Oberlaa", in.snapshot.stream[STREAM_U1_OBERLAA],
+  // v2-Übergang (Session B): U1-Streams entfallen, der S-Bahn-Stream
+  // (STREAM_SBAHN_HBF) wird erst in Session D vom neuen Renderer gezeichnet.
+  // Vorläufig zeigt der dritte Block den S-Bahn-Slot mit dem alten
+  // drawStreamLine-Helper, damit das Display nicht leer bleibt bevor das
+  // Layout-Rewrite landet.
+  drawHeader(c, 196, "ATZGERSDORF S");
+  drawStreamLine(c, 222, "S-Bahn -> Hbf", in.snapshot.stream[STREAM_SBAHN_HBF],
                  stale);
 
   if (in.overlay != OverlayKind::None)

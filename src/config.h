@@ -10,8 +10,6 @@
 #define RBL_TULL_HIETZING 3757    // Tullnertalgasse, 58A → Hietzing
 #define RBL_ENDEMANN                                                           \
   8132 // Endemanngasse,    58B → Bhf. Atzgersdorf S (post-loop)
-#define RBL_SUEDTIROLER_LEOPOLDAU 4105 // Südtiroler Platz, U1 → Leopoldau
-#define RBL_SUEDTIROLER_OBERLAA 4124   // Südtiroler Platz, U1 → Oberlaa
 
 // All towards-prefixes are case-sensitive prefix matches against the OGD
 // API's `towards` field. The strings below are taken from a live response
@@ -26,7 +24,6 @@
 // Line names as the API reports them.
 #define LINE_58A "58A"
 #define LINE_58B "58B"
-#define LINE_U1 "U1"
 
 // Direction labels for the 58A streams. The 58A→Atzgersdorf branch reports
 // "Bhf. Atzgersdorf S (üb. Atzgersdorfer Str.)"; the Hietzing branch reports
@@ -34,17 +31,11 @@
 #define TOWARDS_58A_ATZ "Bhf. Atzgersdorf"
 #define TOWARDS_58A_HIETZING "Hietzing"
 
-// U1 endpoints; each RBL is one-directional, so the towards filter is mostly
-// a belt-and-braces guard against a future schedule change.
-#define TOWARDS_U1_LEOPOLDAU "Leopoldau"
-#define TOWARDS_U1_OBERLAA "Oberlaa"
-
 // DIVA stop IDs for the EFA schedule API (XSLT_DM_REQUEST). One per
 // physical Haltestelle (not per RBL — DIVA aggregates the directions).
 // Looked up via XSLT_STOPFINDER_REQUEST?name_sf=…; see CONCEPT.md §12.
 #define DIVA_TULLNERTALGASSE 60201395
 #define DIVA_ENDEMANNGASSE 60200278
-#define DIVA_SUEDTIROLER_PLATZ 60201349
 
 // Direction strings as the EFA API reports them in
 // `departureList[].servingLine.direction`. These DIFFER from the OGD
@@ -52,15 +43,49 @@
 #define EFA_TOWARDS_58A_ATZ "Wien Atzgersdorf"
 #define EFA_TOWARDS_58A_HIETZING "Wien Hietzing"
 #define EFA_TOWARDS_58B_ATZ "Wien Atzgersdorf" // TODO verify post-loop variant
-// EFA prefixes its U1 direction strings with "Wien " (unlike the OGD
-// realtime endpoint, where the bare station name is used). The Richtung
-// Süden also splits between two terminus variants: "Wien Oberlaa" is the
-// full line, "Wien Alaudagasse" is the short turnaround one station
-// earlier — both serve the same user-facing direction, so we treat them
-// as equivalent via EFA_TOWARDS_U1_OBERLAA_ALT.
-#define EFA_TOWARDS_U1_LEOPOLDAU "Wien Leopoldau"
-#define EFA_TOWARDS_U1_OBERLAA "Wien Oberlaa"
-#define EFA_TOWARDS_U1_OBERLAA_ALT "Wien Alaudagasse"
+
+// ÖBB Wien Atzgersdorf → Wien Hauptbahnhof (v2 S-Bahn stream).
+// Data layer: HAFAS-internal location IDs per locality (NOT the DB EVAs;
+// 81xxxxxx resolves to the station name but HAFAS attaches no jnyL legs
+// to those — see docs/v2-sbahn-migration-plan.md §4.1 Pre-Phase).
+#define OEBB_EXTID_ATZG "1292301"    // Wien Atzgersdorf Bahnhst
+#define OEBB_EXTID_WIENHBF "1290401" // Wien Hbf (U)
+
+// Role layer: which extId fills which request slot.
+#define OEBB_STBLOC_EXTID OEBB_EXTID_ATZG
+#define OEBB_DIRLOC_EXTID OEBB_EXTID_WIENHBF
+
+#define OEBB_MGATE_URL "https://fahrplan.oebb.at/bin/mgate.exe"
+// HAFAS auth tuple — empirically confirmed via PoC 2026-05-19 (four calls
+// over 30 min, HTTP 200 + err=OK + 6 jnyL entries each). Re-verify when the
+// auth_error_seen tripwire fires.
+#define OEBB_HAFAS_AID "OWDL4fE4ixNiPBBm"
+#define OEBB_HAFAS_CLIENT_JSON                                                 \
+  "{\"id\":\"OEBB\",\"type\":\"WEB\",\"name\":\"webapp\",\"l\":\"vs_webapp\"}"
+#define OEBB_HAFAS_VER "1.67"
+// jnyFltrL bitmask: "63" (bits 0-5) keeps S-Bahn + Regio + REX (cls=16,32),
+// drops buses (cls=64). Confirmed PoC 2026-05-19.
+#define OEBB_JNYFLTR_PRODUCTS "63"
+#define OEBB_MAX_JNY 6
+
+// Display state-selector thresholds (logic/render_input, comes in Schritt 7).
+// Seeded here in Schritt 2.5 so config.h is single-source-of-truth for the
+// whole v2 surface; consumers land in Session D.
+#define OFFLINE_THRESHOLD_S 300  //  5 min ohne erfolgreichen Fetch + WiFi unten
+#define STALE_THRESHOLD_V2_S 600 // 10 min ohne erfolgreichen Fetch
+#define QUIET_HORIZON_S 1200     // 20 min — keine Abfahrten → Quiet
+#define NIGHT_FIRST_DEP_MIN_AHEAD_S                                            \
+  1800 // 30 min — nächste Plan-Abfahrt weiter → Night
+
+// Service window: Spätbetrieb 58A/58B/S-Bahn endet ~0:30, Frühbetrieb ab ~5:00.
+// END_HOUR < START_HOUR ⇒ Fenster wrappt um Mitternacht. outsideServiceWindow()
+// gibt true zurück für [SERVICE_WINDOW_END_HOUR, SERVICE_WINDOW_START_HOUR),
+// also 01:00–04:59.
+#define SERVICE_WINDOW_START_HOUR 5
+#define SERVICE_WINDOW_END_HOUR 1
+
+// Display version string (foot line on the Boot screen).
+#define DISPLAY_VERSION_STR "v2.0 · UC8176 · 400x300"
 
 // EFA schedule endpoint. Caller appends &name_dm=<DIVA>&itdDate*=...
 #define WL_EFA_DM_BASE                                                         \

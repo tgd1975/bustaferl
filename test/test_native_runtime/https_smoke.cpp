@@ -25,9 +25,9 @@ void hit(bustaferl::native_runtime::HttpsNet &net, const char *url) {
   const bool has_monitors =
       body.find("\"monitors\"") != std::string::npos ||
       body.find("<html") != std::string::npos; // ping URL is HTML
-  std::printf("[https_smoke] %s ok=%d status=%d bytes=%zu monitors_or_html=%d\n",
-              url, ok ? 1 : 0, r.http_status, body.size(),
-              has_monitors ? 1 : 0);
+  std::printf(
+      "[https_smoke] %s ok=%d status=%d bytes=%zu monitors_or_html=%d\n", url,
+      ok ? 1 : 0, r.http_status, body.size(), has_monitors ? 1 : 0);
 }
 
 } // namespace

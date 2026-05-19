@@ -19,6 +19,20 @@ struct PersistedMeta {
   uint8_t filter_miss_streak = 0;
   uint8_t cold_boot_retries = 0;
   bool framebuffer_valid = false;
+
+  // v2 fields (driven by the display state-selector landing in Schritt 7):
+  // - has_any_data: false until the first end-to-end fetch succeeded; drives
+  //   the Boot screen after power-on / firmware-update (MAGIC bump zeroes it).
+  // - last_success_at: epoch of the last fully-successful fetch cycle;
+  //   feeds Stale / Offline thresholds.
+  // - auth_error_seen: HAFAS err="AID"/"AUTH" sticky flag (cleared on next
+  //   OK parse); drives the Auth screen.
+  // - ogd_auth_streak: consecutive OGD 401/403 from `fetchWithRetry`; the
+  //   caller flips auth_error_seen=true once this reaches 3.
+  bool has_any_data = false;
+  time_t last_success_at = 0;
+  bool auth_error_seen = false;
+  uint8_t ogd_auth_streak = 0;
 };
 
 class IPersistentStore {

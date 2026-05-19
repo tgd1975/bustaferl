@@ -64,8 +64,7 @@ HttpResult HttpsNet::httpPost(const std::string &url, const std::string &body,
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
   curl_easy_setopt(curl, CURLOPT_POST, 1L);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.data());
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
-                   static_cast<long>(body.size()));
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(body.size()));
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCb);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out);

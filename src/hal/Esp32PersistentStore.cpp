@@ -25,11 +25,15 @@ RTC_DATA_ATTR uint8_t g_rle[RLE_CAP] = {0};
 RTC_DATA_ATTR uint32_t g_sched_magic = 0;
 RTC_DATA_ATTR ScheduleSnapshot g_sched{};
 
-constexpr uint32_t MAGIC = 0xB05AFE71; // bustaferl ;)
-// Bumped to invalidate stored ScheduleSnapshots from v1, whose ScheduleHint
-// layout did not yet have `next_today[2]`. First boot after the update
-// re-fetches; the user sees one cycle with no hints.
-constexpr uint32_t SCHED_MAGIC = 0x5CEDB052; // sched-bustaferl-2
+// v2 bump: STREAM_COUNT shrank from 5 to 4, Departure gained line_label,
+// PersistedMeta picked up four new fields. The old layout would deserialize
+// as garbage; force a fresh persist on the first boot after the update. The
+// user sees one cycle with no hints + a light-full instead of a partial.
+constexpr uint32_t MAGIC = 0xB05AFE72; // bustaferl v2
+// Bumped because STREAM_COUNT and the stream-index meaning changed: the old
+// index 3/4 held U1 schedule hints; after v2 index 3 is the S-Bahn (no hint
+// path). Reusing the old slot would inject U1 hints into the S-Bahn stream.
+constexpr uint32_t SCHED_MAGIC = 0x5CEDB053; // sched-bustaferl-3 (v2)
 
 } // namespace
 

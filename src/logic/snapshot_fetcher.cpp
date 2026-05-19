@@ -13,9 +13,13 @@
 
 namespace bustaferl {
 
-const int FETCH_ORDER[STREAM_COUNT] = {
-    STREAM_U1_OBERLAA,   STREAM_U1_LEOPOLDAU, STREAM_58B_ATZ,
-    STREAM_58A_HIETZING, STREAM_58A_ATZ,
+// v2: only the three OGD bus streams are fetched via the monitor endpoint.
+// STREAM_SBAHN_HBF lives outside this batch loop — Schritt 5 will introduce
+// `fetchOebbStream` which calls the HAFAS mgate endpoint separately.
+const int FETCH_ORDER[OGD_FETCH_COUNT] = {
+    STREAM_58B_ATZ,
+    STREAM_58A_HIETZING,
+    STREAM_58A_ATZ,
 };
 
 namespace {
@@ -55,8 +59,8 @@ bool fetchSnapshot(INetwork &net, const std::string &endpoint_base,
   out = StreamSnapshot{};
   summary = FetchSummary{};
 
-  for (int start = 0; start < STREAM_COUNT; start += STOPIDS_PER_QUERY) {
-    int batch_size = STREAM_COUNT - start;
+  for (int start = 0; start < OGD_FETCH_COUNT; start += STOPIDS_PER_QUERY) {
+    int batch_size = OGD_FETCH_COUNT - start;
     if (batch_size > STOPIDS_PER_QUERY)
       batch_size = STOPIDS_PER_QUERY;
 

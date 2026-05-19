@@ -247,9 +247,9 @@ HttpResult Esp32Network::httpPost(const std::string &url,
   http.addHeader("Content-Type", content_type.empty()
                                      ? String("application/json")
                                      : String(content_type.c_str()));
-  int code = http.POST(reinterpret_cast<uint8_t *>(const_cast<char *>(
-                           body.data())),
-                       body.size());
+  int code =
+      http.POST(reinterpret_cast<uint8_t *>(const_cast<char *>(body.data())),
+                body.size());
   if (code < 200 || code >= 300) {
     Serial.printf("[net] HTTP %d (non-2xx, aborting)\n", code);
     // Still read the body — HAFAS error responses (err="AID"/"AUTH") are JSON
