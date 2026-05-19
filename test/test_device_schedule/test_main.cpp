@@ -14,6 +14,7 @@
 #include "secrets.h"
 
 #include <Arduino.h>
+#include <cstdio>
 #include <esp_system.h>
 #include <unity.h>
 
@@ -132,17 +133,23 @@ void test_full_schedule_fetch_does_not_crash() {
       "at least one EFA call failed — heap guard skipped or HTTP error");
   TEST_ASSERT_TRUE_MESSAGE(r.ok, "fetchSchedule reported not ok");
 
-  // At least one stream must have collected a first_tomorrow value — the
-  // happy path returns the morning departures even outside service hours.
-  bool any_hint = false;
+  // Each of our 5 streams must have collected at least one schedule hint:
+  // either a last_today (any departure before tomorrow's 03:00 cutoff) or
+  // a first_tomorrow (departures after the cutoff). Mid-day runs see only
+  // last_today because the default EFA window (limit=50, anchored at
+  // 22:00) typically doesn't span past 03:00; late-evening runs see both.
+  // A stream with NEITHER is a direction-filter mismatch — that's what
+  // we're guarding against here (the bug that hid behind U1's
+  // "Wien Leopoldau" / "Wien Alaudagasse" naming until the live probe in
+  // 2026-05-19).
   for (int i = 0; i < STREAM_COUNT; ++i) {
-    if (r.hint[i].first_tomorrow[0] != 0) {
-      any_hint = true;
-      break;
-    }
+    const bool any_hint =
+        r.hint[i].last_today != 0 || r.hint[i].first_tomorrow[0] != 0;
+    char msg[80];
+    std::snprintf(msg, sizeof(msg),
+                  "stream %d got no hint at all — EFA direction mismatch?", i);
+    TEST_ASSERT_TRUE_MESSAGE(any_hint, msg);
   }
-  TEST_ASSERT_TRUE_MESSAGE(any_hint, "no stream got a first_tomorrow hint — "
-                                     "EFA direction string mismatch?");
 }
 
 void setup() {

@@ -14,14 +14,14 @@ void buildStreamFilters(StreamFilter (&f)[STREAM_COUNT]) {
 }
 
 void buildScheduleFilters(ScheduleStreamFilter (&f)[STREAM_COUNT]) {
-  f[STREAM_58A_ATZ] = {DIVA_TULLNERTALGASSE, LINE_58A, EFA_TOWARDS_58A_ATZ};
+  f[STREAM_58A_ATZ] = {DIVA_TULLNERTALGASSE, LINE_58A, EFA_TOWARDS_58A_ATZ, ""};
   f[STREAM_58A_HIETZING] = {DIVA_TULLNERTALGASSE, LINE_58A,
-                            EFA_TOWARDS_58A_HIETZING};
-  f[STREAM_58B_ATZ] = {DIVA_ENDEMANNGASSE, LINE_58B, EFA_TOWARDS_58B_ATZ};
+                            EFA_TOWARDS_58A_HIETZING, ""};
+  f[STREAM_58B_ATZ] = {DIVA_ENDEMANNGASSE, LINE_58B, EFA_TOWARDS_58B_ATZ, ""};
   f[STREAM_U1_LEOPOLDAU] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
-                            EFA_TOWARDS_U1_LEOPOLDAU};
+                            EFA_TOWARDS_U1_LEOPOLDAU, ""};
   f[STREAM_U1_OBERLAA] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
-                          EFA_TOWARDS_U1_OBERLAA};
+                          EFA_TOWARDS_U1_OBERLAA, EFA_TOWARDS_U1_OBERLAA_ALT};
 }
 
 } // namespace bustaferl

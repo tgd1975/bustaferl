@@ -89,7 +89,12 @@ void consumeEfaDoc(JsonDocument &doc, int call_diva,
         continue;
       if (filters[i].line != number)
         continue;
-      if (!startsWith(direction, filters[i].direction_prefix))
+      const bool main_match =
+          startsWith(direction, filters[i].direction_prefix);
+      const bool alt_match =
+          !filters[i].direction_prefix_alt.empty() &&
+          startsWith(direction, filters[i].direction_prefix_alt);
+      if (!main_match && !alt_match)
         continue;
 
       if (t < cutoff) {

@@ -51,8 +51,8 @@ const char *kEveningJson = R"JSON({
 void buildFilters(ScheduleStreamFilter (&f)[STREAM_COUNT]) {
   // Only two streams populated for these tests; others stay defaulted (DIVA=0)
   // so the parser leaves their hints alone.
-  f[STREAM_58A_ATZ] = {60201395, "58A", "Wien Atzgersdorf"};
-  f[STREAM_58A_HIETZING] = {60201395, "58A", "Wien Hietzing"};
+  f[STREAM_58A_ATZ] = {60201395, "58A", "Wien Atzgersdorf", ""};
+  f[STREAM_58A_HIETZING] = {60201395, "58A", "Wien Hietzing", ""};
 }
 
 // Build a local-time `time_t` for tests. TZ is pinned to Vienna in setUp so

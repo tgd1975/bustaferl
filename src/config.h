@@ -52,8 +52,15 @@
 #define EFA_TOWARDS_58A_ATZ "Wien Atzgersdorf"
 #define EFA_TOWARDS_58A_HIETZING "Wien Hietzing"
 #define EFA_TOWARDS_58B_ATZ "Wien Atzgersdorf" // TODO verify post-loop variant
-#define EFA_TOWARDS_U1_LEOPOLDAU "Leopoldau"
-#define EFA_TOWARDS_U1_OBERLAA "Oberlaa"
+// EFA prefixes its U1 direction strings with "Wien " (unlike the OGD
+// realtime endpoint, where the bare station name is used). The Richtung
+// Süden also splits between two terminus variants: "Wien Oberlaa" is the
+// full line, "Wien Alaudagasse" is the short turnaround one station
+// earlier — both serve the same user-facing direction, so we treat them
+// as equivalent via EFA_TOWARDS_U1_OBERLAA_ALT.
+#define EFA_TOWARDS_U1_LEOPOLDAU "Wien Leopoldau"
+#define EFA_TOWARDS_U1_OBERLAA "Wien Oberlaa"
+#define EFA_TOWARDS_U1_OBERLAA_ALT "Wien Alaudagasse"
 
 // EFA schedule endpoint. Caller appends &name_dm=<DIVA>&itdDate*=...
 #define WL_EFA_DM_BASE                                                         \
