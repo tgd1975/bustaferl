@@ -16,15 +16,22 @@
 // `longterm-horizon-mock-firmware` is firmware-only and not in the
 // device test set. See test/README.md.
 
+#include "config.h"
+#include "data/wienerlinien_parse.h"
+#include "hal/Esp32Display.h"
+#include "hal/IPersistentStore.h"
+#include "logic/display_apply.h"
+#include "logic/refresh_planner.h"
+#include "logic/slot_merger.h"
+#include "render/layout.h"
+#include "secrets.h"
+
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <cstdio>
-
-#include "config.h"
-#include "data/wienerlinien_parse.h"
-#include "secrets.h"
+#include <cstring>
 
 #ifndef MOCK_API_BASE
 #error                                                                         \
@@ -49,6 +56,10 @@ namespace {
 
 int g_consecutive_empty = 0;
 bool g_hint_active = false;
+Esp32Display g_display;
+Frame g_frame_new;
+Frame g_frame_prev;
+PersistedMeta g_disp_meta;
 
 std::string apiUrl() {
   std::string url = MOCK_API_BASE;
@@ -114,6 +125,8 @@ void setup() {
                 WiFi.status() == WL_CONNECTED,
                 WiFi.localIP().toString().c_str());
 
+  g_display.init();
+
   StreamFilter filters[STREAM_COUNT];
   buildFilters(filters);
 
@@ -122,10 +135,32 @@ void setup() {
     std::string body;
     bool fetched = httpGetPlain(apiUrl(), body);
     int rt = 0;
+    StreamSnapshot parsed_snap;
+    bool parsed = false;
     if (fetched) {
-      StreamSnapshot snap;
-      if (parseMonitorResponse(body, filters, snap))
-        rt = countRealtime(snap);
+      if (parseMonitorResponse(body, filters, parsed_snap)) {
+        parsed = true;
+        rt = countRealtime(parsed_snap);
+      }
+    }
+    // Drive renderFrame + planRefresh + GxEPD2 partial/light-full so the
+    // mock harness exercises the same display heap path as production
+    // (Schritt 0a).
+    if (parsed) {
+      ScheduleSnapshot empty_schedule;
+      time_t now_t = static_cast<time_t>(time(nullptr));
+      StreamSnapshot merged_for_render =
+          mergeSlots(parsed_snap, empty_schedule, now_t);
+      RenderInput in{merged_for_render, OverlayKind::None};
+      renderFrame(in, g_frame_new);
+      bool prev_valid = (cycle > 1);
+      RefreshConfig rc;
+      RefreshDecision rd = planRefresh(
+          g_frame_prev.data(), g_frame_new.data(), prev_valid, now_t,
+          g_disp_meta.last_light_full, g_disp_meta.partial_count, rc);
+      applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta,
+                           now_t);
+      std::memcpy(g_frame_prev.data(), g_frame_new.data(), Frame::bytes);
     }
     if (rt == 0)
       ++g_consecutive_empty;

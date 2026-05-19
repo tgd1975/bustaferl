@@ -2,17 +2,18 @@
 // silent failure (HTTPS, parse, filter mismatch) names itself in the Unity
 // report instead of disappearing behind a deepSleep().
 
-#include <Arduino.h>
-#include <cstdio>
-#include <ctime>
-#include <unity.h>
-
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Network.h"
+#include "logic/filter_builder.h"
 #include "logic/sleep_planner.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <cstdio>
+#include <ctime>
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -41,7 +42,8 @@ void printSlot(const char *stream, const Departure &d) {
   struct tm local;
   localtime_r(&d.when, &local);
   Serial.printf("[api] %s slot=%02d:%02d %s epoch=%lld\n", stream,
-                local.tm_hour, local.tm_min, d.is_realtime ? "RT" : "PLAN",
+                local.tm_hour, local.tm_min,
+                d.source == DepartureSource::Realtime ? "RT" : "PLAN",
                 static_cast<long long>(d.when));
 }
 
@@ -54,15 +56,6 @@ std::string apiUrl() {
            RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
   url += buf;
   return url;
-}
-
-void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
-  f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
-  f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
-  f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
-  f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
-                            TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
 }
 
 } // namespace
@@ -99,7 +92,7 @@ void test_http_get_returns_body(void) {
 
 void test_parse_all_rbls_respond(void) {
   StreamFilter filters[STREAM_COUNT];
-  buildFilters(filters);
+  buildStreamFilters(filters);
   StreamSnapshot snap;
   TEST_ASSERT_TRUE_MESSAGE(parseMonitorResponse(g_body, filters, snap),
                            "parseMonitorResponse failed");
@@ -108,19 +101,19 @@ void test_parse_all_rbls_respond(void) {
   Serial.printf("[api] streams: 58A-Atz r=%d f=%d | "
                 "58A-Hie r=%d f=%d | 58B r=%d f=%d | "
                 "U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
-                snap.stream[STREAM_58A_ATZ].rbl_responded,
+                snap.stream[STREAM_58A_ATZ].endpoint_responded,
                 snap.stream[STREAM_58A_ATZ].filter_matched,
-                snap.stream[STREAM_58A_HIETZING].rbl_responded,
+                snap.stream[STREAM_58A_HIETZING].endpoint_responded,
                 snap.stream[STREAM_58A_HIETZING].filter_matched,
-                snap.stream[STREAM_58B_ATZ].rbl_responded,
+                snap.stream[STREAM_58B_ATZ].endpoint_responded,
                 snap.stream[STREAM_58B_ATZ].filter_matched,
-                snap.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
+                snap.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
                 snap.stream[STREAM_U1_LEOPOLDAU].filter_matched,
-                snap.stream[STREAM_U1_OBERLAA].rbl_responded,
+                snap.stream[STREAM_U1_OBERLAA].endpoint_responded,
                 snap.stream[STREAM_U1_OBERLAA].filter_matched);
 
   // Per-stream parsed departure times — visible in serial so a wrong towards
-  // filter (returns rbl_responded but no slots) is obvious at a glance.
+  // filter (endpoint_responded but no slots) is obvious at a glance.
   for (int slot = 0; slot < SLOTS_PER_STREAM; ++slot) {
     char tag[24];
     std::snprintf(tag, sizeof(tag), "58A-Atz[%d]", slot);
@@ -135,15 +128,15 @@ void test_parse_all_rbls_respond(void) {
     printSlot(tag, snap.stream[STREAM_U1_OBERLAA].slot[slot]);
   }
 
-  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58A_ATZ].rbl_responded,
+  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58A_ATZ].endpoint_responded,
                            "RBL_TULL_ATZGERSDORF (8131) did not respond");
-  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58A_HIETZING].rbl_responded,
+  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58A_HIETZING].endpoint_responded,
                            "RBL_TULL_HIETZING (3757) did not respond");
-  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58B_ATZ].rbl_responded,
+  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58B_ATZ].endpoint_responded,
                            "RBL_ENDEMANN (8132) did not respond");
-  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
+  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
                            "RBL_SUEDTIROLER_LEOPOLDAU (4105) did not respond");
-  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_OBERLAA].rbl_responded,
+  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_OBERLAA].endpoint_responded,
                            "RBL_SUEDTIROLER_OBERLAA (4124) did not respond");
 
   // Filter match is time-of-day dependent (no buses overnight). Don't assert
@@ -161,7 +154,7 @@ void test_clock_at_boot_is_unsynced(void) {
   // ESP32 cold-boots with time() near zero (seconds since boot, not Unix
   // epoch). This is also the post-deep-sleep state that bites warmCyclePath.
   printClock("boot (expected unsynced, < 1.7e9)");
-  TEST_ASSERT_LESS_THAN_MESSAGE(1700000000, g_clock.now(),
+  TEST_ASSERT_LESS_THAN_MESSAGE(MIN_PLAUSIBLE_EPOCH, g_clock.now(),
                                 "clock unexpectedly synced at boot");
 }
 
@@ -170,7 +163,7 @@ void test_ntp_sync_brings_clock_to_present(void) {
                 TZ_INFO);
   TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "ntpSync() failed");
   printClock("after ntpSync()");
-  TEST_ASSERT_GREATER_THAN_MESSAGE(1700000000, g_clock.now(),
+  TEST_ASSERT_GREATER_THAN_MESSAGE(MIN_PLAUSIBLE_EPOCH, g_clock.now(),
                                    "clock still bogus after NTP");
 }
 
@@ -179,7 +172,7 @@ void test_plansleep_with_unsynced_now_returns_huge(void) {
   // planSleep (because the clock wasn't re-synced), the result is ~years.
   StreamSnapshot snap{};
   snap.api_ok = true;
-  snap.stream[0].rbl_responded = true;
+  snap.stream[0].endpoint_responded = true;
   snap.stream[0].filter_matched = true;
   snap.stream[0].slot[0].when = 1900000000; // a 2030-ish "bus"
   snap.stream[0].slot[0].valid = true;
@@ -200,23 +193,23 @@ void test_warm_boot_recovery_sequence(void) {
   // is also the post-deep-sleep symptom): clock < 1.7e9 -> force ntpSync ->
   // planSleep must now compute a sane interval, not 50 years.
   printClock("sim warm-boot pre-recovery");
-  TEST_ASSERT_LESS_THAN_MESSAGE(1700000000, g_clock.now(),
+  TEST_ASSERT_LESS_THAN_MESSAGE(MIN_PLAUSIBLE_EPOCH, g_clock.now(),
                                 "precondition: clock must be bogus");
 
   // Production guard, literal copy from warmCyclePath:
-  if (g_clock.now() < 1700000000) {
+  if (!g_clock.isSynced()) {
     TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "recovery NTP failed");
   }
   time_t after = g_clock.now();
   printClock("post-recovery");
-  TEST_ASSERT_GREATER_THAN_MESSAGE(1700000000, after,
+  TEST_ASSERT_GREATER_THAN_MESSAGE(MIN_PLAUSIBLE_EPOCH, after,
                                    "recovery did not produce a valid clock");
 
   // planSleep with recovered clock against a bus 20 minutes out should be a
   // small positive deep-sleep interval — well under 24h, never years.
   StreamSnapshot snap{};
   snap.api_ok = true;
-  snap.stream[0].rbl_responded = true;
+  snap.stream[0].endpoint_responded = true;
   snap.stream[0].filter_matched = true;
   snap.stream[0].slot[0].when = after + 1200;
   snap.stream[0].slot[0].valid = true;
@@ -255,14 +248,14 @@ void test_ntp_completes_before_api_query(void) {
                            "precondition: WiFi must be up");
 
   // Production guard (literal copy of warmCyclePath's check):
-  if (g_clock.now() < 1700000000) {
+  if (!g_clock.isSynced()) {
     TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "guard NTP failed");
   }
   time_t clock_at_query_start = g_clock.now();
   Serial.printf("[engine] ordering: clock=%lld at query start\n",
                 static_cast<long long>(clock_at_query_start));
   TEST_ASSERT_GREATER_THAN_MESSAGE(
-      1700000000, clock_at_query_start,
+      MIN_PLAUSIBLE_EPOCH, clock_at_query_start,
       "ORDERING VIOLATION: clock bogus when query begins");
 
   std::string body;
@@ -284,7 +277,7 @@ void test_plansleep_with_synced_now_is_sane(void) {
   // Active mode (delta < active_threshold).
   StreamSnapshot snap{};
   snap.api_ok = true;
-  snap.stream[0].rbl_responded = true;
+  snap.stream[0].endpoint_responded = true;
   snap.stream[0].filter_matched = true;
   time_t now = g_clock.now();
   snap.stream[0].slot[0].when = now + 60;

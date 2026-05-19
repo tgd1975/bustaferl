@@ -22,11 +22,22 @@ src/
 │   └── wienerlinien_parse.{h,cpp}
 │
 ├── logic/                    plattformneutral, reine Funktionen + kleine Klassen
-│   ├── stale_policy.{h,cpp}      §4
-│   ├── sleep_planner.{h,cpp}     §6
-│   ├── refresh_planner.{h,cpp}   §5
-│   ├── filter_health.{h,cpp}     §9
-│   └── boot_sequencer.{h,cpp}    §8
+│   ├── stale_policy.{h,cpp}         §4
+│   ├── sleep_planner.{h,cpp}        §6
+│   ├── refresh_planner.{h,cpp}      §5
+│   ├── filter_health.{h,cpp}        §9
+│   ├── boot_sequencer.{h,cpp}       §8
+│   ├── filter_builder.{h,cpp}       Default-Filter-Set (`towards`-Mapping)
+│   ├── api_fetcher.{h,cpp}          Retry-Wrapper um `INetwork::httpGet`
+│   ├── snapshot_fetcher.{h,cpp}     pro Cycle: alle Streams holen + parsen
+│   ├── snapshot_logger.{h,cpp}      einheitliches `[snapshot]`-Log-Format
+│   ├── schedule_fetcher.{h,cpp}     EFA-Endpoint → `ScheduleHint`
+│   ├── schedule_refresh.{h,cpp}     entscheidet, ob EFA neu geladen wird
+│   ├── slot_merger.{h,cpp}          Realtime ∪ `next_today` ∪ `first_tomorrow`
+│   ├── render_input.{h,cpp}         Snapshot + Overlay → `RenderInput`
+│   ├── display_apply.{h,cpp}        Frame-Diff → `IDisplay::partial/full`
+│   ├── button_classifier.{h,cpp}    Press-Klassifikation (Short / Long)
+│   └── cycle_runner.{h,cpp}         `runColdCycle` / `runWarmCycle` — Engine
 │
 └── render/                   Layout und Rasterisierung
     ├── frame_buffer.h        Template FrameBuffer<W,H>, 1-bpp
@@ -172,12 +183,12 @@ Departure mit passendem `towards` liefert, blendet das Bustaferl
 | `STALE_THRESHOLD_S`        | logic/stale_policy            | Sekunden bis Banner „veraltet"      |
 | `WAKE_BEFORE_BUS_S`        | logic/sleep_planner           | Vorlauf vor frühster Abfahrt        |
 | `BOOT_MARGIN_S`            | logic/sleep_planner           | Boot+WiFi+API-Reserve               |
-| `POLL_INTERVAL_S`          | main.cpp (active phase)       | Poll-Cadence im Wach-Zustand        |
+| `POLL_INTERVAL_S`          | logic/cycle_runner            | Poll-Cadence im Wach-Zustand        |
 | `ACTIVE_THRESHOLD_S`       | logic/sleep_planner           | Schwelle DeepSleep vs. Active       |
 | `NO_DATA_SLEEP_S`          | logic/sleep_planner           | Sleep wenn API leer                 |
 | `PARTIAL_HARDCAP`          | logic/refresh_planner         | erzwungenes Light Full bei Cap      |
 | `LIGHT_FULL_INTERVAL_S`    | logic/refresh_planner         | Light Full alle 2 h                 |
-| `NTP_INTERVAL_S`           | main.cpp                      | NTP-Resync täglich                  |
+| `NTP_INTERVAL_S`           | logic/cycle_runner            | NTP-Resync täglich                  |
 | `FILTER_HEALTH_DEAD_AFTER` | logic/filter_health           | Misses bis „Filter ungültig"        |
 | `RLE_HARDCAP_BYTES`        | hal/Esp32PersistentStore      | maximaler RLE-Buffer im RTC-RAM     |
 
@@ -188,3 +199,25 @@ Departure mit passendem `towards` liefert, blendet das Bustaferl
 - **RTC slow memory (8 kB):** `PersistedMeta` + RLE-Framebuffer (Budget 3 kB,
   Hardcap 7 kB)
 - **RTC fast memory:** ungenutzt
+
+## Host-Engine (`test/test_native_runtime/`)
+
+Die `runColdCycle` / `runWarmCycle`-Engine aus `logic/cycle_runner` läuft auch
+auf dem Host. `test/test_native_runtime/` ist ein Standalone-Treiber, der die
+Engine gegen die echten Wiener-Linien-Endpoints fährt — kein PIO-Test-Bucket,
+sondern ein direktes `g++`-Target via `make native-runtime-*`.
+
+| Adapter                              | Ersetzt …            | Verhalten                                                                 |
+|--------------------------------------|----------------------|---------------------------------------------------------------------------|
+| `WallClockClock`                     | `Esp32Clock`         | `time(nullptr)` + `gmtime_r`; `isSynced()` immer `true`                   |
+| `HttpsNet` (libcurl)                 | `Esp32Network`       | HTTPS-GET gegen den realen Endpoint; ENV-Overrides für Base + TLS-Verify  |
+| `DiskStore`                          | `Esp32PersistentStore` | `PersistedMeta` + RLE-Frame + `ScheduleSnapshot` in `persist.bin`        |
+| `NoOpDisplay`                        | `Esp32Display`       | verschluckt `partial/full/clear`; kein Panel                              |
+| `NoOpSleep`                          | `Esp32Sleep`         | `deepSleep` kehrt zurück (ein Prozess, valgrind sieht alle Cycles)        |
+| `RecordingRenderer`                  | `Esp32Renderer`      | 1bpp-Pseudo-Raster + Dedup; schreibt P5-PGM pro Frame-Wechsel             |
+
+Der Treiber existiert für drei Klassen, die `test_native_*` mit Fake-INetwork
+nicht abdeckt: HTTPS-Edge-Cases gegen den Live-Endpoint, EFA-Mapping mit
+realen Responses, und Heap-Verlauf über N Cycles in einem Prozess
+(`make native-runtime-smoke` → valgrind). Details in
+[../test/test_native_runtime/README.md](../test/test_native_runtime/README.md).

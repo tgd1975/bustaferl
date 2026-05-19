@@ -1,8 +1,8 @@
-#include <string>
-#include <unity.h>
-
 #include "hal/INetwork.h"
 #include "logic/api_fetcher.h"
+
+#include <string>
+#include <unity.h>
 
 using namespace bustaferl;
 

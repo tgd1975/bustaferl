@@ -1,10 +1,10 @@
 #ifndef BUSTAFERL_EFA_PARSE_H
 #define BUSTAFERL_EFA_PARSE_H
 
-#include <string>
-
 #include "ScheduleHint.h"
 #include "StreamSnapshot.h"
+
+#include <string>
 
 #ifndef NATIVE_BUILD
 #include <Stream.h>
@@ -20,6 +20,11 @@ struct ScheduleStreamFilter {
   int diva = 0;
   std::string line;             // exact match against servingLine.number
   std::string direction_prefix; // prefix match against servingLine.direction
+  // Optional second prefix; a departure matches the stream if EITHER prefix
+  // matches. Used for U1-Süd where EFA returns both "Wien Oberlaa" (full
+  // line) and "Wien Alaudagasse" (short turnaround) as legitimate same-
+  // direction variants. Empty = no alternative.
+  std::string direction_prefix_alt;
 };
 
 // Parses an EFA XSLT_DM_REQUEST JSON response and fills the streams whose

@@ -4,6 +4,7 @@
     "bash-no-prompts": "on",
     "check-tool": "on",
     "commit": "on",
+    "fix-cpp": "on",
     "fix-markdown": "on"
   },
   "permissions": {

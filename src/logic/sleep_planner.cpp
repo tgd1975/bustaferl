@@ -8,9 +8,8 @@ SleepDecision planSleep(const StreamSnapshot &snap, time_t now,
                         const SleepConfig &cfg) {
   time_t t_ref = 0;
   bool have = false;
-  for (int s = 0; s < STREAM_COUNT; ++s) {
-    for (int k = 0; k < SLOTS_PER_STREAM; ++k) {
-      const auto &d = snap.stream[s].slot[k];
+  for (const auto &stream : snap.stream) {
+    for (const auto &d : stream.slot) {
       if (!d.valid)
         continue;
       if (!have || d.when < t_ref) {

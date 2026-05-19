@@ -2,10 +2,10 @@
 
 #ifndef NATIVE_BUILD
 
+#include "../config.h"
+
 #include <driver/gpio.h>
 #include <esp_sleep.h>
-
-#include "../config.h"
 
 namespace bustaferl {
 

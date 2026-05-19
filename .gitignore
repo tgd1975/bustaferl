@@ -9,4 +9,5 @@ build/
 *.elf
 *.o
 *.d
+compile_commands.json
 src/secrets.h

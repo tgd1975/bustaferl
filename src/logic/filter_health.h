@@ -12,7 +12,7 @@ public:
   explicit FilterHealth(uint8_t dead_after = 3) : dead_after_(dead_after) {}
 
   // Called once per stream after each successful API call.
-  void recordCall(bool rbl_responded, bool filter_matched);
+  void recordCall(bool endpoint_responded, bool filter_matched);
 
   bool isDead() const { return streak_ >= dead_after_; }
   uint8_t streak() const { return streak_; }

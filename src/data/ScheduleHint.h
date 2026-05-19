@@ -1,9 +1,9 @@
 #ifndef BUSTAFERL_SCHEDULEHINT_H
 #define BUSTAFERL_SCHEDULEHINT_H
 
-#include <ctime>
-
 #include "StreamSnapshot.h"
+
+#include <ctime>
 
 namespace bustaferl {
 
@@ -16,6 +16,11 @@ struct ScheduleHint {
   // it is the trigger used by the warm-cycle refresh logic to decide whether
   // the current snapshot is still valid for "today".
   time_t last_today = 0;
+  // The next two scheduled departures still ahead today (closest to `now`
+  // first). Bridges the evening gap before today's last departure when
+  // realtime is empty — without this the display showed "—:—" even though
+  // the EFA plan still listed today's tail.
+  time_t next_today[2] = {0, 0};
   // The two earliest scheduled departures of the next service day. Renderer
   // mixes these into the slot list whenever realtime data is short.
   time_t first_tomorrow[2] = {0, 0};

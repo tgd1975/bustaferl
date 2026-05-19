@@ -5,15 +5,14 @@
 // font metrics can shift across Adafruit_GFX versions, but the gross
 // invariants stay stable.
 
+#include "config.h"
+#include "data/StreamSnapshot.h"
+#include "render/layout.h"
+
 #include <Arduino.h>
 #include <cstring>
 #include <memory>
 #include <unity.h>
-
-#include "config.h"
-#include "data/StreamSnapshot.h"
-#include "render/error_overlay.h"
-#include "render/layout.h"
 
 using namespace bustaferl;
 
@@ -92,7 +91,8 @@ void test_filling_slot_changes_framebuffer() {
   StreamSnapshot snap{};
   renderFrame({snap, OverlayKind::None}, *fb_empty);
   // 12:31 CET = 1704108660 UTC. Fills slot[0] for 58A→Atzgersdorf.
-  snap.stream[STREAM_58A_ATZ].slot[0] = {1704108660, true, true};
+  snap.stream[STREAM_58A_ATZ].slot[0] = {1704108660, DepartureSource::Realtime,
+                                         true};
   renderFrame({snap, OverlayKind::None}, *fb_filled);
   int diff = 0;
   for (size_t i = 0; i < Frame::bytes; ++i)
@@ -102,26 +102,6 @@ void test_filling_slot_changes_framebuffer() {
   TEST_ASSERT_GREATER_THAN_MESSAGE(
       0, diff,
       "Filling a slot did not change framebuffer — formatHHMM broken?");
-}
-
-void test_render_stale_frame_helper() {
-  FramePtr a = makeFrame();
-  FramePtr b = makeFrame();
-  renderStaleFrame(*a);
-  StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::Stale}, *b);
-  TEST_ASSERT_EQUAL_INT_MESSAGE(
-      0, std::memcmp(a->data(), b->data(), Frame::bytes),
-      "renderStaleFrame should match renderFrame(..., OverlayKind::Stale)");
-}
-
-void test_render_start_failed_frame_helper() {
-  FramePtr a = makeFrame();
-  FramePtr b = makeFrame();
-  renderStartFailedFrame(*a);
-  StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::StartFailed}, *b);
-  TEST_ASSERT_EQUAL_INT(0, std::memcmp(a->data(), b->data(), Frame::bytes));
 }
 
 void test_each_overlay_kind_changes_framebuffer() {
@@ -157,8 +137,6 @@ void setup() {
   RUN_TEST(test_render_empty_snapshot_draws_chrome);
   RUN_TEST(test_overlay_changes_framebuffer_in_band);
   RUN_TEST(test_filling_slot_changes_framebuffer);
-  RUN_TEST(test_render_stale_frame_helper);
-  RUN_TEST(test_render_start_failed_frame_helper);
   RUN_TEST(test_each_overlay_kind_changes_framebuffer);
   UNITY_END();
 }

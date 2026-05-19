@@ -1,9 +1,9 @@
 #ifndef BUSTAFERL_WL_PARSE_H
 #define BUSTAFERL_WL_PARSE_H
 
-#include <string>
-
 #include "StreamSnapshot.h"
+
+#include <string>
 
 namespace bustaferl {
 

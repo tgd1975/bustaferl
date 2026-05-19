@@ -1,12 +1,12 @@
 #ifndef BUSTAFERL_DISPLAY_APPLY_H
 #define BUSTAFERL_DISPLAY_APPLY_H
 
-#include <cstdint>
-#include <ctime>
-
 #include "../hal/IDisplay.h"
 #include "../hal/IPersistentStore.h"
 #include "refresh_planner.h"
+
+#include <cstdint>
+#include <ctime>
 
 namespace bustaferl {
 

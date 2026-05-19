@@ -1,0 +1,23 @@
+# Valgrind suppressions for the native-runtime smoke target.
+#
+# Each suppression here filters a leak that originates *outside* our code
+# in a third-party library we link against. Anything that points into
+# src/, test/test_native_runtime/, or test/test_native_*  is OURS and
+# must not be added here — fix the leak instead.
+
+# libp11-kit allocates a thread-locale during its DSO-init (called by ld-
+# linux before main() runs, via libcurl → libnss → p11-kit). The block is
+# valid for the lifetime of the process and never freed; the leak is
+# documented upstream and is filtered by every major project (curl,
+# glib, gnutls).
+{
+  p11-kit-newlocale-init
+  Memcheck:Leak
+  match-leak-kinds: definite
+  fun:realloc
+  fun:argz_add_sep
+  fun:newlocale
+  ...
+  obj:*libp11-kit.so*
+  ...
+}

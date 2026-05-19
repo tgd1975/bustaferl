@@ -1,6 +1,11 @@
 #include "rle.h"
 
+#include <limits>
+
 namespace bustaferl {
+
+// Maximum run length per (count, value) pair — count fits one byte.
+constexpr size_t RLE_MAX_RUN = std::numeric_limits<uint8_t>::max();
 
 size_t rleEncode(const uint8_t *in, size_t in_len, uint8_t *out,
                  size_t out_cap) {
@@ -9,7 +14,7 @@ size_t rleEncode(const uint8_t *in, size_t in_len, uint8_t *out,
   while (ip < in_len) {
     uint8_t v = in[ip];
     size_t run = 1;
-    while (ip + run < in_len && in[ip + run] == v && run < 255)
+    while (ip + run < in_len && in[ip + run] == v && run < RLE_MAX_RUN)
       ++run;
     if (op + 2 > out_cap)
       return 0;

@@ -13,17 +13,24 @@
 // HEAP_LEAK_BUDGET_BYTES scales linearly so the per-cycle drift
 // tolerance is identical across the three variants.
 
-#include <Arduino.h>
-#include <cstdio>
-#include <unity.h>
-
+#include "RecordingDisplay.h"
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Network.h"
+#include "hal/IPersistentStore.h"
 #include "logic/api_fetcher.h"
+#include "logic/display_apply.h"
 #include "logic/filter_health.h"
+#include "logic/refresh_planner.h"
+#include "logic/slot_merger.h"
+#include "render/layout.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <cstdio>
+#include <cstring>
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -42,6 +49,10 @@ constexpr int MIN_SUCCESS_PCT = 85; // tolerate transient outages
 
 Esp32Network g_net;
 Esp32Clock g_clock{NTP_SERVER, TZ_INFO};
+bustaferl::test::RecordingDisplay g_display;
+Frame g_frame_new;
+Frame g_frame_prev;
+PersistedMeta g_disp_meta;
 
 uint32_t g_initial_heap = 0;
 uint32_t g_min_heap = 0xFFFFFFFFu;
@@ -78,7 +89,7 @@ void test_setup_wifi_and_clock(void) {
   g_net.addAp(WIFI_SSID_SECONDARY, WIFI_PASSWORD_SECONDARY);
 #endif
   TEST_ASSERT_TRUE_MESSAGE(g_net.connect(15000), "initial WiFi failed");
-  if (g_clock.now() < 1700000000) {
+  if (!g_clock.isSynced()) {
     TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "initial NTP failed");
   }
   g_initial_heap = ESP.getFreeHeap();
@@ -112,6 +123,26 @@ void test_run_soak_cycles(void) {
       parsed = parseMonitorResponse(body, filters, snap);
     }
 
+    // Drive the production render pipeline + RLE save/load on every
+    // cycle so the soak's heap-leak budget covers renderFrame and the
+    // partial/light-full bookkeeping path (Schritt 0a.2). RecordingDisplay
+    // walks the RLE roundtrip without abusing the panel.
+    if (parsed) {
+      ScheduleSnapshot empty_schedule;
+      StreamSnapshot merged_for_render =
+          mergeSlots(snap, empty_schedule, t_cycle);
+      RenderInput in{merged_for_render, OverlayKind::None};
+      renderFrame(in, g_frame_new);
+      bool prev_valid = (cycle > 1);
+      RefreshConfig rc;
+      RefreshDecision rd = planRefresh(
+          g_frame_prev.data(), g_frame_new.data(), prev_valid, t_cycle,
+          g_disp_meta.last_light_full, g_disp_meta.partial_count, rc);
+      applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta,
+                           t_cycle);
+      std::memcpy(g_frame_prev.data(), g_frame_new.data(), Frame::bytes);
+    }
+
     uint32_t heap_after = ESP.getFreeHeap();
     if (heap_after < g_min_heap)
       g_min_heap = heap_after;
@@ -136,15 +167,15 @@ void test_run_soak_cycles(void) {
         fo.attempts_taken, static_cast<unsigned>(body.size()), heap_before,
         heap_after,
         static_cast<int>(heap_after) - static_cast<int>(heap_before),
-        snap.stream[STREAM_58A_ATZ].rbl_responded,
+        snap.stream[STREAM_58A_ATZ].endpoint_responded,
         snap.stream[STREAM_58A_ATZ].filter_matched,
-        snap.stream[STREAM_58A_HIETZING].rbl_responded,
+        snap.stream[STREAM_58A_HIETZING].endpoint_responded,
         snap.stream[STREAM_58A_HIETZING].filter_matched,
-        snap.stream[STREAM_58B_ATZ].rbl_responded,
+        snap.stream[STREAM_58B_ATZ].endpoint_responded,
         snap.stream[STREAM_58B_ATZ].filter_matched,
-        snap.stream[STREAM_U1_LEOPOLDAU].rbl_responded,
+        snap.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
         snap.stream[STREAM_U1_LEOPOLDAU].filter_matched,
-        snap.stream[STREAM_U1_OBERLAA].rbl_responded,
+        snap.stream[STREAM_U1_OBERLAA].endpoint_responded,
         snap.stream[STREAM_U1_OBERLAA].filter_matched);
 
     // Monotonic clock check — catches NTP storms / DST math regressions.

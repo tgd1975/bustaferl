@@ -1,9 +1,9 @@
-#include <string>
-#include <unity.h>
-
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "fixtures/wl_live.h"
+
+#include <string>
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -88,21 +88,24 @@ void test_happy_path_all_three_streams() {
   TEST_ASSERT_TRUE(parseMonitorResponse(kHappyJson, f, s));
   TEST_ASSERT_TRUE(s.api_ok);
 
-  TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].rbl_responded);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].endpoint_responded);
   TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].filter_matched);
   TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].slot[0].valid);
-  TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].slot[0].is_realtime);
+  TEST_ASSERT_EQUAL(DepartureSource::Realtime,
+                    s.stream[STREAM_58A_ATZ].slot[0].source);
   TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].slot[1].valid);
   // 12:31 CET = 11:31 UTC = 1704108660
   TEST_ASSERT_EQUAL(1704108660, s.stream[STREAM_58A_ATZ].slot[0].when);
 
-  // Hietzing departure has only timePlanned → realtime=false
+  // Hietzing departure has only timePlanned → source = Plan
   TEST_ASSERT_TRUE(s.stream[STREAM_58A_HIETZING].slot[0].valid);
-  TEST_ASSERT_FALSE(s.stream[STREAM_58A_HIETZING].slot[0].is_realtime);
+  TEST_ASSERT_EQUAL(DepartureSource::Plan,
+                    s.stream[STREAM_58A_HIETZING].slot[0].source);
 
   // 58B: the "Endemanngasse" line must be skipped, "Atzgersdorf S+U" wins
   TEST_ASSERT_TRUE(s.stream[STREAM_58B_ATZ].slot[0].valid);
-  TEST_ASSERT_TRUE(s.stream[STREAM_58B_ATZ].slot[0].is_realtime);
+  TEST_ASSERT_EQUAL(DepartureSource::Realtime,
+                    s.stream[STREAM_58B_ATZ].slot[0].source);
 }
 
 void test_plan_fallback_when_realtime_missing() {
@@ -111,7 +114,8 @@ void test_plan_fallback_when_realtime_missing() {
   StreamSnapshot s;
   parseMonitorResponse(kHappyJson, f, s);
   TEST_ASSERT_TRUE(s.stream[STREAM_58A_HIETZING].slot[0].valid);
-  TEST_ASSERT_FALSE(s.stream[STREAM_58A_HIETZING].slot[0].is_realtime);
+  TEST_ASSERT_EQUAL(DepartureSource::Plan,
+                    s.stream[STREAM_58A_HIETZING].slot[0].source);
 }
 
 void test_filter_mismatch_marks_responded_but_not_matched() {
@@ -123,7 +127,7 @@ void test_filter_mismatch_marks_responded_but_not_matched() {
   buildFilters(f);
   StreamSnapshot s;
   TEST_ASSERT_TRUE(parseMonitorResponse(json, f, s));
-  TEST_ASSERT_TRUE(s.stream[STREAM_58B_ATZ].rbl_responded);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58B_ATZ].endpoint_responded);
   TEST_ASSERT_FALSE(s.stream[STREAM_58B_ATZ].filter_matched);
 }
 
@@ -141,7 +145,7 @@ void test_empty_monitors_succeeds_with_no_data() {
   TEST_ASSERT_TRUE(parseMonitorResponse(R"({"data":{"monitors":[]}})", f, s));
   TEST_ASSERT_TRUE(s.api_ok);
   for (int i = 0; i < STREAM_COUNT; ++i) {
-    TEST_ASSERT_FALSE(s.stream[i].rbl_responded);
+    TEST_ASSERT_FALSE(s.stream[i].endpoint_responded);
     TEST_ASSERT_FALSE(s.stream[i].slot[0].valid);
   }
 }
@@ -156,9 +160,9 @@ void test_real_live_response_parses() {
   TEST_ASSERT_TRUE_MESSAGE(parseMonitorResponse(kLiveResponseJson, f, s),
                            "parseMonitorResponse returned false on real body");
   TEST_ASSERT_TRUE(s.api_ok);
-  TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].rbl_responded);
-  TEST_ASSERT_TRUE(s.stream[STREAM_58A_HIETZING].rbl_responded);
-  TEST_ASSERT_TRUE(s.stream[STREAM_58B_ATZ].rbl_responded);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].endpoint_responded);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58A_HIETZING].endpoint_responded);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58B_ATZ].endpoint_responded);
 }
 
 void test_real_live_response_all_three_filters_match() {

@@ -1,5 +1,8 @@
 #include "efa_parse.h"
 
+#include "string_util.h"
+#include "time_constants.h"
+
 #include <ArduinoJson.h>
 #include <cstring>
 
@@ -11,13 +14,9 @@ namespace bustaferl {
 
 namespace {
 
-bool startsWith(const char *s, const std::string &prefix) {
-  if (prefix.empty())
-    return true;
-  if (!s)
-    return false;
-  return std::strncmp(s, prefix.c_str(), prefix.size()) == 0;
-}
+// JSON parser nesting limit; lifted from ArduinoJson's default (10) so the
+// nested EFA response (departureList → servingLine → …) is not truncated.
+constexpr int EFA_JSON_NESTING_LIMIT = 20;
 
 int atoiSafe(const char *s) { return (s && *s) ? std::atoi(s) : 0; }
 
@@ -42,7 +41,7 @@ time_t parseEfaDateTime(JsonObjectConst dt) {
   if (!y || !mo || !d || !h || !mi)
     return 0;
   struct tm tm{};
-  tm.tm_year = atoiSafe(y) - 1900;
+  tm.tm_year = atoiSafe(y) - TM_YEAR_BASE;
   tm.tm_mon = atoiSafe(mo) - 1;
   tm.tm_mday = atoiSafe(d);
   tm.tm_hour = atoiSafe(h);
@@ -55,7 +54,10 @@ time_t parseEfaDateTime(JsonObjectConst dt) {
 
 // Common parse-and-filter logic shared by the std::string and Stream
 // overloads. `doc` must already hold the deserialized (filtered) EFA
-// response. Mutates `hint` in place.
+// response. Mutates `hint` in place. The branch count tracks the
+// stream/diva/line/direction match dimensions; splitting would inline-back
+// or hide that this is one parse pass per departure.
+// NOLINTNEXTLINE(readability-function-size)
 void consumeEfaDoc(JsonDocument &doc, int call_diva,
                    const ScheduleStreamFilter (&filters)[STREAM_COUNT],
                    time_t cutoff, ScheduleHint (&hint)[STREAM_COUNT]) {
@@ -87,13 +89,23 @@ void consumeEfaDoc(JsonDocument &doc, int call_diva,
         continue;
       if (filters[i].line != number)
         continue;
-      if (!startsWith(direction, filters[i].direction_prefix))
+      const bool main_match =
+          startsWith(direction, filters[i].direction_prefix);
+      const bool alt_match =
+          !filters[i].direction_prefix_alt.empty() &&
+          startsWith(direction, filters[i].direction_prefix_alt);
+      if (!main_match && !alt_match)
         continue;
 
       if (t < cutoff) {
-        // Always keep the latest pre-cutoff match — EFA returns chronological
-        // order, so each subsequent hit overwrites.
+        // Track the latest pre-cutoff match (`last_today`) plus the latest
+        // two for `next_today` — the slot merger drops past times via its
+        // own `t < now` filter, so what survives are the next today
+        // departures still ahead. EFA returns chronological order, so each
+        // subsequent hit shifts the rolling window of the last two.
         hint[i].last_today = t;
+        hint[i].next_today[0] = hint[i].next_today[1];
+        hint[i].next_today[1] = t;
       } else if (tomorrow_fill[i] < 2) {
         hint[i].first_tomorrow[tomorrow_fill[i]++] = t;
       }
@@ -128,8 +140,9 @@ bool parseEfaResponse(const std::string &json, int call_diva,
   buildEfaFilter(filter);
 
   JsonDocument doc;
-  auto err = deserializeJson(doc, json, DeserializationOption::Filter(filter),
-                             DeserializationOption::NestingLimit(20));
+  auto err = deserializeJson(
+      doc, json, DeserializationOption::Filter(filter),
+      DeserializationOption::NestingLimit(EFA_JSON_NESTING_LIMIT));
   if (err)
     return false;
 
@@ -145,8 +158,9 @@ bool parseEfaResponse(::Stream &json, int call_diva,
   buildEfaFilter(filter);
 
   JsonDocument doc;
-  auto err = deserializeJson(doc, json, DeserializationOption::Filter(filter),
-                             DeserializationOption::NestingLimit(20));
+  auto err = deserializeJson(
+      doc, json, DeserializationOption::Filter(filter),
+      DeserializationOption::NestingLimit(EFA_JSON_NESTING_LIMIT));
   if (err)
     return false;
 

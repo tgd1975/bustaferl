@@ -1,8 +1,8 @@
-#include <unity.h>
-
 #include "hal/IClock.h"
 #include "hal/INetwork.h"
 #include "logic/boot_sequencer.h"
+
+#include <unity.h>
 
 using namespace bustaferl;
 

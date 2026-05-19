@@ -264,8 +264,7 @@ bool Esp32Network::httpGetStream(const std::string &url,
   }
   http.end();
   Serial.printf("[net] STREAM HTTP %d, consumer=%s heap_after=%u\n", code,
-                ok ? "ok" : "fail",
-                static_cast<unsigned>(ESP.getFreeHeap()));
+                ok ? "ok" : "fail", static_cast<unsigned>(ESP.getFreeHeap()));
   return ok;
 }
 

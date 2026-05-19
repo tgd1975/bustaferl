@@ -1,6 +1,6 @@
-#include <unity.h>
-
 #include "logic/sleep_planner.h"
+
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -9,7 +9,8 @@ static SleepConfig cfg{900, 30, 120, 1800, 60};
 static StreamSnapshot makeSnap(time_t first_departure) {
   StreamSnapshot s;
   s.api_ok = true;
-  s.stream[STREAM_58A_ATZ].slot[0] = {first_departure, true, true};
+  s.stream[STREAM_58A_ATZ].slot[0] = {first_departure,
+                                      DepartureSource::Realtime, true};
   return s;
 }
 
@@ -59,9 +60,10 @@ void test_api_failure_uses_short_retry() {
 
 void test_uses_minimum_across_streams() {
   StreamSnapshot snap;
-  snap.stream[STREAM_58A_ATZ].slot[0] = {5000, true, true};
-  snap.stream[STREAM_58A_HIETZING].slot[0] = {3000, true, true};
-  snap.stream[STREAM_58B_ATZ].slot[1] = {2500, true, true};
+  snap.stream[STREAM_58A_ATZ].slot[0] = {5000, DepartureSource::Realtime, true};
+  snap.stream[STREAM_58A_HIETZING].slot[0] = {3000, DepartureSource::Realtime,
+                                              true};
+  snap.stream[STREAM_58B_ATZ].slot[1] = {2500, DepartureSource::Realtime, true};
   auto d = planSleep(snap, 0, cfg);
   // earliest = 2500 → wake_at = 2500 - 930 = 1570
   TEST_ASSERT_EQUAL_UINT(1570, d.seconds);

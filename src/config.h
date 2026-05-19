@@ -52,8 +52,15 @@
 #define EFA_TOWARDS_58A_ATZ "Wien Atzgersdorf"
 #define EFA_TOWARDS_58A_HIETZING "Wien Hietzing"
 #define EFA_TOWARDS_58B_ATZ "Wien Atzgersdorf" // TODO verify post-loop variant
-#define EFA_TOWARDS_U1_LEOPOLDAU "Leopoldau"
-#define EFA_TOWARDS_U1_OBERLAA "Oberlaa"
+// EFA prefixes its U1 direction strings with "Wien " (unlike the OGD
+// realtime endpoint, where the bare station name is used). The Richtung
+// Süden also splits between two terminus variants: "Wien Oberlaa" is the
+// full line, "Wien Alaudagasse" is the short turnaround one station
+// earlier — both serve the same user-facing direction, so we treat them
+// as equivalent via EFA_TOWARDS_U1_OBERLAA_ALT.
+#define EFA_TOWARDS_U1_LEOPOLDAU "Wien Leopoldau"
+#define EFA_TOWARDS_U1_OBERLAA "Wien Oberlaa"
+#define EFA_TOWARDS_U1_OBERLAA_ALT "Wien Alaudagasse"
 
 // EFA schedule endpoint. Caller appends &name_dm=<DIVA>&itdDate*=...
 #define WL_EFA_DM_BASE                                                         \
@@ -89,14 +96,21 @@
 
 #define FILTER_HEALTH_DEAD_AFTER 3 // consecutive misses → dead
 
+// Nightly deep-clean trigger thresholds. When the next planned sleep is at
+// least LONG_SLEEP_FOR_NIGHTLY_CLEAN_S and the last deep clean is older than
+// NIGHTLY_DEEP_CLEAN_INTERVAL_S, the cycle promotes the upcoming partial to
+// a full deep clean instead.
+#define LONG_SLEEP_FOR_NIGHTLY_CLEAN_S (4 * 3600)
+#define NIGHTLY_DEEP_CLEAN_INTERVAL_S (20 * 3600)
+
 // Display geometry — used everywhere; do not change without re-laying out.
 #define EPD_WIDTH 400
 #define EPD_HEIGHT 300
 #define FB_BYTES (EPD_WIDTH * EPD_HEIGHT / 8) // 15000
 
-// RLE persistence: ~3kB budget for the compressed framebuffer in RTC slow
-// memory. Above this we force a light full refresh next cycle.
-#define RLE_BUDGET_BYTES 3072
+// RLE persistence hard cap. The compressed framebuffer must fit into the
+// RTC-slow-memory slot reserved by Esp32PersistentStore; encodes that exceed
+// this size are rejected (the next cycle falls back to a light full refresh).
 #define RLE_HARDCAP_BYTES 7168
 
 // Time zone for display formatting (Vienna with DST).

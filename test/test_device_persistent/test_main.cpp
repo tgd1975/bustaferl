@@ -5,12 +5,13 @@
 // framebuffer_valid (after which the store state is poisoned for the rest of
 // the suite — keep it last).
 
-#include <Arduino.h>
-#include <cstring>
-#include <unity.h>
-
 #include "config.h"
 #include "hal/Esp32PersistentStore.h"
+
+#include <Arduino.h>
+#include <cstring>
+#include <memory>
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -50,8 +51,11 @@ void test_cold_rtc_load_schedule_returns_zero() {
 }
 
 void test_cold_rtc_load_framebuffer_returns_zero() {
-  uint8_t out[FB_BYTES] = {0};
-  TEST_ASSERT_EQUAL_UINT(0, g_store.loadFramebuffer(out, FB_BYTES));
+  // FB_BYTES is 15 KB — too large for the Arduino loop() stack (~8 KB).
+  // Heap-allocate every framebuffer in this suite (memory: frame-must-be-heap).
+  auto out = std::make_unique<uint8_t[]>(FB_BYTES);
+  std::memset(out.get(), 0, FB_BYTES);
+  TEST_ASSERT_EQUAL_UINT(0, g_store.loadFramebuffer(out.get(), FB_BYTES));
 }
 
 void test_save_meta_round_trip() {
@@ -77,36 +81,38 @@ void test_save_meta_round_trip() {
 }
 
 void test_save_framebuffer_round_trip_white() {
-  uint8_t fb[FB_BYTES];
-  std::memset(fb, 0xFF, FB_BYTES);
-  TEST_ASSERT_TRUE_MESSAGE(g_store.saveFramebuffer(fb, FB_BYTES),
+  auto fb = std::make_unique<uint8_t[]>(FB_BYTES);
+  std::memset(fb.get(), 0xFF, FB_BYTES);
+  TEST_ASSERT_TRUE_MESSAGE(g_store.saveFramebuffer(fb.get(), FB_BYTES),
                            "saveFramebuffer(all-white) returned false");
   PersistedMeta m = g_store.loadMeta();
   TEST_ASSERT_TRUE_MESSAGE(m.framebuffer_valid,
                            "framebuffer_valid not set after successful save");
 
-  uint8_t out[FB_BYTES] = {0};
-  size_t n = g_store.loadFramebuffer(out, FB_BYTES);
+  auto out = std::make_unique<uint8_t[]>(FB_BYTES);
+  std::memset(out.get(), 0, FB_BYTES);
+  size_t n = g_store.loadFramebuffer(out.get(), FB_BYTES);
   Serial.printf("[engine] save/load white roundtrip: %u bytes returned\n",
                 static_cast<unsigned>(n));
   TEST_ASSERT_EQUAL_UINT(FB_BYTES, n);
-  TEST_ASSERT_EQUAL_INT_MESSAGE(0, std::memcmp(fb, out, FB_BYTES),
+  TEST_ASSERT_EQUAL_INT_MESSAGE(0, std::memcmp(fb.get(), out.get(), FB_BYTES),
                                 "decoded framebuffer differs from input");
 }
 
 void test_save_framebuffer_round_trip_random_pattern() {
-  uint8_t fb[FB_BYTES];
+  auto fb = std::make_unique<uint8_t[]>(FB_BYTES);
   for (size_t i = 0; i < FB_BYTES; ++i) {
     // run-friendly pattern: 8-byte plateaus, change every 8 bytes
     fb[i] = static_cast<uint8_t>((i / 8) & 0xFF);
   }
-  TEST_ASSERT_TRUE(g_store.saveFramebuffer(fb, FB_BYTES));
-  uint8_t out[FB_BYTES] = {0};
-  size_t n = g_store.loadFramebuffer(out, FB_BYTES);
+  TEST_ASSERT_TRUE(g_store.saveFramebuffer(fb.get(), FB_BYTES));
+  auto out = std::make_unique<uint8_t[]>(FB_BYTES);
+  std::memset(out.get(), 0, FB_BYTES);
+  size_t n = g_store.loadFramebuffer(out.get(), FB_BYTES);
   Serial.printf("[engine] save/load patterned roundtrip: %u bytes\n",
                 static_cast<unsigned>(n));
   TEST_ASSERT_EQUAL_UINT(FB_BYTES, n);
-  TEST_ASSERT_EQUAL_INT(0, std::memcmp(fb, out, FB_BYTES));
+  TEST_ASSERT_EQUAL_INT(0, std::memcmp(fb.get(), out.get(), FB_BYTES));
 }
 
 void test_save_schedule_round_trip() {
@@ -133,18 +139,20 @@ void test_save_schedule_round_trip() {
 void test_save_framebuffer_overflow_clears_valid() {
   // Build a worst-case input that won't fit into RLE_HARDCAP_BYTES: alternate
   // 0xAA/0x55 every byte → zero compression → encoded size = 2 * FB_BYTES.
-  uint8_t fb[FB_BYTES];
+  auto fb = std::make_unique<uint8_t[]>(FB_BYTES);
   for (size_t i = 0; i < FB_BYTES; ++i)
     fb[i] = (i & 1) ? 0xAA : 0x55;
-  bool ok = g_store.saveFramebuffer(fb, FB_BYTES);
+  bool ok = g_store.saveFramebuffer(fb.get(), FB_BYTES);
   PersistedMeta m = g_store.loadMeta();
   Serial.printf("[engine] overflow save returned=%d fb_valid_after=%d\n", ok,
                 m.framebuffer_valid);
   TEST_ASSERT_FALSE_MESSAGE(ok, "worst-case input must not fit in RLE budget");
   TEST_ASSERT_FALSE_MESSAGE(m.framebuffer_valid,
                             "framebuffer_valid not cleared on overflow");
-  uint8_t out[FB_BYTES] = {0};
-  TEST_ASSERT_EQUAL_UINT_MESSAGE(0, g_store.loadFramebuffer(out, FB_BYTES),
+  auto out = std::make_unique<uint8_t[]>(FB_BYTES);
+  std::memset(out.get(), 0, FB_BYTES);
+  TEST_ASSERT_EQUAL_UINT_MESSAGE(0,
+                                 g_store.loadFramebuffer(out.get(), FB_BYTES),
                                  "load must refuse to decode after overflow");
 }
 

@@ -3,9 +3,9 @@
 
 #ifndef NATIVE_BUILD
 
-#include <WiFiMulti.h>
-
 #include "INetwork.h"
+
+#include <WiFiMulti.h>
 
 namespace bustaferl {
 
@@ -15,8 +15,7 @@ public:
   bool connect(unsigned timeout_ms) override;
   bool isConnected() override;
   bool httpGet(const std::string &url, std::string &out) override;
-  bool httpGetStream(const std::string &url,
-                     StreamConsumer consumer) override;
+  bool httpGetStream(const std::string &url, StreamConsumer consumer) override;
 
 private:
   WiFiMulti wifi_;

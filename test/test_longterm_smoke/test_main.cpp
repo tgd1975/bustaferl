@@ -7,16 +7,23 @@
 //
 // Run via `make test-longterm-smoke` (env:longterm-smoke).
 
-#include <Arduino.h>
-#include <cstdio>
-#include <unity.h>
-
+#include "../test_longterm_soak/RecordingDisplay.h"
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Network.h"
+#include "hal/IPersistentStore.h"
 #include "logic/api_fetcher.h"
+#include "logic/display_apply.h"
+#include "logic/refresh_planner.h"
+#include "logic/slot_merger.h"
+#include "render/layout.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <cstdio>
+#include <cstring>
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -30,6 +37,10 @@ constexpr uint32_t SETTLE_DELAY_S = 30;             // long enough that a
                                                     // surface
 Esp32Network g_net;
 Esp32Clock g_clock{NTP_SERVER, TZ_INFO};
+bustaferl::test::RecordingDisplay g_display;
+Frame g_frame_new;
+Frame g_frame_prev;
+PersistedMeta g_disp_meta;
 uint32_t g_initial_heap = 0;
 
 std::string apiUrl() {
@@ -76,7 +87,7 @@ void test_ntp_syncs(void) {
   time_t t = g_clock.now();
   Serial.printf("[smoke] clock_epoch=%lld\n", static_cast<long long>(t));
   TEST_ASSERT_GREATER_THAN_INT_MESSAGE(
-      1700000000, static_cast<int>(t),
+      MIN_PLAUSIBLE_EPOCH, static_cast<int>(t),
       "smoke: clock is bogus after NTP sync (real time should be >= 2023)");
 }
 
@@ -96,13 +107,37 @@ void test_pipeline_one_full_cycle(void) {
   bool parsed = parseMonitorResponse(body, filters, snap);
   TEST_ASSERT_TRUE_MESSAGE(parsed, "smoke: parse of live body failed");
 
-  int rbls_responded = 0;
+  int endpoints_responded = 0;
   for (int i = 0; i < STREAM_COUNT; ++i)
-    rbls_responded += snap.stream[i].rbl_responded ? 1 : 0;
-  Serial.printf("[smoke] rbls_responded=%d/%d\n", rbls_responded, STREAM_COUNT);
+    endpoints_responded += snap.stream[i].endpoint_responded ? 1 : 0;
+  Serial.printf("[smoke] endpoints_responded=%d/%d\n", endpoints_responded,
+                STREAM_COUNT);
   TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(
-      3, rbls_responded,
-      "smoke: fewer than 3 RBLs responded — hardware/network suspect");
+      3, endpoints_responded,
+      "smoke: fewer than 3 endpoints responded — hardware/network suspect");
+
+  // Walk the render + planRefresh + RecordingDisplay (RLE roundtrip)
+  // path once on the live parse result. Catches "renderFrame blows up
+  // on the live JSON shape" or "RLE overflows on live data" before the
+  // longer-running tests do (Schritt 0a.2).
+  ScheduleSnapshot empty_schedule;
+  time_t now_t = g_clock.now();
+  StreamSnapshot merged_for_render = mergeSlots(snap, empty_schedule, now_t);
+  RenderInput in{merged_for_render, OverlayKind::None};
+  renderFrame(in, g_frame_new);
+  RefreshConfig rc;
+  RefreshDecision rd = planRefresh(
+      g_frame_prev.data(), g_frame_new.data(), /*prev_valid=*/false, now_t,
+      g_disp_meta.last_light_full, g_disp_meta.partial_count, rc);
+  applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta, now_t);
+  Serial.printf("[smoke] display: full=%d partial=%d light=%d deep=%d "
+                "rle_overflow=%d\n",
+                g_display.full_calls, g_display.partial_calls,
+                g_display.light_full_calls, g_display.deep_clean_calls,
+                g_display.rle_overflow_observed);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(
+      0, g_display.rle_overflow_observed,
+      "smoke: live framebuffer overflowed the prod-cap RLE budget");
 }
 
 void test_settle_window_then_heap_stable(void) {

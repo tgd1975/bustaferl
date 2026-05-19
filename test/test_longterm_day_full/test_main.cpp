@@ -15,17 +15,24 @@
 //
 // Run via `make test-longterm-day-full` (env:longterm-day-full).
 
-#include <Arduino.h>
-#include <cstdio>
-#include <unity.h>
-
 #include "config.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
+#include "hal/Esp32Display.h"
 #include "hal/Esp32Network.h"
+#include "hal/IPersistentStore.h"
 #include "logic/api_fetcher.h"
+#include "logic/display_apply.h"
+#include "logic/refresh_planner.h"
 #include "logic/sleep_planner.h"
+#include "logic/slot_merger.h"
+#include "render/layout.h"
 #include "secrets.h"
+
+#include <Arduino.h>
+#include <cstdio>
+#include <cstring>
+#include <unity.h>
 
 using namespace bustaferl;
 
@@ -38,6 +45,10 @@ constexpr int HEAP_LEAK_BUDGET_BYTES = 64 * 1024; // 24 h budget
 
 Esp32Network g_net;
 Esp32Clock g_clock{NTP_SERVER, TZ_INFO};
+Esp32Display g_display;
+Frame g_frame_new;
+Frame g_frame_prev;
+PersistedMeta g_disp_meta;
 
 uint32_t g_initial_heap = 0;
 time_t g_start_clock = 0;
@@ -78,6 +89,7 @@ void test_start_conditions(void) {
   TEST_ASSERT_TRUE_MESSAGE(g_net.connect(15000),
                            "day_full: initial WiFi failed");
   TEST_ASSERT_TRUE_MESSAGE(g_clock.ntpSync(), "day_full: initial NTP failed");
+  g_display.init();
   g_start_clock = g_clock.now();
   g_initial_heap = ESP.getFreeHeap();
   struct tm local;
@@ -128,14 +140,32 @@ void test_24h_loop(void) {
       g_saw_rampup = true;
     g_was_active_last_cycle = active_now;
 
-    // Refresh-budget simulation: every active cycle bumps partial_counter,
-    // forced reset when it hits PARTIAL_HARDCAP.
+    // Refresh-budget simulation kept for historical telemetry continuity.
     if (active_now) {
       ++g_partial_counter;
       if (g_partial_counter >= PARTIAL_HARDCAP) {
         g_partial_counter = 0;
         ++g_refresh_resets;
       }
+    }
+
+    // Drive the production render+display pipeline (Schritt 0a). Heap
+    // spikes from renderFrame and partial/light-full refresh are now
+    // visible across the 24 h window — previously skipped.
+    if (parsed) {
+      ScheduleSnapshot empty_schedule;
+      StreamSnapshot merged_for_render =
+          mergeSlots(snap, empty_schedule, t_cycle);
+      RenderInput in{merged_for_render, OverlayKind::None};
+      renderFrame(in, g_frame_new);
+      bool prev_valid = (cycle > 1);
+      RefreshConfig rc;
+      RefreshDecision rd = planRefresh(
+          g_frame_prev.data(), g_frame_new.data(), prev_valid, t_cycle,
+          g_disp_meta.last_light_full, g_disp_meta.partial_count, rc);
+      applyDisplayDecision(g_display, rd, g_frame_new.data(), g_disp_meta,
+                           t_cycle);
+      std::memcpy(g_frame_prev.data(), g_frame_new.data(), Frame::bytes);
     }
 
     if (cycle % 60 == 0) {

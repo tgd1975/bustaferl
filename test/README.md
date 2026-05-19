@@ -35,7 +35,7 @@ Direct `pio test -e …` calls are for debugging single envs, not routine work.
 | --- | --- |
 | [test_device_fetch](test_device_fetch/) | WiFi + HTTPS + Wiener-Linien-Parse vs. Live-API (`env:device-fetch`) |
 | [test_device_persistent](test_device_persistent/) | RTC slow memory + RLE round-trip (`env:device-persistent`) |
-| [test_device_render](test_device_render/) | `render/layout` + `error_overlay` vs. real GFX-Stack (`env:device-render`) |
+| [test_device_render](test_device_render/) | `render/layout` vs. real GFX-Stack (`env:device-render`) |
 | [test_device_schedule](test_device_schedule/) | EFA-Pipeline (3 back-to-back XSLT_DM_REQUEST + Heap) (`env:device-schedule`) |
 | [test_device_sleep](test_device_sleep/) | `Esp32Sleep::wakeupCause` mapping via Light-Sleep (`env:device-sleep`) |
 

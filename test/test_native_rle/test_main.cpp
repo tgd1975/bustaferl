@@ -1,8 +1,8 @@
+#include "render/rle.h"
+
 #include <cstring>
 #include <unity.h>
 #include <vector>
-
-#include "render/rle.h"
 
 using namespace bustaferl;
 

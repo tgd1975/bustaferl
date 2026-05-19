@@ -1,15 +1,15 @@
 #ifndef BUSTAFERL_REFRESH_PLANNER_H
 #define BUSTAFERL_REFRESH_PLANNER_H
 
+#include "../hal/IDisplay.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
 
-#include "../hal/IDisplay.h"
-
 namespace bustaferl {
 
-enum class RefreshKind {
+enum class RefreshKind : std::uint8_t {
   None,
   Partial,
   LightFull,
@@ -21,11 +21,17 @@ struct RefreshDecision {
   Bbox bbox; // valid only for Partial
 };
 
+// Production panel geometry (GxEPD2 4.2" 400×300).
+constexpr int DEFAULT_FB_WIDTH = 400;
+constexpr int DEFAULT_FB_HEIGHT = 300;
+constexpr int DEFAULT_LIGHT_FULL_EVERY_S = 7200; // 2 h ghosting refresh
+constexpr uint16_t DEFAULT_PARTIAL_HARDCAP = 80;
+
 struct RefreshConfig {
-  int width = 400;
-  int height = 300;
-  int light_full_every_s = 7200;
-  uint16_t partial_hardcap = 80;
+  int width = DEFAULT_FB_WIDTH;
+  int height = DEFAULT_FB_HEIGHT;
+  int light_full_every_s = DEFAULT_LIGHT_FULL_EVERY_S;
+  uint16_t partial_hardcap = DEFAULT_PARTIAL_HARDCAP;
 };
 
 // Compares two framebuffers (row-major, 1 bit per pixel, 8 px per byte, MSB

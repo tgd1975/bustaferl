@@ -1,11 +1,11 @@
-#include <cstdint>
-#include <unity.h>
-#include <vector>
-
 #include "hal/IDisplay.h"
 #include "hal/IPersistentStore.h"
 #include "logic/display_apply.h"
 #include "logic/refresh_planner.h"
+
+#include <cstdint>
+#include <unity.h>
+#include <vector>
 
 using namespace bustaferl;
 

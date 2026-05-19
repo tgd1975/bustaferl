@@ -1,9 +1,10 @@
 #include "schedule_fetcher.h"
 
+#include "../data/time_constants.h"
+#include "api_fetcher.h"
+
 #include <cstdint>
 #include <cstdio>
-
-#include "api_fetcher.h"
 
 #ifndef NATIVE_BUILD
 #include <Arduino.h>
@@ -56,13 +57,17 @@ std::string buildEfaUrl(const std::string &base, int diva, time_t query_time,
                         int limit) {
   struct tm local;
   localtime_r(&query_time, &local);
-  char buf[160];
+  // 160 byte buffer: WL_EFA_DM_BASE (~80) + 8 numeric params + format glue —
+  // worst case ~140 bytes; 160 leaves margin for sane base URLs.
+  constexpr size_t EFA_URL_BUF_SIZE = 160;
+  char buf[EFA_URL_BUF_SIZE];
   std::snprintf(buf, sizeof(buf),
                 "%s&name_dm=%d&itdDateDay=%02d&itdDateMonth=%02d"
                 "&itdDateYear=%04d&itdTimeHour=%02d&itdTimeMinute=%02d"
                 "&limit=%d",
                 base.c_str(), diva, local.tm_mday, local.tm_mon + 1,
-                local.tm_year + 1900, local.tm_hour, local.tm_min, limit);
+                local.tm_year + TM_YEAR_BASE, local.tm_hour, local.tm_min,
+                limit);
   return std::string(buf);
 }
 
@@ -79,6 +84,13 @@ time_t computeCutoff(time_t now, int cutoff_hour) {
   return mktime(&local);
 }
 
+// Inlines the heap-guard + delay() interleaving that protects against ESP32
+// TLS/mbedtls fragmentation (see docs/main-refactor-plan.md §7.1
+// "Heap-Wächter"). Splitting the iteration would either duplicate the guard
+// or hide it behind a callback indirection. The post-refactor TODO §7.1
+// calls out re-evaluating the guards once the native-runtime exists; this
+// NOLINT lifts together with that.
+// NOLINTBEGIN(readability-function-size)
 ScheduleFetchResult
 fetchSchedule(INetwork &net, time_t now,
               const ScheduleStreamFilter (&filters)[STREAM_COUNT],
@@ -88,7 +100,7 @@ fetchSchedule(INetwork &net, time_t now,
   // Anchor query at today at query_hour:query_minute local. EFA returns
   // departures from that point forward, which spans the evening + next
   // morning we care about.
-  time_t query_time;
+  time_t query_time = 0;
   {
     struct tm local;
     localtime_r(&now, &local);
@@ -175,5 +187,6 @@ fetchSchedule(INetwork &net, time_t now,
   out.ok = out.calls_attempted > 0 && out.calls_failed < out.calls_attempted;
   return out;
 }
+// NOLINTEND(readability-function-size)
 
 } // namespace bustaferl

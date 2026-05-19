@@ -1,0 +1,33 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  readability-function-size,
+  readability-function-cognitive-complexity,
+  readability-magic-numbers,
+  readability-identifier-naming,
+  readability-redundant-*,
+  readability-simplify-*,
+  cppcoreguidelines-pro-type-cstyle-cast,
+  cppcoreguidelines-pro-type-static-cast-downcast,
+  cppcoreguidelines-init-variables,
+  cppcoreguidelines-slicing,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-default-member-init,
+  modernize-loop-convert,
+  modernize-use-equals-default,
+  modernize-use-equals-delete,
+  performance-*
+WarningsAsErrors: '*'
+HeaderFilterRegex: '^src/(data|logic|hal|render)/.*\.h$'
+CheckOptions:
+  readability-function-size.LineThreshold: 60
+  readability-function-size.StatementThreshold: 50
+  readability-function-size.BranchThreshold: 10
+  readability-function-size.ParameterThreshold: 6
+  readability-function-size.NestingThreshold: 5
+  readability-function-cognitive-complexity.Threshold: 25
+  readability-magic-numbers.IgnorePowersOf2IntegerValues: true
+  readability-magic-numbers.IgnoredIntegerValues: '0;1;2;3;-1;100;1000'
