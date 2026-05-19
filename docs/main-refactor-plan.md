@@ -1094,34 +1094,35 @@ Hook-Dauer ~10–20 s (`make format-check` + `make lint` + `make tidy` + `make t
 
 ### Schritt 12 — Manuelle HW-Verifikation am Ende
 
-- [ ] erledigt
+- [x] erledigt (12.1 + 12.2 mit Auftraggeber am 2026-05-19; 12.3 wurde bewusst übersprungen)
 
 Sammelt alle Test-Schritte, die zwingend Mensch-Interaktion benötigen und während der autonomen Umsetzung gepark wurden. Der Auftraggeber ist hier wieder im Loop.
 
 #### 12.1 — Manueller Button-Smoke
 
-- [ ] erledigt
+- [x] erledigt
 
 Verschoben aus Schritt 6 (R4-Mitigation): Button-Pfad-Regression ist nicht in CI fangbar.
 
 - Gerät frisch geflasht mit dem refactorierten Build.
-- **Kurzer Druck** auf BOOT-Button → Anzeige aktualisiert sich (warmCycle wird ausgelöst).
-- **Langer Druck (≥ 2 s)** auf BOOT-Button → B/W-Deep-Clean läuft sichtbar (3× Flash), letzter Frame wird neu gezeichnet.
+- **Kurzer Druck** auf BOOT-Button → Anzeige aktualisiert sich (warmCycle wird ausgelöst). **Verifiziert 2026-05-19**: erster Test triggerte `[btn] press detected` + `[btn] short — proceed with update` + partial-refresh.
+- **Langer Druck (≥ 2 s)** auf BOOT-Button → B/W-Deep-Clean läuft sichtbar (3× Flash), letzter Frame wird neu gezeichnet. **Verifiziert 2026-05-19**: drei aufeinanderfolgende Long-Press-Tests in einem 85-s-Fenster, alle drei triggerten `[btn] BW reset + redraw` mit 7× `_Update_Full`-Sequenz pro Trigger.
+- **Beobachtung**: ein Long-Press kann verpasst werden, wenn er außerhalb der lightSleep-Phase landet (während WiFi-Retry oder Render-Activity). `pollButtonAndRunWarm` samplet GPIO nur einmal pro Cycle-Beginn. In der Praxis irrelevant, weil der nächste Cycle-Beginn nach ≤ 30 s wieder pollt; aber wert als Notiz für künftige Button-Pfad-Verbesserungen.
 
 #### 12.2 — Visuelle Display-Verifikation Overlay-Zustände
 
-- [ ] erledigt
+- [x] erledigt
 
-Sichtprüfung, ob die Layout-Ausgabe nach dem Refactor unverändert ist (Schichten-Test gegen Adafruit-GFX-Wand).
+Sichtprüfung, ob die Layout-Ausgabe nach dem Refactor unverändert ist (Schichten-Test gegen Adafruit-GFX-Wand). **Verifiziert 2026-05-19** über drei separate Demo-Builds mit temporären `#ifdef BUSTAFERL_DEMO_*`-Sektionen in `cycle_runner.cpp` (nach Verifikation per `git restore` entfernt — kein Code-Eingriff im Repo).
 
-- Normaler Zustand (Realtime + Hint): Slots, Stream-Beschriftungen, Trennlinien wie heute.
-- Stale-Overlay (WiFi-Down provozieren, 3+ min warten): `??:??` überall, Banner „VERALTET".
-- FilterDead-Overlay (per Test-Build-Define o. Ä. erzwingen): Banner „58B Filter ungueltig".
-- StartFailed-Overlay (per leerer `secrets.h` o. Ä. erzwingen): Banner „Start fehlgeschlagen".
+- **Normaler Zustand** (Realtime + Hint): Slots, Stream-Beschriftungen, Trennlinien wie heute. **Verifiziert** als Teil von 12.1, Production-Build, alle 5 Streams sichtbar, keine Glitches.
+- **Stale-Overlay** (`-DBUSTAFERL_DEMO_STALE` forciert `r.fetched_ok=false` + `meta.last_api_success=0` in `doFetchCycle`): `??:??` überall, Banner „VERALTET". **Verifiziert**.
+- **FilterDead-Overlay** (`-DBUSTAFERL_DEMO_FILTER_DEAD` setzt `r.overlay = OverlayKind::FilterDead` nach den realen Branches): Banner „58B Filter ungueltig". **Verifiziert**.
+- **StartFailed-Overlay** (`-DBUSTAFERL_DEMO_START_FAILED` forciert `BootResult::GiveUp` in `runColdCycle`): BW-deepClean-Sequenz, dann `--:--` überall + Banner „Start fehlgeschlagen". **Verifiziert**.
 
 #### 12.3 — Optional: Finaler 24-h-day-full-Soak
 
-- [ ] erledigt
+- [ ] erledigt — **bewusst übersprungen** (Auftraggeber-Entscheidung 2026-05-19: optional und nicht kritisch für den Refactor-Branch; kann jederzeit nachgeholt werden).
 
 Wenn vor einem Tag-Release gewünscht (kein Pflicht-Gate für den Refactor selbst):
 
