@@ -1,14 +1,11 @@
 #include "render/display_state.h"
 
-#ifndef NATIVE_BUILD
-
-#include "render/bitmap_fonts.h"
 #include "render/custom_glyph.h"
 #include "render/glyph_dotted_circle_90.h"
 #include "render/glyph_exclamation_90.h"
 #include "render/glyph_para_nine_90.h"
+#include "render/layout.h" // FB_W / FB_H
 
-#include <Adafruit_GFX.h>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -19,36 +16,35 @@ namespace {
 
 constexpr int GLYPH_W = 90;
 constexpr int GLYPH_H = 90;
-
-// Centre the 90 px glyph horizontally on the 400 px canvas; vertical
-// placement matches the design handoff (~64 px from the top).
 constexpr int GLYPH_X = (FB_W - GLYPH_W) / 2;
 constexpr int GLYPH_Y = 64;
 
-// Text rows below the glyph, in design-handoff order.
 constexpr int TITLE_Y = GLYPH_Y + GLYPH_H + 24;
 constexpr int SUB_Y = TITLE_Y + 28;
 constexpr int FOOT_Y = FB_H - 12;
 
-void drawCentered(Adafruit_GFX &canvas, FontRole role, int y,
+// Crude horizontal-centring constant — pixels per ASCII char. U8g2's
+// getUTF8Width would be exact; "close enough" is the apprentice contract.
+constexpr int CENTRE_PX_PER_CHAR = 6;
+
+// Snprintf buffer sizes for the per-state foot/sub strings.
+constexpr std::size_t SUB_BUF_CAP = 40;
+constexpr std::size_t FOOT_BUF_CAP = 48;
+
+void drawCentered(render::Canvas &canvas, FontRole role, int y,
                   const char *text) {
-  render::setRoleFont(canvas, role);
+  canvas.setRoleFont(role);
   canvas.setTextColor(1);
-  // Crude horizontal centring — U8g2_for_Adafruit_GFX exposes
-  // getUTF8Width(), use it for a tight result.
-  // Without it we'd over-estimate; getUTF8Width is on the U8g2 bridge
-  // attached via setRoleFont above.
-  canvas.setCursor((FB_W - 0) / 2, y);
-  // Fall back to a fixed-pixel-per-char estimate if the bridge can't
-  // measure (network_plan does the same — ~6 px per ASCII char for
-  // 14-18 px Helv).
-  int est_w = 6 * static_cast<int>(std::strlen(text));
+  int est_w = CENTRE_PX_PER_CHAR * static_cast<int>(std::strlen(text));
   canvas.setCursor((FB_W - est_w) / 2, y);
   canvas.print(text);
 }
 
-void formatHHMM(std::time_t t, char *out, size_t cap) {
-  if (cap < 6) {
+// Minimum buffer size to format "HH:MM\0".
+constexpr std::size_t HHMM_BUF_MIN = 6;
+
+void formatHHMM(std::time_t t, char *out, std::size_t cap) {
+  if (cap < HHMM_BUF_MIN) {
     return;
   }
   struct tm local{};
@@ -58,9 +54,9 @@ void formatHHMM(std::time_t t, char *out, size_t cap) {
 
 } // namespace
 
-void drawBoot(Adafruit_GFX &canvas, const char *version_str) {
-  drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y, GLYPH_DOTTED_CIRCLE_90, GLYPH_W,
-                  GLYPH_H);
+void drawBoot(render::Canvas &canvas, const char *version_str) {
+  drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
+                  GlyphBitmap{GLYPH_DOTTED_CIRCLE_90, GLYPH_W, GLYPH_H});
   drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "bustaferl");
   drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y, "laedt Fahrplan...");
   if (version_str != nullptr) {
@@ -68,13 +64,13 @@ void drawBoot(Adafruit_GFX &canvas, const char *version_str) {
   }
 }
 
-void drawOffline(Adafruit_GFX &canvas, std::time_t last_fetch_at,
+void drawOffline(render::Canvas &canvas, std::time_t last_fetch_at,
                  int retry_in_s) {
-  drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y, GLYPH_EXCLAMATION_90, GLYPH_W,
-                  GLYPH_H);
+  drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
+                  GlyphBitmap{GLYPH_EXCLAMATION_90, GLYPH_W, GLYPH_H});
   drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "Kein Empfang");
 
-  char sub_buf[40] = "Noch nie aktualisiert";
+  char sub_buf[SUB_BUF_CAP] = "Noch nie aktualisiert";
   if (last_fetch_at > 0) {
     char hhmm[8];
     formatHHMM(last_fetch_at, hhmm, sizeof(hhmm));
@@ -82,7 +78,7 @@ void drawOffline(Adafruit_GFX &canvas, std::time_t last_fetch_at,
   }
   drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y, sub_buf);
 
-  char foot_buf[40];
+  char foot_buf[SUB_BUF_CAP];
   if (retry_in_s > 0) {
     std::snprintf(foot_buf, sizeof(foot_buf), "WLAN - Retry in %ds",
                   retry_in_s);
@@ -92,14 +88,14 @@ void drawOffline(Adafruit_GFX &canvas, std::time_t last_fetch_at,
   drawCentered(canvas, FontRole::Fullscreen_Foot, FOOT_Y, foot_buf);
 }
 
-void drawAuth(Adafruit_GFX &canvas, const char *aid_short, int http_code) {
-  drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y, GLYPH_PARA_NINE_90, GLYPH_W,
-                  GLYPH_H);
+void drawAuth(render::Canvas &canvas, const char *aid_short, int http_code) {
+  drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
+                  GlyphBitmap{GLYPH_PARA_NINE_90, GLYPH_W, GLYPH_H});
   drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "Auth-Fehler");
   drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y,
                "Client-ID veraltet - bitte neu registrieren");
 
-  char foot_buf[48];
+  char foot_buf[FOOT_BUF_CAP];
   const char *aid =
       (aid_short != nullptr && aid_short[0] != '\0') ? aid_short : "AID:---";
   if (http_code > 0) {
@@ -110,14 +106,14 @@ void drawAuth(Adafruit_GFX &canvas, const char *aid_short, int http_code) {
   drawCentered(canvas, FontRole::Fullscreen_Foot, FOOT_Y, foot_buf);
 }
 
-void drawQuiet(Adafruit_GFX &canvas) {
-  // Quiet uses a plain horizontal-rule glyph "—" instead of a custom
-  // bitmap. Big text-rendered "—" via Fullscreen_Sub is good enough; the
-  // design handoff calls for 72 px which U8g2 doesn't have at exactly
-  // that size — Logisoso24 reads as a heavy dash at the right scale.
-  render::setRoleFont(canvas, FontRole::Fullscreen_Title);
+void drawQuiet(render::Canvas &canvas) {
+  // Heavy "---" substitute for the 72 px dash from the design handoff.
+  constexpr int QUIET_DASH_X_OFFSET = 30;
+  constexpr int QUIET_DASH_Y_OFFSET = 12;
+  canvas.setRoleFont(FontRole::Fullscreen_Title);
   canvas.setTextColor(1);
-  canvas.setCursor(FB_W / 2 - 30, GLYPH_Y + GLYPH_H / 2 + 12);
+  canvas.setCursor(FB_W / 2 - QUIET_DASH_X_OFFSET,
+                   GLYPH_Y + GLYPH_H / 2 + QUIET_DASH_Y_OFFSET);
   canvas.print("---");
   drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "Keine Abfahrten");
   drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y,
@@ -125,5 +121,3 @@ void drawQuiet(Adafruit_GFX &canvas) {
 }
 
 } // namespace bustaferl
-
-#endif // NATIVE_BUILD

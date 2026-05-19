@@ -50,12 +50,12 @@ struct RenderInput {
 };
 
 // Renders the layout described in CONCEPT.md §3 into the framebuffer.
-// Only used on the ESP32 build (depends on Adafruit GFX). The header is safe
-// to include from the host build, but the symbol resolves only when GFX is
-// available.
-#ifndef NATIVE_BUILD
+// Picks the right Canvas implementation per target:
+//   - ESP32: AdafruitGfxCanvas (master — Adafruit_GFX + U8g2).
+//   - Native host: HostCanvas (apprentice — builtin 5×7 font, functional
+//     testing only, not pixel-identical).
+// Both targets exercise the same render/* code.
 void renderFrame(const RenderInput &in, Frame &fb);
-#endif
 
 } // namespace bustaferl
 

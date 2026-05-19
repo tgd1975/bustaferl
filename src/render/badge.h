@@ -1,8 +1,9 @@
 #ifndef BUSTAFERL_RENDER_BADGE_H
 #define BUSTAFERL_RENDER_BADGE_H
 
-#include "frame_buffer.h"
-#include "layout.h" // for Frame alias
+#include "render/canvas.h"
+
+#include <cstdint>
 
 namespace bustaferl {
 
@@ -13,9 +14,6 @@ namespace bustaferl {
 //   sm: 22 × 14 — Atzg S-Bahn row
 //   md: 28 × 18 — EG row
 //   lg: 36 × 22 — TG row
-//
-// Geometry is split from the text rendering so the geometry can be host-
-// asserted on the framebuffer; text goes through U8g2 and is ESP32-only.
 enum class BadgeSize : std::uint8_t { Sm, Md, Lg };
 
 struct BadgeBounds {
@@ -47,21 +45,12 @@ constexpr BadgeBounds badgeBounds(BadgeSize sz) {
   return BadgeBounds{BADGE_SM_W, BADGE_SM_H, BADGE_SM_PAD};
 }
 
-// Paint the `paper`-rectangle behind the text. Pure geometry — host-testable.
-// Returns the right-edge X coordinate of the badge (callers chain horizontal
-// layouts off this).
-int drawBadgeGeometry(Frame &fb, int x, int y, BadgeSize sz);
-
-} // namespace bustaferl
-
-#ifndef NATIVE_BUILD
-class Adafruit_GFX;
-namespace bustaferl {
-// Full badge render: geometry + line-label text through U8g2. Caller-side
-// font is set via setRoleFont(canvas, Badge_*). Returns same right-edge.
-int drawBadge(Adafruit_GFX &canvas, Frame &fb, int x, int y, const char *text,
+// Full badge render: paper rectangle + ink text via the Canvas's text API.
+// Returns the right-edge X of the badge (callers chain horizontal layouts
+// off this).
+int drawBadge(render::Canvas &canvas, int x, int y, const char *text,
               BadgeSize sz);
+
 } // namespace bustaferl
-#endif
 
 #endif
