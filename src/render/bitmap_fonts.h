@@ -13,13 +13,15 @@
 // bytes — so this header forwards just the role enum + the setRoleFont()
 // signature behind NATIVE_BUILD.
 
+#include <cstdint>
+
 namespace bustaferl {
 
 // Logical font roles used across the v2 display. Sizes follow the design
 // handoff (docs/design_handoff_display/README.md "Typography"). Comment
 // captures the design-spec size; the concrete U8g2 font may be 1–2 px off
 // due to library coverage (acknowledged drift per Risiko V8).
-enum class FontRole {
+enum class FontRole : std::uint8_t {
   // Data rows (VT323-equivalent).
   TG_Row,   // 28 px — TULLNERTALGASSE row times + line label
   EG_Row,   // 22 px — ENDEMANNGASSE row
