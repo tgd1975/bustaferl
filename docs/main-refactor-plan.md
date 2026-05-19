@@ -457,7 +457,7 @@ Ziel: zusammenhängende Umsetzung in einem Schwung. Der Auftraggeber wird **am A
 
 - **Push: nein.** Alle Commits bleiben lokal auf `refactor/main-cpp`, bis der Auftraggeber am Ende explizit pushen oder mergen möchte.
 - **Erster Commit**: `Doku: Refactor-Plan einchecken` mit `docs/main-refactor-plan.md` als einzigem Eintrag, **bevor** Schritt 0a beginnt.
-- **Plan-Doc-Löschung**: am Ende von Schritt 10 (Doku), wenn die Plan-Inhalte in `docs/ARCHITECTURE.md` und `docs/TESTING.md` überführt sind. Im selben Commit, der die Doku-Konsolidierung vornimmt.
+- **Plan-Doc bleibt**: ursprünglich war Löschung am Ende von Schritt 10 vorgesehen (Überführung in `ARCHITECTURE.md` / `TESTING.md`). Auftraggeber-Entscheidung 2026-05-19: das Plan-Doc wird als Design-Dokument behalten — es trägt die Rationale + §4.1-Annahmen, die in den konsolidierten Doks bewusst nicht stehen.
 
 **Commit-Konvention** (analog Bestand `Engine: …`, `Tooling: …`, `Doku: …`):
 
