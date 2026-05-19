@@ -22,4 +22,13 @@ void buildScheduleFilters(ScheduleStreamFilter (&f)[STREAM_COUNT]) {
   // Default-leave with diva=0 so schedule_fetcher's diva-skip-guard takes it.
 }
 
+OebbStreamFilter buildOebbFilter() {
+  OebbStreamFilter f;
+  f.stbloc_extid = OEBB_STBLOC_EXTID;
+  f.dirloc_extid = OEBB_DIRLOC_EXTID;
+  f.products = OEBB_JNYFLTR_PRODUCTS;
+  f.max_jny = OEBB_MAX_JNY;
+  return f;
+}
+
 } // namespace bustaferl
