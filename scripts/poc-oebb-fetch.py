@@ -14,11 +14,15 @@ import urllib.error
 import urllib.request
 
 MGATE_URL = "https://fahrplan.oebb.at/bin/mgate.exe"
-EVA_ATZGERSDORF = "8100634"
-EVA_WIEN_HBF = "8100002"
+# HAFAS-interne Location-IDs aus LocMatch (Pre-Phase 2026-05-19).
+# Die alten 81xxxxxx-EVAs (DB-IBNR) resolven zum Stationsnamen, aber HAFAS
+# haengt keine Fahrplanlegs daran -> err=OK + jnyL leer. Die 1xxxxxxx-IDs sind
+# die HAFAS-internen Location-IDs, an denen die Departure-Boards haengen.
+EVA_ATZGERSDORF = "1292301"  # Wien Atzgersdorf Bahnhst
+EVA_WIEN_HBF = "1290401"     # Wien Hbf (U)
 
-DEFAULT_AID = "OWDL4fE4ixNiPBBm"   # CONCEPT §v2-4 Default; in §0.1 ggf. ersetzen
-DEFAULT_PRODUCTS = "63"            # CONCEPT §v2-4 Default; Bits 0-5 (= S-Bahn + REX + Regio + IC/RJ/...)
+DEFAULT_AID = "OWDL4fE4ixNiPBBm"   # CONCEPT §v2-4 Default; empirisch bestaetigt 2026-05-19
+DEFAULT_PRODUCTS = "63"            # bits 0-5; deckt cls 16+32 (S-Bahn/Regio) ab, exkludiert cls 64 (Bus)
 DEFAULT_MAX_JNY = 6
 
 
@@ -43,8 +47,9 @@ def build_request(aid: str, products: str, max_jny: int) -> dict:
     }
 
 
-def _resolve_line_name(jny: dict, common_prod: list) -> str:
-    # HAFAS-Profile differieren: manche schicken jny.prodX direkt, andere jny.prodL[0].prodX.
+def _resolve_line_label(jny: dict, common_prod: list) -> str:
+    # line_label = whitespace-stripped nameS (Pre-Phase Befund: "S 1" -> "S1").
+    # nameS ist die kanonische Kurzform; "name" enthaelt die Zugnummer als Anhang.
     idx = jny.get("prodX")
     if idx is None:
         prod_l = jny.get("prodL") or []
@@ -53,7 +58,8 @@ def _resolve_line_name(jny: dict, common_prod: list) -> str:
     if idx is None or not (0 <= idx < len(common_prod)):
         return "?"
     prod = common_prod[idx]
-    return prod.get("name") or prod.get("nameS") or "?"
+    name_s = prod.get("nameS") or prod.get("name") or "?"
+    return "".join(name_s.split())
 
 
 def summarize(response: dict, http_status: int, response_bytes: int) -> None:
@@ -75,10 +81,14 @@ def summarize(response: dict, http_status: int, response_bytes: int) -> None:
         cancelled = stb.get("dCncl", False)
         plan_time = stb.get("dTimeS", "?")
         real_time = stb.get("dTimeR", "")
-        line_name = _resolve_line_name(jny, common_prod)
+        line_label = _resolve_line_label(jny, common_prod)
+        dir_txt = jny.get("dirTxt", "?")
         rt_str = f" → {real_time}" if real_time and real_time != plan_time else ""
         cancel_str = " [CANCELLED]" if cancelled else ""
-        print(f"  {line_name:<6} plan={plan_time}{rt_str}{cancel_str}", file=sys.stderr)
+        print(
+            f"  {line_label:<6} plan={plan_time}{rt_str}{cancel_str}  dir='{dir_txt}'",
+            file=sys.stderr,
+        )
 
 
 def main() -> int:
