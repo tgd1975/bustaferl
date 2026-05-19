@@ -810,7 +810,7 @@ Atomarer Schritt: Stream-Enum + `Departure::line_label` + `Departure::live()` + 
 
 #### Schritt 3 — `data/oebb_hafas_parse.{h,cpp}` + Tests
 
-- [ ] erledigt
+- [x] erledigt (Session C, 2026-05-19)
 
 - **3.1** [src/data/oebb_hafas_parse.h](../src/data/oebb_hafas_parse.h) anlegen mit Signaturen aus [§2.2](#22-neue-module-im-detail) (`OebbStreamFilter`, `buildOebbRequest`, `parseOebbStationBoard`).
 - **3.2** [src/data/oebb_hafas_parse.cpp](../src/data/oebb_hafas_parse.cpp): `buildOebbRequest` als String-Bau mit `ArduinoJson::serializeJson` über einen `JsonDocument`. Body-Schema aus [Anhang A](#anhang-a--hafas-request-response-vertrag).
@@ -849,7 +849,7 @@ Atomarer Schritt: Stream-Enum + `Departure::line_label` + `Departure::live()` + 
 
 #### Schritt 4 — `filter_builder.{h,cpp}` umstellen + S-Bahn-Filter-Getter
 
-- [ ] erledigt
+- [x] erledigt (Session C, 2026-05-19)
 
 - **4.1** [src/logic/filter_builder.cpp](../src/logic/filter_builder.cpp): U1-Zeilen in `buildStreamFilters` und `buildScheduleFilters` entfernen. `f[STREAM_SBAHN_HBF]` bleibt default-konstruiert (`rbl = 0` bzw. `diva = 0`).
 - **4.2** [src/logic/filter_builder.h](../src/logic/filter_builder.h): `OebbStreamFilter buildOebbFilter();` hinzufügen.
@@ -880,7 +880,10 @@ Atomarer Schritt: Stream-Enum + `Departure::line_label` + `Departure::live()` + 
 
 #### Schritt 5 — `snapshot_fetcher.cpp` um `fetchOebbStream` erweitern
 
-- [ ] erledigt
+- [x] erledigt (Session C, 2026-05-19; Cold-Boot-Pre-Render-Splash aus 5.4
+  bleibt für Session D — hängt an display_state/State-Selector). Plan-
+  Anhang A schrieb `prodL[0]` als Index in common.prodL — empirisch ist
+  das ein Objekt; der Parser liest jetzt `jny.prodX`.
 
 - **5.1** [src/logic/snapshot_fetcher.cpp:16-19](../src/logic/snapshot_fetcher.cpp#L16-L19): `FETCH_ORDER` reduzieren auf die 3 OGD-Streams. Index `STREAM_SBAHN_HBF = 3` taucht hier nicht auf.
 - **5.2** Neue interne Funktion `fetchOebbStream(net, mgate_url, filter, out, summary, meta)`:

@@ -33,11 +33,14 @@ namespace bustaferl {
 
 namespace {
 
-bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out) {
+bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
+                         PersistedMeta &meta) {
   StreamFilter filters[STREAM_COUNT];
   buildStreamFilters(filters);
+  OebbStreamFilter oebb_filter = buildOebbFilter();
   FetchSummary summary;
-  bool ok = fetchSnapshot(deps.net, deps.cfg.api_base, filters, out, summary);
+  bool ok = fetchSnapshot(deps.net, deps.cfg.api_base, deps.cfg.mgate_url,
+                          filters, oebb_filter, out, summary, meta);
   CYCLE_LOG_STR(
       formatSnapshotSummary(out, summary.total_batches, summary.failed_batches)
           .c_str());
@@ -115,7 +118,7 @@ struct FetchCycleResult {
 FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
                               const ScheduleSnapshot &schedule) {
   FetchCycleResult r;
-  r.fetched_ok = fetchSnapshotAndLog(deps, r.snap);
+  r.fetched_ok = fetchSnapshotAndLog(deps, r.snap, meta);
   time_t now = deps.clock.now();
 
   FilterHealth fh(deps.cfg.filter_health_dead_after);
@@ -123,6 +126,12 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
 
   if (r.fetched_ok) {
     meta.last_api_success = now;
+    // v2 Plan §5.4: spiegelt last_api_success in das v2-Feld, das der
+    // State-Selector (Session D) liest. Beide Felder fortzuschreiben hält
+    // bestehende Stale-/FilterHealth-Logik unverändert während Session D
+    // landet.
+    meta.last_success_at = now;
+    meta.has_any_data = true;
     // FilterHealth only gets a signal when at least one of our streams has
     // actual departures. During the nightly Betriebstag-Pause the API
     // returns matching RBLs/lines but with empty `departures` arrays — that
@@ -192,9 +201,12 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
 
   // First-ever render after a cold boot: deep clean for a known-good panel.
   StreamSnapshot snap;
-  bool ok = fetchSnapshotAndLog(deps, snap);
+  bool ok = fetchSnapshotAndLog(deps, snap, meta);
   if (ok) {
-    meta.last_api_success = deps.clock.now();
+    time_t now = deps.clock.now();
+    meta.last_api_success = now;
+    meta.last_success_at = now;
+    meta.has_any_data = true;
   }
   // Schedule fetch is best-effort: failure leaves `schedule.fetched_at = 0`
   // and the renderer falls back to pure realtime behaviour.

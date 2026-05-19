@@ -35,8 +35,9 @@ constexpr unsigned DEFAULT_BTN_LONG_PRESS_MS = 2000;
 // values in config.h; host tests instantiate with empty strings and the
 // recording-fake INetwork ignores the URL contents.
 struct CycleConfig {
-  std::string api_base; // Wiener Linien OGD realtime endpoint
-  std::string efa_base; // Wiener Linien EFA schedule endpoint
+  std::string api_base;  // Wiener Linien OGD realtime endpoint
+  std::string efa_base;  // Wiener Linien EFA schedule endpoint
+  std::string mgate_url; // ÖBB HAFAS mgate.exe (v2 S-Bahn stream)
   unsigned wifi_connect_ms = DEFAULT_WIFI_TIMEOUT_MS;
   unsigned cold_boot_retry_s = DEFAULT_COLD_BOOT_RETRY_S;
   unsigned cold_boot_giveup_sleep_s = DEFAULT_COLD_BOOT_GIVEUP_SLEEP_S;

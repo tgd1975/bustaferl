@@ -2,8 +2,10 @@
 #define BUSTAFERL_SNAPSHOT_FETCHER_H
 
 #include "../data/StreamSnapshot.h"
+#include "../data/oebb_hafas_parse.h"
 #include "../data/wienerlinien_parse.h"
 #include "../hal/INetwork.h"
+#include "../hal/IPersistentStore.h"
 
 #include <string>
 
@@ -22,6 +24,11 @@ constexpr int STOPIDS_PER_QUERY = 2;
 constexpr int OGD_FETCH_COUNT = 3;
 extern const int FETCH_ORDER[OGD_FETCH_COUNT];
 
+// Three consecutive OGD 401/403 responses promote auth_error_seen=true.
+// Single 401s on the OGD path do happen during DNS / TLS edge cases, so we
+// debounce. HAFAS auth on the other hand is driven purely by parser err.
+constexpr uint8_t OGD_AUTH_STREAK_TRIPWIRE = 3;
+
 struct FetchSummary {
   int total_batches = 0;
   int failed_batches = 0;
@@ -33,23 +40,25 @@ struct FetchSummary {
 std::string apiUrlForBatch(const std::string &endpoint_base,
                            const int *stop_ids, int count);
 
-// Iterate the 5 streams in batches of STOPIDS_PER_QUERY, fetch each batch via
-// `net.httpGet` (with the api_fetcher retry policy), parse the response, and
-// merge the per-stream results into `out`. `endpoint_base` is the URL prefix
-// production code reads from config.h::WL_API_BASE — passed in so host tests
-// can route to a fake endpoint.
+// v2 fetchSnapshot: runs the OGD batch loop for the three bus streams and
+// then a single HAFAS mgate.exe POST for the S-Bahn stream.
 //
-// Sets `out.api_ok = true` iff at least one batch returned a parsable
-// response. `summary` is populated with the batch counters that the snapshot
-// summary log line consumes. Returns the same flag as out.api_ok for the
-// caller's convenience.
+// `meta` is read-write because the fetcher maintains the auth-tripwire state:
 //
-// Per-batch logging (HTTP failure, retry success, parse failure) stays inside
-// this function via Serial.printf — that log is per-batch and not part of the
-// snapshot summary block extracted in Schritt 3.
+//   - On the OGD path, three consecutive 401/403 responses flip
+//     `meta.ogd_auth_streak` past OGD_AUTH_STREAK_TRIPWIRE and set
+//     `meta.auth_error_seen = true`. A successful 2xx resets the streak.
+//   - On the HAFAS path, the parser's `auth_error_seen` flag (err=="AID"/
+//     "AUTH") flips `meta.auth_error_seen = true` immediately. A successful
+//     err=="OK" parse clears the flag.
+//
+// `oebb_filter` is the single S-Bahn filter built by buildOebbFilter().
+// Returns true iff at least one batch (OGD *or* HAFAS) produced valid data.
 bool fetchSnapshot(INetwork &net, const std::string &endpoint_base,
+                   const std::string &mgate_url,
                    const StreamFilter (&filters)[STREAM_COUNT],
-                   StreamSnapshot &out, FetchSummary &summary);
+                   const OebbStreamFilter &oebb_filter, StreamSnapshot &out,
+                   FetchSummary &summary, PersistedMeta &meta);
 
 } // namespace bustaferl
 
