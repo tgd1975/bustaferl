@@ -156,15 +156,15 @@ void test_unrelated_diva_leaves_other_streams_untouched() {
   ScheduleStreamFilter f[STREAM_COUNT];
   buildFilters(f);
   ScheduleHint h[STREAM_COUNT]{};
-  // Seed STREAM_U1_LEOPOLDAU with sentinel values; this call addresses DIVA
-  // 60201395 only, so U1 hints must survive intact.
-  h[STREAM_U1_LEOPOLDAU].last_today = 99999;
-  h[STREAM_U1_LEOPOLDAU].first_tomorrow[0] = 88888;
+  // Seed STREAM_SBAHN_HBF with sentinel values; this call addresses DIVA
+  // 60201395 (Tullnertalgasse) only, so the S-Bahn hint must survive intact.
+  h[STREAM_SBAHN_HBF].last_today = 99999;
+  h[STREAM_SBAHN_HBF].first_tomorrow[0] = 88888;
 
   TEST_ASSERT_TRUE(parseEfaResponse(kTullJson, 60201395, f,
                                     makeLocal(2026, 5, 17, 3, 0), h));
-  TEST_ASSERT_EQUAL_INT64(99999, h[STREAM_U1_LEOPOLDAU].last_today);
-  TEST_ASSERT_EQUAL_INT64(88888, h[STREAM_U1_LEOPOLDAU].first_tomorrow[0]);
+  TEST_ASSERT_EQUAL_INT64(99999, h[STREAM_SBAHN_HBF].last_today);
+  TEST_ASSERT_EQUAL_INT64(88888, h[STREAM_SBAHN_HBF].first_tomorrow[0]);
 }
 
 void test_malformed_json_returns_false() {

@@ -39,8 +39,9 @@ bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
   buildStreamFilters(filters);
   OebbStreamFilter oebb_filter = buildOebbFilter();
   FetchSummary summary;
-  bool ok = fetchSnapshot(deps.net, deps.cfg.api_base, deps.cfg.mgate_url,
-                          filters, oebb_filter, out, summary, meta);
+  FetchInputs inputs{deps.cfg.api_base, deps.cfg.mgate_url, filters,
+                     oebb_filter};
+  bool ok = fetchSnapshot(deps.net, inputs, out, summary, meta);
   CYCLE_LOG_STR(
       formatSnapshotSummary(out, summary.total_batches, summary.failed_batches)
           .c_str());
@@ -169,22 +170,16 @@ bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,
                                cfg.nightly_deep_clean_interval_s);
 }
 
-void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
-  CYCLE_LOG("[boot] cold path, retry %u/%u\n", meta.cold_boot_retries,
-            deps.cfg.cold_boot_max_retries);
-  BootConfig bc;
-  bc.max_retries = deps.cfg.cold_boot_max_retries;
-  BootResult r = runColdBoot(deps.net, deps.clock, meta.cold_boot_retries, bc);
-  CYCLE_LOG("[boot] runColdBoot -> %s\n", r == BootResult::Ok ? "Ok"
-                                          : r == BootResult::RetryLater
-                                              ? "RetryLater"
-                                              : "GiveUp");
+// Returns true if boot succeeded (caller continues to fetch + render).
+// Returns false if the cycle has already terminated (retry-sleep or give-up
+// path), in which case the caller must return immediately.
+bool handleColdBootOutcome(CycleDeps &deps, PersistedMeta &meta, BootResult r) {
   if (r == BootResult::RetryLater) {
     ++meta.cold_boot_retries;
     deps.store.saveMeta(meta);
     CYCLE_LOG_LN("[boot] retry later");
     deps.sleep.deepSleep(deps.cfg.cold_boot_retry_s);
-    return;
+    return false;
   }
   if (r == BootResult::GiveUp) {
     CYCLE_LOG_LN("[boot] give up");
@@ -195,9 +190,25 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
     meta.framebuffer_valid = false;
     deps.store.saveMeta(meta);
     deps.sleep.deepSleep(deps.cfg.cold_boot_giveup_sleep_s);
-    return;
+    return false;
   }
   meta.cold_boot_retries = 0;
+  return true;
+}
+
+void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
+  CYCLE_LOG("[boot] cold path, retry %u/%u\n", meta.cold_boot_retries,
+            deps.cfg.cold_boot_max_retries);
+  BootConfig bc;
+  bc.max_retries = deps.cfg.cold_boot_max_retries;
+  BootResult r = runColdBoot(deps.net, deps.clock, meta.cold_boot_retries, bc);
+  CYCLE_LOG("[boot] runColdBoot -> %s\n", r == BootResult::Ok ? "Ok"
+                                          : r == BootResult::RetryLater
+                                              ? "RetryLater"
+                                              : "GiveUp");
+  if (!handleColdBootOutcome(deps, meta, r)) {
+    return;
+  }
 
   // First-ever render after a cold boot: deep clean for a known-good panel.
   StreamSnapshot snap;

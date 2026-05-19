@@ -34,6 +34,17 @@ struct FetchSummary {
   int failed_batches = 0;
 };
 
+// Cycle-invariant inputs for fetchSnapshot(). Bundling them keeps the
+// public signature within the readability-function-size param threshold and
+// matches how the caller (cycle_runner) builds them once per boot and reuses
+// them across warm cycles.
+struct FetchInputs {
+  const std::string &endpoint_base; // OGD API base URL
+  const std::string &mgate_url;     // HAFAS mgate.exe URL
+  const StreamFilter (&filters)[STREAM_COUNT];
+  const OebbStreamFilter &oebb_filter;
+};
+
 // Compose the OGD monitor URL for one batch of stopIds. Caller supplies the
 // endpoint base (production passes WL_API_BASE); a `&stopId=<id>` is appended
 // for each entry in `stop_ids[0..count-1]`.
@@ -52,13 +63,11 @@ std::string apiUrlForBatch(const std::string &endpoint_base,
 //     "AUTH") flips `meta.auth_error_seen = true` immediately. A successful
 //     err=="OK" parse clears the flag.
 //
-// `oebb_filter` is the single S-Bahn filter built by buildOebbFilter().
+// `inputs.oebb_filter` is the single S-Bahn filter built by buildOebbFilter().
 // Returns true iff at least one batch (OGD *or* HAFAS) produced valid data.
-bool fetchSnapshot(INetwork &net, const std::string &endpoint_base,
-                   const std::string &mgate_url,
-                   const StreamFilter (&filters)[STREAM_COUNT],
-                   const OebbStreamFilter &oebb_filter, StreamSnapshot &out,
-                   FetchSummary &summary, PersistedMeta &meta);
+bool fetchSnapshot(INetwork &net, const FetchInputs &inputs,
+                   StreamSnapshot &out, FetchSummary &summary,
+                   PersistedMeta &meta);
 
 } // namespace bustaferl
 

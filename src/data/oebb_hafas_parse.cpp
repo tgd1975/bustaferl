@@ -18,6 +18,9 @@ constexpr int OEBB_JSON_NESTING_LIMIT = 20;
 // ohne TZ-Suffix; mktime mit `tm_isdst = -1` lässt libc anhand $TZ entscheiden.
 constexpr int OEBB_DATE_LEN = 8;
 constexpr int OEBB_TIME_LEN = 6;
+// Byte offsets inside the YYYYMMDD date string.
+constexpr int OEBB_DATE_MONTH_OFFSET = 4;
+constexpr int OEBB_DATE_DAY_OFFSET = 6;
 
 // `DEC` ist auf Arduino-ESP32 als Print-Format-Macro reserviert (Print.h);
 // lokaler Name vermeidet die Kollision.
@@ -41,8 +44,8 @@ time_t parseHafasDateTime(const char *date, const char *time) {
     return 0;
   struct tm tm{};
   tm.tm_year = parseFixed4(date) - TM_YEAR_BASE;
-  tm.tm_mon = parseFixed2(date + 4) - 1;
-  tm.tm_mday = parseFixed2(date + 6);
+  tm.tm_mon = parseFixed2(date + OEBB_DATE_MONTH_OFFSET) - 1;
+  tm.tm_mday = parseFixed2(date + OEBB_DATE_DAY_OFFSET);
   tm.tm_hour = parseFixed2(time);
   tm.tm_min = parseFixed2(time + 2);
   tm.tm_sec = parseFixed2(time + 4);

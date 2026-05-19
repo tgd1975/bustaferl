@@ -246,8 +246,8 @@ void test_post_retry_401_short_circuits() {
   FetchConfig cfg;
   cfg.max_attempts = 3;
   cfg.backoff_ms_base = 0;
-  FetchOutcome r = fetchPostWithRetry(net, "http://x", "{}",
-                                      "application/json", resp, cfg);
+  FetchOutcome r =
+      fetchPostWithRetry(net, "http://x", "{}", "application/json", resp, cfg);
   TEST_ASSERT_FALSE(r.ok);
   TEST_ASSERT_EQUAL_INT(401, r.http_status);
   TEST_ASSERT_EQUAL_INT(1, r.attempts_taken);

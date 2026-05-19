@@ -13,7 +13,10 @@ using namespace bustaferl;
 // HAFAS-Zeitstempel sind lokale Europe/Vienna-Zeit ohne TZ-Suffix; mktime
 // braucht $TZ. Auf dem Device setzt Esp32Clock::setEnvTz; im Host-Test
 // machen wir das einmal in setUp().
-static void setViennaTz() { setenv("TZ", TZ_INFO, 1); tzset(); }
+static void setViennaTz() {
+  setenv("TZ", TZ_INFO, 1);
+  tzset();
+}
 
 void setUp() { setViennaTz(); }
 void tearDown() {}
@@ -31,25 +34,23 @@ static OebbStreamFilter makeFilter() {
 
 void test_buildRequest_includes_aid_and_client() {
   std::string body = buildOebbRequest(makeFilter());
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"aid\":\""
-                                                     OEBB_HAFAS_AID "\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        body.find("\"aid\":\"" OEBB_HAFAS_AID "\""));
   TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"client\""));
   TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"webapp\""));
   TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"vs_webapp\""));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"ver\":\"" OEBB_HAFAS_VER
-                                                     "\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        body.find("\"ver\":\"" OEBB_HAFAS_VER "\""));
 }
 
 void test_buildRequest_includes_stbLoc_dirLoc() {
   std::string body = buildOebbRequest(makeFilter());
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"stbLoc\""));
   TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                        body.find("\"stbLoc\""));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"extId\":\""
-                                                     OEBB_EXTID_ATZG "\""));
+                        body.find("\"extId\":\"" OEBB_EXTID_ATZG "\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"dirLoc\""));
   TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                        body.find("\"dirLoc\""));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"extId\":\""
-                                                     OEBB_EXTID_WIENHBF "\""));
+                        body.find("\"extId\":\"" OEBB_EXTID_WIENHBF "\""));
   // Method must be StationBoard (DEP).
   TEST_ASSERT_NOT_EQUAL(std::string::npos,
                         body.find("\"meth\":\"StationBoard\""));
@@ -61,9 +62,8 @@ void test_buildRequest_includes_products_filter() {
   TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"jnyFltrL\""));
   TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"type\":\"PROD\""));
   TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"mode\":\"INC\""));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"value\":\""
-                                                     OEBB_JNYFLTR_PRODUCTS
-                                                     "\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        body.find("\"value\":\"" OEBB_JNYFLTR_PRODUCTS "\""));
   TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("\"maxJny\":6"));
 }
 

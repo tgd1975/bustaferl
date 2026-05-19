@@ -1,4 +1,5 @@
-// Structural check on buildStreamFilters / buildScheduleFilters / buildOebbFilter.
+// Structural check on buildStreamFilters / buildScheduleFilters /
+// buildOebbFilter.
 //
 // After v2 the OGD/EFA filter tables hold three populated bus-stream slots
 // plus an intentionally-empty STREAM_SBAHN_HBF (rbl/diva == 0) — the S-Bahn
@@ -19,8 +20,7 @@ void test_stream_filters_three_ogd_slots_populated() {
   StreamFilter f[STREAM_COUNT];
   buildStreamFilters(f);
   for (int i = 0; i < kOgdStreamCount; ++i) {
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(0, f[i].rbl,
-                                  "OGD stream filter rbl is zero");
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(0, f[i].rbl, "OGD stream filter rbl is zero");
     TEST_ASSERT_FALSE_MESSAGE(f[i].line.empty(),
                               "OGD stream filter line is empty");
     TEST_ASSERT_FALSE_MESSAGE(f[i].towards_prefix.empty(),
@@ -44,8 +44,7 @@ void test_schedule_filters_three_ogd_slots_populated() {
   ScheduleStreamFilter f[STREAM_COUNT];
   buildScheduleFilters(f);
   for (int i = 0; i < kOgdStreamCount; ++i) {
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(0, f[i].diva,
-                                  "schedule filter diva is zero");
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(0, f[i].diva, "schedule filter diva is zero");
     TEST_ASSERT_FALSE_MESSAGE(f[i].line.empty(),
                               "schedule filter line is empty");
     TEST_ASSERT_FALSE_MESSAGE(f[i].direction_prefix.empty(),

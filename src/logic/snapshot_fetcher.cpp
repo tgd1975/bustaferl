@@ -40,23 +40,20 @@ void formatBatchLabel(char *out, std::size_t out_size, const int *stop_ids,
   }
 }
 
-bool isAuthCode(int status) {
-  return status == HTTP_401 || status == HTTP_403;
-}
+bool isAuthCode(int status) { return status == HTTP_401 || status == HTTP_403; }
 
 // Single HAFAS mgate.exe POST → parseOebbStationBoard. Updates summary like
 // the OGD batch loop (counts as one batch). The result struct's flags are
 // copied into the StreamData so snapshot_logger / filter_health see the
 // same values they get from the OGD path.
 void fetchOebbStream(INetwork &net, const std::string &mgate_url,
-                    const OebbStreamFilter &f, StreamSnapshot &out,
-                    FetchSummary &summary, PersistedMeta &meta) {
+                     const OebbStreamFilter &f, StreamSnapshot &out,
+                     FetchSummary &summary, PersistedMeta &meta) {
   std::string body = buildOebbRequest(f);
   std::string resp;
   FetchConfig fc;
-  FetchOutcome fo = fetchPostWithRetry(net, mgate_url, body,
-                                       "application/json; charset=UTF-8",
-                                       resp, fc);
+  FetchOutcome fo = fetchPostWithRetry(
+      net, mgate_url, body, "application/json; charset=UTF-8", resp, fc);
   ++summary.total_batches;
 
   if (!fo.ok) {
@@ -118,8 +115,9 @@ void runOgdBatchLoop(INetwork &net, const std::string &endpoint_base,
     ++summary.total_batches;
 
     if (!fo.ok) {
-      SNAP_LOG("[api] batch [%s] httpGet failed after %d attempts (status=%d)\n",
-               batch_label, fo.attempts_taken, fo.http_status);
+      SNAP_LOG(
+          "[api] batch [%s] httpGet failed after %d attempts (status=%d)\n",
+          batch_label, fo.attempts_taken, fo.http_status);
       ++summary.failed_batches;
       // Auth-Tripwire: 401/403 zählt — drei am Stück flippen
       // auth_error_seen. Transport-Fails (status=0) lassen den Streak in
@@ -169,22 +167,22 @@ std::string apiUrlForBatch(const std::string &endpoint_base,
   return url;
 }
 
-bool fetchSnapshot(INetwork &net, const std::string &endpoint_base,
-                   const std::string &mgate_url,
-                   const StreamFilter (&filters)[STREAM_COUNT],
-                   const OebbStreamFilter &oebb_filter, StreamSnapshot &out,
-                   FetchSummary &summary, PersistedMeta &meta) {
+bool fetchSnapshot(INetwork &net, const FetchInputs &inputs,
+                   StreamSnapshot &out, FetchSummary &summary,
+                   PersistedMeta &meta) {
   out = StreamSnapshot{};
   summary = FetchSummary{};
 
   // OGD first — its calls are cheap and its body is small. A HAFAS failure
   // shouldn't suppress fresh bus times.
-  runOgdBatchLoop(net, endpoint_base, filters, out, summary, meta);
+  runOgdBatchLoop(net, inputs.endpoint_base, inputs.filters, out, summary,
+                  meta);
 
   // Then the single HAFAS call. mgate_url empty → host test that does not
   // exercise the OEBB path; skip.
-  if (!mgate_url.empty()) {
-    fetchOebbStream(net, mgate_url, oebb_filter, out, summary, meta);
+  if (!inputs.mgate_url.empty()) {
+    fetchOebbStream(net, inputs.mgate_url, inputs.oebb_filter, out, summary,
+                    meta);
   }
 
   // api_ok if at least one batch returned valid JSON.

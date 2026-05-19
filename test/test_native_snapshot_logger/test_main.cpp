@@ -77,25 +77,23 @@ void test_format_summary_header_and_per_slot_lines() {
   std::string out = formatSnapshotSummary(snap, /*total_batches=*/3,
                                           /*failed_batches=*/0);
 
-  // Header line — leading shape unchanged from the historic main.cpp print,
-  // except the "58B" stream now reads as "58B-Atz" (intentional, see file
-  // header comment).
+  // Header line — v2 layout: 3 OGD bus streams + 1 HAFAS S-Bahn stream.
   TEST_ASSERT_NOT_NULL(std::strstr(
       out.c_str(),
       "[api] batches=3 failed=0 api_ok=1  streams: 58A-Atz r=1 f=1 | "
-      "58A-Hie r=1 f=1 | 58B-Atz r=1 f=1 | U1-Leo r=1 f=1 | U1-Obe r=1 f=1\n"));
+      "58A-Hie r=1 f=1 | 58B-Atz r=1 f=1 | SBahn-Hbf r=1 f=1\n"));
 
   // Per-slot line for the valid Plan departure.
   TEST_ASSERT_NOT_NULL(std::strstr(
       out.c_str(), "[api]   58A-Atz[0]: 12:34 PLAN epoch=1704112440\n"));
 
   // Every other slot must show "--:--". Sample one from each remaining stream
-  // to be sure the loop ran across all five streams.
+  // to be sure the loop ran across all four v2 streams.
   TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   58A-Atz[1]: --:--\n"));
   TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   58A-Hie[0]: --:--\n"));
   TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   58B-Atz[0]: --:--\n"));
-  TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   U1-Leo[0]: --:--\n"));
-  TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   U1-Obe[1]: --:--\n"));
+  TEST_ASSERT_NOT_NULL(
+      std::strstr(out.c_str(), "[api]   SBahn-Hbf[0]: --:--\n"));
 }
 
 void test_format_summary_api_ok_false_and_failed_counts() {

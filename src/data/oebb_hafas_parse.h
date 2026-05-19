@@ -12,9 +12,9 @@ namespace bustaferl {
 // S-Bahn pipeline has exactly one filter (not a per-stream table like the OGD
 // path) — see §2.2 of docs/v2-sbahn-migration-plan.md.
 struct OebbStreamFilter {
-  std::string stbloc_extid;  // HAFAS extId, departure-board station
-  std::string dirloc_extid;  // HAFAS extId, downstream direction touch
-  std::string products;      // jnyFltrL "value" bitmask, e.g. "63"
+  std::string stbloc_extid; // HAFAS extId, departure-board station
+  std::string dirloc_extid; // HAFAS extId, downstream direction touch
+  std::string products;     // jnyFltrL "value" bitmask, e.g. "63"
   int max_jny = OEBB_MAX_JNY;
 };
 
@@ -26,9 +26,9 @@ std::string buildOebbRequest(const OebbStreamFilter &f);
 // the parser tells you whether the JSON deserialized — these flags tell you
 // what HAFAS actually said.
 struct OebbParseResult {
-  bool endpoint_responded = false;  // err=="OK" AND svcResL[0].res non-null
-  bool filter_matched = false;      // ≥1 surviving departure
-  bool auth_error_seen = false;     // err ∈ {"AID","AUTH"}
+  bool endpoint_responded = false; // err=="OK" AND svcResL[0].res non-null
+  bool filter_matched = false;     // ≥1 surviving departure
+  bool auth_error_seen = false;    // err ∈ {"AID","AUTH"}
 };
 
 // Parses an mgate.exe StationBoard response and writes up to

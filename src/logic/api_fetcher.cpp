@@ -41,8 +41,7 @@ Disposition classify(HttpResult r) {
     return Disposition::ReturnNow; // 2xx
   if (s == HTTP_401 || s == HTTP_403)
     return Disposition::ReturnNow; // auth tripwire
-  if (s == HTTP_408 || s == HTTP_429 ||
-      (s >= HTTP_5XX_MIN && s < HTTP_5XX_MAX))
+  if (s == HTTP_408 || s == HTTP_429 || (s >= HTTP_5XX_MIN && s < HTTP_5XX_MAX))
     return Disposition::Retry; // server-side transient
   if (s >= HTTP_4XX_MIN && s < HTTP_5XX_MIN)
     return Disposition::ReturnNow; // other 4xx → caller bug
