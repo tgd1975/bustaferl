@@ -184,7 +184,9 @@ void test_dryup_and_sleep_decisions(void) {
           ++g_bridge_hits;
       }
     }
-    RenderInput in{merged_for_render, OverlayKind::None};
+    RenderInput in;
+    in.state = DisplayState::Normal;
+    in.snapshot = merged_for_render;
     renderFrame(in, g_frame_new);
     bool prev_valid = (cycle > 1);
     RefreshConfig rc;

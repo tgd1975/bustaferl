@@ -217,7 +217,7 @@ public:
   void render(const RenderInput &in, Frame &fb) override {
     trace_.emplace_back("renderer.render");
     ++calls;
-    last_overlay = in.overlay;
+    last_state = in.state;
     // Touch the framebuffer so a downstream refresh_planner-style diff against
     // the previous frame yields a non-empty change region.
     fb.clear(true);
@@ -226,7 +226,7 @@ public:
     ++seq_;
   }
   int calls = 0;
-  OverlayKind last_overlay = OverlayKind::None;
+  DisplayState last_state = DisplayState::Normal;
 
 private:
   std::vector<std::string> &trace_;

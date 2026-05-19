@@ -1,5 +1,6 @@
 #include "logic/cycle_runner.h"
 
+#include "config.h"
 #include "data/StreamSnapshot.h"
 #include "logic/boot_sequencer.h"
 #include "logic/button_classifier.h"
@@ -62,11 +63,11 @@ bool refreshSchedule(CycleDeps &deps, ScheduleSnapshot &out) {
   return applyScheduleFetchResult(r, now, out);
 }
 
-void renderAndPush(CycleDeps &deps, const StreamSnapshot &snap,
-                   OverlayKind overlay, PersistedMeta &meta,
+void renderAndPush(CycleDeps &deps, DisplayState state,
+                   const StreamSnapshot &snap, PersistedMeta &meta,
                    const ScheduleSnapshot &schedule) {
   time_t now = deps.clock.now();
-  RenderInput in = composeRenderInput(snap, schedule, overlay, now);
+  RenderInput in = composeRenderInput(state, snap, schedule, meta, now);
   deps.renderer.render(in, deps.curr);
 
   bool prev_valid = meta.framebuffer_valid;
@@ -107,12 +108,11 @@ SleepConfig makeSleepConfig(const CycleConfig &cfg) {
 }
 
 // Shared fetch+merge step. Hands back the realtime snapshot, the merged view
-// for planSleep, plus the overlay the renderer should apply (None / Stale /
-// FilterDead).
+// for planSleep, plus the DisplayState the renderer should apply.
 struct FetchCycleResult {
   StreamSnapshot snap;
   StreamSnapshot merged;
-  OverlayKind overlay = OverlayKind::None;
+  DisplayState state = DisplayState::Normal;
   bool fetched_ok = false;
 };
 
@@ -127,17 +127,12 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
 
   if (r.fetched_ok) {
     meta.last_api_success = now;
-    // v2 Plan §5.4: spiegelt last_api_success in das v2-Feld, das der
-    // State-Selector (Session D) liest. Beide Felder fortzuschreiben hält
-    // bestehende Stale-/FilterHealth-Logik unverändert während Session D
-    // landet.
     meta.last_success_at = now;
     meta.has_any_data = true;
-    // FilterHealth only gets a signal when at least one of our streams has
-    // actual departures. During the nightly Betriebstag-Pause the API
-    // returns matching RBLs/lines but with empty `departures` arrays — that
-    // would otherwise read as "filter responded but didn't match" for hours
-    // and falsely trip FilterDead. Treat "no service anywhere" as no signal.
+    // FilterHealth tracking — still wanted as a diagnostic counter even
+    // though the v2 state-selector no longer renders a dedicated
+    // "FilterDead" screen (subsumed by Stale/Quiet/Auth). The streak data
+    // remains for filter-health monitoring on the next AID rotation.
     const bool any_service =
         std::any_of(std::begin(r.snap.stream), std::end(r.snap.stream),
                     [](const StreamData &s) { return s.slot[0].valid; });
@@ -145,15 +140,37 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
       fh.recordCall(r.snap.stream[STREAM_58B_ATZ].endpoint_responded,
                     r.snap.stream[STREAM_58B_ATZ].filter_matched);
       meta.filter_miss_streak = fh.streak();
-      if (fh.isDead())
-        r.overlay = OverlayKind::FilterDead;
     }
-  } else if (isStale(meta.last_api_success, now, deps.cfg.stale_threshold_s)) {
-    r.overlay = OverlayKind::Stale;
-    r.snap = StreamSnapshot{};
   }
 
-  r.merged = (r.overlay == OverlayKind::Stale)
+  // Build the state-selector inputs and pick the v2 DisplayState. This
+  // replaces the old "OverlayKind out of three options" computation.
+  //
+  // Pre-stale transient fetch failure: the selector would otherwise see an
+  // empty snapshot and pick Quiet (allDeparturesBeyond({}, ...) == true).
+  // That would flicker the display every cycle a single HTTP call fails.
+  // Keep `state = Normal` in that window so the caller's "fc.fetched_ok ||
+  // state != Normal" guard skips the redraw.
+  SelectorSignals sig;
+  sig.first_render_ever = !meta.has_any_data;
+  sig.auth_error_seen = meta.auth_error_seen;
+  sig.wifi_up = deps.net.isConnected();
+  sig.now = now;
+  sig.last_success = meta.last_success_at;
+  if (!r.fetched_ok && (now - meta.last_success_at) <= STALE_THRESHOLD_V2_S &&
+      !meta.auth_error_seen) {
+    r.state = DisplayState::Normal;
+  } else {
+    r.state = selectDisplayState(r.snap, schedule, meta, sig);
+  }
+
+  // Stale forces an empty snapshot through the renderer (slots → "??:??").
+  // The merged view for planSleep keeps the hint information so the next
+  // wake still targets the right time.
+  if (r.state == DisplayState::Stale) {
+    r.snap = StreamSnapshot{};
+  }
+  r.merged = (r.state == DisplayState::Stale)
                  ? r.snap
                  : mergeSlots(r.snap, schedule, now);
   return r;
@@ -183,7 +200,12 @@ bool handleColdBootOutcome(CycleDeps &deps, PersistedMeta &meta, BootResult r) {
   }
   if (r == BootResult::GiveUp) {
     CYCLE_LOG_LN("[boot] give up");
-    RenderInput in{StreamSnapshot{}, OverlayKind::StartFailed};
+    // GiveUp ends the cold-boot retry chain — render the Offline screen so
+    // the user knows the device is awake but can't reach the network. v2
+    // dropped the dedicated "Start fehlgeschlagen" overlay in favour of the
+    // generic Offline fullscreen renderer.
+    RenderInput in;
+    in.state = DisplayState::Offline;
     deps.renderer.render(in, deps.curr);
     deps.display.deepClean(deps.curr.data());
     meta.cold_boot_retries = 0;
@@ -227,7 +249,17 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
   }
   CYCLE_LOG("[boot] fetch ok=%d, rendering and deep-cleaning panel\n", ok);
   time_t now = deps.clock.now();
-  RenderInput in = composeRenderInput(snap, schedule, OverlayKind::None, now);
+  // Cold boot, post-fetch: ask the state-selector for the right screen.
+  // On first-ever boot (has_any_data still false) this resolves to Boot;
+  // on subsequent wakes after Update it picks Normal/Stale/etc.
+  SelectorSignals sig;
+  sig.first_render_ever = !meta.has_any_data;
+  sig.auth_error_seen = meta.auth_error_seen;
+  sig.wifi_up = deps.net.isConnected();
+  sig.now = now;
+  sig.last_success = meta.last_success_at;
+  DisplayState state = selectDisplayState(snap, schedule, meta, sig);
+  RenderInput in = composeRenderInput(state, snap, schedule, meta, now);
   deps.renderer.render(in, deps.curr);
   deps.display.deepClean(deps.curr.data());
   meta.last_deep_clean = now;
@@ -269,7 +301,7 @@ bool ensureClockSynced(CycleDeps &deps, PersistedMeta &meta) {
 void doNightlyClean(CycleDeps &deps, PersistedMeta &meta,
                     const ScheduleSnapshot &schedule,
                     const FetchCycleResult &fc, time_t now) {
-  RenderInput in = composeRenderInput(fc.snap, schedule, fc.overlay, now);
+  RenderInput in = composeRenderInput(fc.state, fc.snap, schedule, meta, now);
   deps.renderer.render(in, deps.curr);
   deps.display.deepClean(deps.curr.data());
   meta.last_deep_clean = now;
@@ -284,9 +316,18 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
   ScheduleSnapshot schedule = deps.store.loadSchedule();
   if (!deps.net.connect(deps.cfg.wifi_connect_ms)) {
     CYCLE_LOG_LN("[warm] wifi down");
-    if (isStale(meta.last_api_success, deps.clock.now(),
-                deps.cfg.stale_threshold_s)) {
-      renderAndPush(deps, StreamSnapshot{}, OverlayKind::Stale, meta, schedule);
+    // No WiFi → ask the selector whether to surface Offline / Stale / keep
+    // the last frame. SelectorSignals.wifi_up=false drives the choice.
+    time_t now = deps.clock.now();
+    SelectorSignals sig;
+    sig.first_render_ever = !meta.has_any_data;
+    sig.auth_error_seen = meta.auth_error_seen;
+    sig.wifi_up = false;
+    sig.now = now;
+    sig.last_success = meta.last_success_at;
+    DisplayState s = selectDisplayState(StreamSnapshot{}, schedule, meta, sig);
+    if (s == DisplayState::Stale || s == DisplayState::Offline) {
+      renderAndPush(deps, s, StreamSnapshot{}, meta, schedule);
     }
     deps.sleep.deepSleep(deps.cfg.poll_interval_s);
     return;
@@ -318,8 +359,8 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
 
   if (nightly) {
     doNightlyClean(deps, meta, schedule, fc, now);
-  } else if (fc.fetched_ok || fc.overlay != OverlayKind::None) {
-    renderAndPush(deps, fc.snap, fc.overlay, meta, schedule);
+  } else if (fc.fetched_ok || fc.state != DisplayState::Normal) {
+    renderAndPush(deps, fc.state, fc.snap, meta, schedule);
   } else {
     // Transient fetch failure (not yet stale): keep showing the last good
     // frame. Re-rendering with an empty snap would flicker every slot to
@@ -337,8 +378,8 @@ void runBwReset(CycleDeps &deps, PersistedMeta &meta) {
                      Frame::bytes;
   if (!have_fb) {
     CYCLE_LOG_LN("[btn] no valid framebuffer — rendering empty for clean");
-    StreamSnapshot snap;
-    RenderInput in{snap, OverlayKind::None};
+    RenderInput in;
+    in.state = DisplayState::Normal;
     deps.renderer.render(in, deps.curr);
   }
   deps.display.deepClean(deps.curr.data());

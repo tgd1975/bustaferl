@@ -81,24 +81,11 @@ void drawStreamLine(ExternalCanvas &c, int y, const char *prefix,
   drawSlot(c, 320, y, s.slot[1], stale);
 }
 
-void drawOverlay(ExternalCanvas &c, OverlayKind kind) {
-  const char *msg = nullptr;
-  switch (kind) {
-  case OverlayKind::Stale:
-    msg = "VERALTET";
-    break;
-  case OverlayKind::FilterDead:
-    msg = "58B Filter ungueltig";
-    break;
-  case OverlayKind::StartFailed:
-    msg = "Start fehlgeschlagen";
-    break;
-  default:
-    return;
-  }
+void drawBanner(ExternalCanvas &c, const char *msg) {
   // Banner is a white box with a black border + black text, regardless of
   // the global ink scheme, so the alert stays high-contrast against the
-  // black background.
+  // black background. Schritt 7.8 will replace this transitional renderer
+  // with the full fullscreen-state dispatcher.
   int y = 270;
   c.fillRect(0, y - 4, 400, 28, 1);
   c.drawRect(4, y - 4, 392, 26, 0);
@@ -108,7 +95,11 @@ void drawOverlay(ExternalCanvas &c, OverlayKind kind) {
 } // namespace
 
 void renderFrame(const RenderInput &in, Frame &fb) {
-  const bool stale = (in.overlay == OverlayKind::Stale);
+  // Schritt 7.1 transitional renderer: paints the legacy three-block layout
+  // and overlays a banner for non-Normal states. Schritt 7.8 replaces this
+  // entire function with the full per-state dispatcher (drawBoot, drawAuth,
+  // drawOffline, drawQuiet + new drawBoard for the data states).
+  const bool stale = (in.state == DisplayState::Stale);
 
   fb.clear(false); // black background; content drawn in white
   ExternalCanvas c(FB_W, FB_H, fb.data());
@@ -124,17 +115,30 @@ void renderFrame(const RenderInput &in, Frame &fb) {
                  stale);
   drawText(c, 8, 174, 1, "(nach Schleife)");
 
-  // v2-Übergang (Session B): U1-Streams entfallen, der S-Bahn-Stream
-  // (STREAM_SBAHN_HBF) wird erst in Session D vom neuen Renderer gezeichnet.
-  // Vorläufig zeigt der dritte Block den S-Bahn-Slot mit dem alten
-  // drawStreamLine-Helper, damit das Display nicht leer bleibt bevor das
-  // Layout-Rewrite landet.
   drawHeader(c, 196, "ATZGERSDORF S");
   drawStreamLine(c, 222, "S-Bahn -> Hbf", in.snapshot.stream[STREAM_SBAHN_HBF],
                  stale);
 
-  if (in.overlay != OverlayKind::None)
-    drawOverlay(c, in.overlay);
+  switch (in.state) {
+  case DisplayState::Stale:
+    drawBanner(c, "VERALTET");
+    break;
+  case DisplayState::Offline:
+    drawBanner(c, "Kein Empfang");
+    break;
+  case DisplayState::Auth:
+    drawBanner(c, "Auth-Fehler");
+    break;
+  case DisplayState::Boot:
+    drawBanner(c, "Lädt Fahrplan…");
+    break;
+  case DisplayState::Quiet:
+    drawBanner(c, "Keine Abfahrten");
+    break;
+  case DisplayState::Night:
+  case DisplayState::Normal:
+    break;
+  }
 }
 
 } // namespace bustaferl

@@ -30,7 +30,7 @@ std::uint32_t hashInput(const RenderInput &in) {
     mix(sd.endpoint_responded ? 1u : 0u);
     mix(sd.filter_matched ? 1u : 0u);
   }
-  mix(static_cast<std::uint32_t>(in.overlay));
+  mix(static_cast<std::uint32_t>(in.state));
   mix(in.snapshot.api_ok ? 1u : 0u);
   return h;
 }

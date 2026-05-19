@@ -151,7 +151,9 @@ void test_horizon_cliff_loop(void) {
       ScheduleSnapshot empty_schedule;
       StreamSnapshot merged_for_render =
           mergeSlots(snap, empty_schedule, t_cycle);
-      RenderInput in{merged_for_render, OverlayKind::None};
+      RenderInput in;
+      in.state = DisplayState::Normal;
+      in.snapshot = merged_for_render;
       renderFrame(in, g_frame_new);
       bool prev_valid = (cycle > 1);
       RefreshConfig rc;

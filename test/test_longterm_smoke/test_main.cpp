@@ -123,7 +123,9 @@ void test_pipeline_one_full_cycle(void) {
   ScheduleSnapshot empty_schedule;
   time_t now_t = g_clock.now();
   StreamSnapshot merged_for_render = mergeSlots(snap, empty_schedule, now_t);
-  RenderInput in{merged_for_render, OverlayKind::None};
+  RenderInput in;
+  in.state = DisplayState::Normal;
+  in.snapshot = merged_for_render;
   renderFrame(in, g_frame_new);
   RefreshConfig rc;
   RefreshDecision rd = planRefresh(

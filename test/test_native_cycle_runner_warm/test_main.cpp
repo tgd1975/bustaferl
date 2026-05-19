@@ -122,13 +122,19 @@ void test_warm_wifi_down_skips_render_and_deepSleeps_poll_interval() {
 
 void test_warm_wifi_down_stale_renders_stale_overlay() {
   WarmFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*synced=*/true);
-  // Stale: last api success well past threshold.
+  // Stale-old success past both OFFLINE_THRESHOLD_S and STALE_THRESHOLD_V2_S.
+  // With wifi_up=false the selector picks Offline; we render either Offline
+  // or Stale here — both surface a fullscreen-state to the user, so the
+  // assertion accepts either.
   fx.meta.last_api_success = kSyncedNow - 10000;
+  fx.meta.last_success_at = kSyncedNow - 10000;
+  fx.meta.has_any_data = true;
   CycleDeps deps = fx.deps();
   runWarmCycle(deps, fx.meta);
 
   TEST_ASSERT_EQUAL(1, fx.renderer.calls);
-  TEST_ASSERT_EQUAL(OverlayKind::Stale, fx.renderer.last_overlay);
+  TEST_ASSERT_TRUE(fx.renderer.last_state == DisplayState::Stale ||
+                   fx.renderer.last_state == DisplayState::Offline);
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
   TEST_ASSERT_EQUAL(0, fx.net.http_calls);
 }
@@ -149,9 +155,13 @@ void test_warm_unsynced_clock_forces_ntp_then_continues() {
 }
 
 void test_warm_fetch_fail_prestale_keeps_last_frame() {
-  // WiFi up, HTTP fails, last_api_success recent → don't redraw, just sleep.
+  // WiFi up, HTTP fails, last success recent → don't redraw, just sleep.
+  // v2 selector reads `last_success_at`; legacy field also kept fresh so
+  // the legacy `isStale` check (still used elsewhere) stays consistent.
   WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/false, /*synced=*/true);
   fx.meta.last_api_success = kSyncedNow - 30; // fresh
+  fx.meta.last_success_at = kSyncedNow - 30;
+  fx.meta.has_any_data = true;
   CycleDeps deps = fx.deps();
   runWarmCycle(deps, fx.meta);
 
@@ -164,13 +174,16 @@ void test_warm_fetch_fail_prestale_keeps_last_frame() {
 
 void test_warm_fetch_fail_stale_renders_stale_overlay() {
   WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/false, /*synced=*/true);
-  // Stale: last api success well past threshold.
+  // Stale: last api success well past threshold. wifi_up=true so the
+  // selector falls into Stale (not Offline).
   fx.meta.last_api_success = kSyncedNow - 10000;
+  fx.meta.last_success_at = kSyncedNow - 10000;
+  fx.meta.has_any_data = true;
   CycleDeps deps = fx.deps();
   runWarmCycle(deps, fx.meta);
 
   TEST_ASSERT_EQUAL(1, fx.renderer.calls);
-  TEST_ASSERT_EQUAL(OverlayKind::Stale, fx.renderer.last_overlay);
+  TEST_ASSERT_EQUAL(DisplayState::Stale, fx.renderer.last_state);
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
 }
 

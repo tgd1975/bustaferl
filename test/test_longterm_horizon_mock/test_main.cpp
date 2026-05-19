@@ -151,7 +151,9 @@ void setup() {
       time_t now_t = static_cast<time_t>(time(nullptr));
       StreamSnapshot merged_for_render =
           mergeSlots(parsed_snap, empty_schedule, now_t);
-      RenderInput in{merged_for_render, OverlayKind::None};
+      RenderInput in;
+      in.state = DisplayState::Normal;
+      in.snapshot = merged_for_render;
       renderFrame(in, g_frame_new);
       bool prev_valid = (cycle > 1);
       RefreshConfig rc;

@@ -83,14 +83,15 @@ void test_cold_retry_later_increments_retries_and_short_sleeps() {
 
 void test_cold_give_up_overlay_and_reset() {
   // After max retries, the boot sequencer returns GiveUp. Cycle renders
-  // a StartFailed overlay, deep-cleans the panel, and zeroes the counter.
+  // the Offline fullscreen state, deep-cleans the panel, and zeroes the
+  // counter. (v2: the old StartFailed overlay folded into Offline.)
   ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true,
                  /*retries=*/DEFAULT_COLD_BOOT_MAX_RETRIES);
   CycleDeps deps = fx.deps();
   runColdCycle(deps, fx.meta);
 
   TEST_ASSERT_EQUAL(1, fx.renderer.calls);
-  TEST_ASSERT_EQUAL(OverlayKind::StartFailed, fx.renderer.last_overlay);
+  TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
   TEST_ASSERT_EQUAL(1, fx.display.deep_clean_calls);
   TEST_ASSERT_EQUAL(0, fx.meta.cold_boot_retries);
   TEST_ASSERT_FALSE(fx.meta.framebuffer_valid);

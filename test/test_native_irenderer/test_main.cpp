@@ -14,10 +14,10 @@ namespace {
 class FakeRenderer : public IRenderer {
 public:
   int calls = 0;
-  OverlayKind last_overlay = OverlayKind::None;
+  DisplayState last_state = DisplayState::Normal;
   void render(const RenderInput &in, Frame &fb) override {
     ++calls;
-    last_overlay = in.overlay;
+    last_state = in.state;
     fb.clear(true);
   }
 };
@@ -30,26 +30,26 @@ void tearDown() {}
 void test_fake_renderer_records_call() {
   FakeRenderer r;
   Frame fb;
-  StreamSnapshot snap;
-  RenderInput in{snap, OverlayKind::Stale};
+  RenderInput in;
+  in.state = DisplayState::Stale;
 
   r.render(in, fb);
 
   TEST_ASSERT_EQUAL(1, r.calls);
-  TEST_ASSERT_EQUAL(OverlayKind::Stale, r.last_overlay);
+  TEST_ASSERT_EQUAL(DisplayState::Stale, r.last_state);
 }
 
 void test_renderer_handle_via_base_pointer() {
   FakeRenderer impl;
   IRenderer &r = impl;
   Frame fb;
-  StreamSnapshot snap;
-  RenderInput in{snap, OverlayKind::None};
+  RenderInput in;
+  in.state = DisplayState::Normal;
 
   r.render(in, fb);
 
   TEST_ASSERT_EQUAL(1, impl.calls);
-  TEST_ASSERT_EQUAL(OverlayKind::None, impl.last_overlay);
+  TEST_ASSERT_EQUAL(DisplayState::Normal, impl.last_state);
 }
 
 int main(int, char **) {
