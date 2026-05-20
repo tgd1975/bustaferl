@@ -4,7 +4,7 @@ Stand: 2026-05-20 (18:30 UTC, Host-Vergleich) · Branch: `v2/sbahn-atzgersdorf` 
 
 **Vorgehen umgestellt auf Mock-View-Firmwares**: statt die States in der Wildbahn zu provozieren (NTP-Override, WiFi-AP aus, AID kaputt machen), gibt es pro State eine eigene Mini-Firmware unter `tools/mockview/` mit hartkodierten Mock-Daten. `make mockview-N` flasht, das Gerät rendert einmal und geht in Deep-Sleep — Display zeigt den State persistent.
 
-**Ablauf pro State**: `make mockview-N` flashen → fotografieren ([docs/screenshots/device/mockview-N.jpeg](../screenshots/device/)) → Host-Vergleich gegen [docs/screenshots/host/mockview-N.png](../screenshots/host/) → Befund/Drift unten eintragen → bei Drift Patch von Claude einfordern → re-flash → re-foto.
+**Ablauf pro State** (Host-only, kein Hardware-Test): Host-Render via `pio test -e native -f test_native_mockview_dump` → [docs/screenshots/host/mockview-N.png](../screenshots/host/) → Vergleich gegen [docs/design_handoff_display/screen-N-*.png](../design_handoff_display/) → Befund/Drift unten eintragen → Patch → Host-Render neu generieren → Re-Vergleich. **Kein Re-Flash / Re-Foto nötig**, weil HostCanvas pixel-identisch zum AdafruitGfxCanvas rendert (Commit `b47ca14`).
 
 **Reihenfolge egal** — jeder Slot ist unabhängig. Empfehlung: 7 → 1 → 2 → 3 → 4 → 5 → 6 (Boot zuerst, weil er der einfachste Smoke-Test ist).
 
@@ -12,11 +12,11 @@ Stand: 2026-05-20 (18:30 UTC, Host-Vergleich) · Branch: `v2/sbahn-atzgersdorf` 
 
 **Vergleichs-Quellen** (2026-05-20):
 
-- Host-Renders (Pixel-genau, 400×300, 1-bit): `docs/screenshots/host/mockview-N.png`
-- Geräte-Fotos (JPEG vom realen UC8176): `docs/screenshots/device/mockview-N.jpeg`
+- Host-Renders (Pixel-genau, 400×300, 1-bit): `docs/screenshots/host/mockview-N.png` — **autoritativ**, weil HostCanvas = AdafruitGfxCanvas
 - Design-Soll (Browser-Mock, 1920×1440 @ 4.8×): `docs/design_handoff_display/screen-N-*.png`
+- Geräte-Fotos (JPEG vom realen UC8176): `docs/screenshots/device/mockview-N.jpeg` — **nur historisch**, nicht für Validation
 
-Primärvergleich Host ↔ Design. Geräte-Foto nur als Sanity-Check bei Glyph-/Kontrast-Zweifeln.
+Vergleich nur Host ↔ Design. Geräte-Tests sind hier nicht nötig — die ganze Mockview-Umstellung hatte genau das Ziel, Renderer-Validation host-only zu machen.
 
 **Numerierungs-Korrektur** (Stand 2026-05-20): Die Boot-Section unten ist als „§11.7" getaggt, gehört aber konzeptuell zu §11.1 (Pre-Render-Splash); die Auth-Fehler-Section ist korrekt §11.7. Heading nicht verschoben, weil Slot-IDs (mockview-7 / mockview-6) eindeutig sind und ein Rename die Git-History verwirrt.
 
@@ -219,16 +219,13 @@ Re-Foto nach Re-Flash erwartet. **NOTA BENE Punkt 1**: Zweite Sichtung 2026-05-2
 
 ---
 
-## Cold-Boot-Doppel-Refresh (§11.1 — **separat**, nicht via mockview)
+## Cold-Boot-Doppel-Refresh (§11.1 — **deferred zu Session F/G**)
 
-§11.1 verifiziert den Pre-Render-Splash *in der echten Boot-Sequenz*: nach `make flash` (= Produktions-Firmware, nicht mockview) sollen **zwei Refreshes hintereinander** sichtbar sein (Boot-State → Normal). Das geht nur mit `make flash` + WiFi/HAFAS funktionsfähig, nicht über Mock.
+§11.1 verifiziert den Pre-Render-Splash *in der echten Boot-Sequenz* — der einzige verbleibende Hardware-Test in §11, weil er Wake-Cycle-Verhalten testet, nicht Renderer-Output. Da die Mockview-Umstellung Renderer-Validation host-only macht, ist §11.1 nicht mehr Teil von Session E (Display-Sichtkontrolle), sondern zieht zu Session F/G (Integration-Tests gegen echtes Gerät).
 
-- [ ] `make flash` (Produktions-Firmware, nicht mockview)
-- [ ] **Refresh 1** (~3 s): Boot-State (vgl. screen-7)
-- [ ] **Refresh 2** (~5–10 s): Normal-State (vgl. screen-1)
-- [ ] Wenn nur 1 Refresh sichtbar: Pre-Render aus Schritt 5.4 nicht aktiv. Serial-Log auf `[cold] pre-render boot` / `[cold] fetch start` / `[cold] post-render normal` prüfen.
+**Hier nur Erinnerungs-Eintrag**, kein Hardware-Schritt in E:
 
-**Drift / Notizen**:
+- [ ] §11.1 → deferred (Session F/G): Cold-Boot-Doppel-Refresh-Verifikation via `make flash` + Serial-Log-Check auf `[cold] pre-render boot` / `[cold] fetch start` / `[cold] post-render normal`
 
 ---
 
@@ -259,17 +256,17 @@ Stand 2026-05-20 (Iteration 2 nach Claude-Design-Review) — **dreizehn Patches*
 **Folge-Arbeit**:
 
 - [ ] **P6** (optional, **nicht empfohlen**) — Offline-Sub-Mock-Anchor an Design 17:48 angleichen — [tools/mockview/main_5_kein_empfang.cpp](../../tools/mockview/main_5_kein_empfang.cpp)
-- [ ] **P7** (Folge-Verifikation) — Re-Flash mockview-1/-2/-3/-5/-6/-7, neue Host-PNGs + Geräte-Fotos, Re-Vergleich gegen Design (jetzt 6 States statt 3, weil L-Patches die Board-States 1/2/3 betreffen)
+- [ ] **P7** (Folge-Verifikation) — Host-PNGs neu generieren via `pio test -e native -f test_native_mockview_dump` für mockview-1/-2/-3/-5/-6/-7, Re-Vergleich gegen Design. **Kein Re-Flash, kein Re-Foto** — HostCanvas ist pixel-identisch zum Gerät (Commit `b47ca14`).
 - [ ] **P8** — §4.1-Annahme im Migration-Plan aktualisieren (Glyph-Drift akzeptiert, Option B nicht nötig — **aber Layout-Drift war erwartungsfehler** in §4.1, nachjustieren)
 
 ---
 
 ## Abnahme
 
-- [ ] Alle 7 States vom Auftraggeber abgenommen (mockview-1 bis -7) — **Stand 2026-05-20 (Iteration 2): 1/7 driftfrei (Quiet/4), 6/7 mit Patches offen (1/2/3 mit L-Patches, 5/6/7 mit P-Patches)**
-- [ ] §11.1 Cold-Boot-Doppel-Refresh gesehen (Produktions-Firmware)
-- [x] Alle Fotos abgelegt unter [docs/screenshots/device/](../screenshots/device/) (Pfad gegenüber Plan-Vorgabe geändert, siehe Header)
-- [ ] Patch-Block (P0/P1–P5/P9–P14 + Folge P6–P8) abgearbeitet + gesquasht zu einem Commit auf `v2/sbahn-atzgersdorf`
+- [ ] Alle 7 States Host-PNG ↔ Design-PNG vergleichbar, Drift = 0 — **Stand 2026-05-20 (Iteration 2): 1/7 driftfrei (Quiet/4), 6/7 mit Patches offen (1/2/3 mit L-Patches, 5/6/7 mit P-Patches)**
+- [ ] §11.1 Cold-Boot-Doppel-Refresh — **deferred zu Session F/G** (Hardware-Test, nicht Display-Sichtkontrolle)
+- [x] Host-Renders in [docs/screenshots/host/](../screenshots/host/) — autoritativ (HostCanvas = AdafruitGfxCanvas)
+- [ ] Patch-Block (P0/P1–P5/P9–P14 + Folge P7/P8) abgearbeitet + gesquasht zu einem Commit auf `v2/sbahn-atzgersdorf`
 - [ ] **Gate E → F**: Display final, Tests können in F umgestellt werden
 
 11.9 (Linien-Längen-Stress mit REX1) und 11.10 (24h-Soak) gehören laut §4.3 zu **Session G**, nicht E.
@@ -391,18 +388,18 @@ for (char *p = foot_buf; *p != '\0'; ++p) {
 
 **Verzichtbar**: Wenn man den semantischen Sinn "Last-Fetch ~7 min ago" beibehalten will, gibt es keinen sachlichen Grund, den Wert dem Design anzupassen — der Designer hat einen anderen Zeitpunkt gewählt. **Empfehlung: nicht patchen**, sondern in der Drift-Tabelle als "Designer-Variante" markieren.
 
-### P7 — Re-Flash + Re-Foto + Re-Vergleich (15 min)
+### P7 — Host-PNG-Regenerierung + Re-Vergleich (10 min)
 
 **Reihenfolge**:
 
-1. Patches P1–P5 als ein lokaler Commit auf `v2/sbahn-atzgersdorf` (Squash-Ziel "Render: §11 Sichtkontroll-Anpassungen").
-2. `make mockview-5` → fotografieren → `docs/screenshots/device/mockview-5.jpeg` überschreiben.
-3. `make mockview-6` → fotografieren.
-4. `make mockview-7` → fotografieren.
-5. Host-Renders neu erzeugen: `make host-mockview-{5,6,7}` (oder via `pio test -e native …`, je nach Build-Target — siehe [docs/screenshots/host/README.md](../screenshots/host/) falls vorhanden) → `docs/screenshots/host/mockview-{5,6,7}.png` überschreiben.
-6. Drift-Tabelle in §11.8 aktualisieren (Δ → 0 für P1/P2/P3/P5; P4 abhängig vom Coverage-Check).
+1. Patches als Commits auf `v2/sbahn-atzgersdorf` (Cluster A: P1-P5; Cluster B: P0/P9-P14).
+2. Host-Renders neu erzeugen: `pio test -e native -f test_native_mockview_dump` → `docs/screenshots/host/mockview-N.png` werden überschrieben (siehe [test/test_native_mockview_dump/test_main.cpp](../../test/test_native_mockview_dump/test_main.cpp)).
+3. Pro betroffenem State (1/2/3/5/6/7): Host-PNG ↔ Design-PNG visuell vergleichen.
+4. Drift-Tabelle in §11.8 aktualisieren (Δ → 0 für jeden geklärten Patch; offene Punkte als "BLOCKED — needs human" markieren wenn Patch nicht erfolgreich).
 
 **Tooling**: PGM → PNG nicht selbst basteln; `scripts/pgm-to-png.py` existiert bereits (siehe Memory `pgm-png-script.md`).
+
+**Kein Re-Flash, kein Re-Foto**: HostCanvas rendert pixel-identisch zum AdafruitGfxCanvas (Memory `host-renderer-parity.md`). Geräte-Tests entfallen vollständig — die ganze Mockview-Umstellung hatte genau dieses Ziel.
 
 ### P0 — Rollback EG-Header-Separator (2 min, **Cluster B**)
 
@@ -537,7 +534,7 @@ canvas.drawLine(0, LAYOUT_SEP_EG_Y, FB_W - 1, LAYOUT_SEP_EG_Y, 1);
 | **P13** (Header-FontRole-Mapping) | B | 10 min | Pixel-Test anpassen |
 | **P14** (Separator-Stärken) | B | 5 min | Pixel-Test anpassen |
 | **P6** (Mock-Anchor Offline, opt.) | — | 5 min | nicht empfohlen |
-| **P7** (Re-Flash 6× + Re-Foto + Re-Render) | — | 30 min | benötigt Gerät |
+| **P7** (Host-PNG-Regenerierung 6×, kein Re-Flash) | — | 10 min | host-only |
 | **P8** (Plan-Doku revidiert) | — | 10 min | nein |
 | **Summe Cluster A** | A | **30 min** | P4 evtl. skippen |
 | **Summe Cluster B** | B | **~2 h** | inkl. Test-Anpassung |
