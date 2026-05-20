@@ -78,8 +78,7 @@ define write-meta
 endef
 
 help:                  ## list available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-	  | awk 'BEGIN{FS=":.*?## "}{printf "  %-30s %s\n", $$1, $$2}'
+	@python3 tools/make-help.py $(MAKEFILE_LIST)
 
 # --- Firmware ---
 
@@ -117,6 +116,12 @@ test-device-trace:                            ## full serial stream into .tmp/tr
 	@mkdir -p $(TRACE_DIR)
 	@[ -n "$(ENV)" ] || { echo "usage: make test-device-trace ENV=device-fetch"; exit 1; }
 	$(PIO) test -e $(ENV) -v 2>&1 | tee $(TRACE_DIR)/$(ENV).log
+
+# --- CI / quality ---
+
+ci: format-check lint tidy test-native build  ## host only — fast, pre-commit-tauglich (~30-45 s)
+
+ci-heavy: ci native-runtime-smoke  ## ci + native-runtime-smoke (~5-6 min, CI-Pipeline)
 
 # --- Long-term (opt-in) ---
 
@@ -164,12 +169,6 @@ test-longterm-day-full:                       ## ~24 h pre-release, unattended o
 	$(PIO) test -e longterm-day-full -v --json-output-path $(TMP)/longterm-day-full.json
 	@$(call write-meta,longterm-day-full,$(TMP)/longterm-day-full.json)
 
-# --- CI / quality ---
-
-ci: format-check lint tidy test-native build  ## host only — fast, pre-commit-tauglich (~30-45 s)
-
-ci-heavy: ci native-runtime-smoke  ## ci + native-runtime-smoke (~5-6 min, CI-Pipeline)
-
 # --- Native runtime (Schritt 9 — host loop) ---
 
 native-runtime-build: $(NR_BIN)  ## build host loop binary
@@ -202,6 +201,8 @@ native-runtime-https-smoke:  ## live-call check gegen Wiener-Linien-Endpoints
 	    test/test_native_runtime/https_smoke.cpp $(NR_LDLIBS) \
 	    -o $(NR_DIR)/https_smoke
 	$(NR_DIR)/https_smoke
+
+# --- Code quality ---
 
 format:                ## run clang-format in place
 	@find src test -type f \( -name '*.h' -o -name '*.cpp' \) \
@@ -238,6 +239,8 @@ tidy:                  ## run clang-tidy on host-compilable src/ TUs
 	@python3 -c "import json; \
 	  print('\n'.join(e['file'] for e in json.load(open('compile_commands.json'))))" \
 	  | xargs clang-tidy -p . --quiet
+
+# --- Housekeeping ---
 
 size:                  ## show firmware size breakdown
 	$(PIO) run -e esp32dev -t size
