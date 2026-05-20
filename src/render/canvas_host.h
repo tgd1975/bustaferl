@@ -1,22 +1,22 @@
 #ifndef BUSTAFERL_RENDER_CANVAS_HOST_H
 #define BUSTAFERL_RENDER_CANVAS_HOST_H
 
+#ifdef NATIVE_BUILD
+
 #include "frame_buffer.h"
-#include "layout.h" // for Frame alias
+#include "layout.h"
 #include "render/canvas.h"
+
+#include <Adafruit_GFX.h>
+#include <U8g2_for_Adafruit_GFX.h>
 
 namespace bustaferl::render {
 
-// Host-only Canvas implementation. Paints directly into a 1-bpp
-// framebuffer; text uses a builtin 5×7 ASCII bitmap font (close-enough
-// per design-fidelity — not pixel-identical to U8g2). Used by native
-// tests (test_native_render_all_states writes PGM dumps) and any future
-// host runtime that wants to materialise a frame.
-//
-// Per FontRole the canvas picks a cell size (5×7 small, scaled-up for
-// larger roles). Output is monospace ASCII; non-ASCII codepoints render
-// as a generic placeholder block so the PGM dumps still show *where*
-// the text lives, even if not exactly *what* it says.
+// Pixel-identical mirror of AdafruitGfxCanvas, running on the native host
+// build via ArduinoFake. Same Adafruit_GFX geometry, same U8g2 fonts — the
+// only difference is the backing framebuffer (host-side Frame vs. an
+// externally-owned uint8_t*). PGM dumps from native tests now match what
+// the device renders.
 class HostCanvas : public Canvas {
 public:
   explicit HostCanvas(Frame &fb);
@@ -25,19 +25,34 @@ public:
   int width() const override { return Frame::width; }
   int height() const override { return Frame::height; }
 
+  void fillRect(int x, int y, int w, int h, std::uint16_t color) override;
+  void drawFastHLine(int x, int y, int w, std::uint16_t color) override;
+  void drawFastVLine(int x, int y, int h, std::uint16_t color) override;
+  void drawLine(int x0, int y0, int x1, int y1, std::uint16_t color) override;
+  void drawRect(int x, int y, int w, int h, std::uint16_t color) override;
+
   void setCursor(int x, int y) override;
   void setTextColor(std::uint16_t color) override;
   void setRoleFont(FontRole role) override;
   void print(const char *text) override;
 
 private:
-  Frame &fb_;
-  int cursor_x_ = 0;
-  int cursor_y_ = 0;
-  std::uint16_t text_color_ = 1;
-  FontRole role_ = FontRole::Network_Label;
+  class Surface : public ::Adafruit_GFX {
+  public:
+    Surface(int16_t w, int16_t h, std::uint8_t *buf)
+        : Adafruit_GFX(w, h), buf_(buf) {}
+    void drawPixel(int16_t x, int16_t y, std::uint16_t color) override;
+
+  private:
+    std::uint8_t *buf_;
+  };
+
+  Surface gfx_;
+  U8G2_FOR_ADAFRUIT_GFX u8g2_;
 };
 
 } // namespace bustaferl::render
+
+#endif // NATIVE_BUILD
 
 #endif
