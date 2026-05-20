@@ -101,7 +101,13 @@ void AdafruitGfxCanvas::drawRect(int x, int y, int w, int h,
 }
 
 void AdafruitGfxCanvas::setCursor(int x, int y) {
-  u8g2_.setCursor(static_cast<int16_t>(x), static_cast<int16_t>(y));
+  // U8g2_for_Adafruit_GFX's cursor convention is baseline-Y; our layout
+  // constants use top-Y (per design handoff). Shift by the current font's
+  // ascent so callers can think in top-Y everywhere. Assumes the font has
+  // been selected via setRoleFont() before this call (true for our layout
+  // pipeline: setRoleFont → setCursor → print).
+  const int16_t ascent = u8g2_.getFontAscent();
+  u8g2_.setCursor(static_cast<int16_t>(x), static_cast<int16_t>(y) + ascent);
 }
 
 void AdafruitGfxCanvas::setTextColor(std::uint16_t color) {
