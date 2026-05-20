@@ -37,6 +37,7 @@ public:
   void setTextColor(std::uint16_t color) override;
   void setRoleFont(FontRole role) override;
   void print(const char *text) override;
+  int textWidth(const char *text) override;
 
   // Access for code that still wants to talk to Adafruit_GFX directly
   // (drawCustomGlyph uses the .drawPixel() path so it does not need this).

@@ -26,11 +26,11 @@ const std::uint8_t *fontFor(FontRole role) {
   case FontRole::Network_Arrow:
     return u8g2_font_open_iconic_arrow_1x_t;
   case FontRole::Badge_sm:
-    return u8g2_font_helvB14_tr;
+    return u8g2_font_helvB08_tr;
   case FontRole::Badge_md:
-    return u8g2_font_helvB18_tr;
+    return u8g2_font_helvB10_tr;
   case FontRole::Badge_lg:
-    return u8g2_font_helvB24_tr;
+    return u8g2_font_helvB14_tr;
   case FontRole::Fullscreen_Glyph_90:
     return u8g2_font_helvB24_tr;
   case FontRole::Fullscreen_Title:
@@ -106,8 +106,11 @@ void AdafruitGfxCanvas::setCursor(int x, int y) {
   // ascent so callers can think in top-Y everywhere. Assumes the font has
   // been selected via setRoleFont() before this call (true for our layout
   // pipeline: setRoleFont → setCursor → print).
-  const int16_t ascent = u8g2_.getFontAscent();
-  u8g2_.setCursor(static_cast<int16_t>(x), static_cast<int16_t>(y) + ascent);
+  // getFontAscent returns int8_t; cast through unsigned char first so
+  // clang-tidy's bugprone-signed-char-misuse doesn't flag the int8_t → int
+  // sign extension. Ascent is always non-negative in practice.
+  const int ascent = static_cast<unsigned char>(u8g2_.getFontAscent());
+  u8g2_.setCursor(static_cast<int16_t>(x), static_cast<int16_t>(y + ascent));
 }
 
 void AdafruitGfxCanvas::setTextColor(std::uint16_t color) {
@@ -116,9 +119,21 @@ void AdafruitGfxCanvas::setTextColor(std::uint16_t color) {
 
 void AdafruitGfxCanvas::setRoleFont(FontRole role) {
   u8g2_.setFont(fontFor(role));
+  // u8g2_SetFont resets is_transparent to 0 on every font change — that paints
+  // the whole glyph bbox with bg_color in addition to fg_color, which renders
+  // any setForegroundColor(0) text as a solid ink rectangle. Force transparent
+  // mode back on so glyphs are drawn over whatever's already in the canvas.
+  u8g2_.setFontMode(1);
 }
 
 void AdafruitGfxCanvas::print(const char *text) { u8g2_.print(text); }
+
+int AdafruitGfxCanvas::textWidth(const char *text) {
+  if (text == nullptr) {
+    return 0;
+  }
+  return static_cast<int>(u8g2_.getUTF8Width(text));
+}
 
 } // namespace bustaferl::render
 

@@ -29,6 +29,9 @@
 
       "Bash(markdownlint-cli2:*)",
 
+      "Bash(scripts/pgm-to-png.py:*)",
+      "Bash(./scripts/pgm-to-png.py:*)",
+
       "Bash(gh pr list:*)",
       "Bash(gh pr view:*)",
       "Bash(gh issue list:*)",

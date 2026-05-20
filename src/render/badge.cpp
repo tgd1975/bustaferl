@@ -26,7 +26,7 @@ int drawBadge(render::Canvas &canvas, int x, int y, const char *text,
   // Text colour: ink (0) so the line label reads black against the paper
   // rectangle, regardless of the global polarity.
   canvas.setTextColor(0);
-  canvas.setCursor(x + b.pad_x, y + b.h - b.pad_x);
+  canvas.setCursor(x + b.pad_x, y + b.pad_y);
   canvas.print(text);
   return x + b.w;
 }

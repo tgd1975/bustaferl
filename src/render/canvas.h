@@ -40,6 +40,11 @@ public:
   virtual void setTextColor(std::uint16_t color) = 0;
   virtual void setRoleFont(FontRole role) = 0;
   virtual void print(const char *text) = 0;
+
+  // Pixel width of `text` rendered with the currently selected role font.
+  // Used by multi-column layouts (e.g. TG/EG's two-times row) that need to
+  // know where the previous text ended before placing the next.
+  virtual int textWidth(const char *text) = 0;
 };
 
 } // namespace bustaferl::render

@@ -25,26 +25,70 @@ namespace {
 // README.md "Layout"). Side padding 18 px, section anchors at specific Y
 // rows that match the screen-1-normal.png mockup.
 constexpr int LAYOUT_PAD_X = 18;
-constexpr int LAYOUT_TG_HEADER_Y = 14;
-constexpr int LAYOUT_TG_ROW0_Y = 22;
-constexpr int LAYOUT_TG_ROW1_Y = 58;
+constexpr int LAYOUT_TG_HEADER_Y = 10;
+constexpr int LAYOUT_TG_ROW0_Y = 28;
+constexpr int LAYOUT_TG_ROW1_Y = 60;
 constexpr int LAYOUT_SEP1_Y = 98;
 constexpr int LAYOUT_SEP1_H = 2;
 constexpr int LAYOUT_EG_HEADER_Y = 108;
-constexpr int LAYOUT_EG_ROW_Y = 116;
-constexpr int LAYOUT_SEP2_Y = 150;
+constexpr int LAYOUT_EG_ROW_Y = 121;
+constexpr int LAYOUT_SEP2_Y = 151;
 constexpr int LAYOUT_ATZG_HEADER_Y = 160;
-constexpr int LAYOUT_ATZG_ROW_Y = 168;
+constexpr int LAYOUT_ATZG_ROW_Y = 176;
 constexpr int LAYOUT_ATZG_COL2_X = 150;
 constexpr int LAYOUT_ATZG_COL3_X = 282;
-constexpr int LAYOUT_ATZG_COL3_Y = 180;
+constexpr int LAYOUT_ATZG_COL3_Y = 176;
 constexpr int LAYOUT_NETWORK_Y = 232;
 
 // Per-slot spacing (px to next element + time-column offset).
 constexpr int SLOT_GAP_PX = 6;
-constexpr int SLOT_TIME_OFFSET_X = 80;
-constexpr int SLOT_PLAN_MARKER_OFFSET_X = 60;
-constexpr int SLOT_PLAN_MARKER_OFFSET_Y = 8;
+// Gap between the end of a time string and the plan marker (5×5 hollow
+// square). Handoff §"Design Tokens" → plan-marker left margin 3 px.
+constexpr int SLOT_PLAN_MARKER_OFFSET_X_GAP = 3;
+constexpr int SLOT_PLAN_MARKER_SIZE = 5;
+
+// Time-column offset from badge's right edge. TG/EG fit direction text
+// between badge and time; ATZG (Sm badges, no direction) sits the time
+// directly next to the badge per the handoff "[badge] 6 px [time]".
+constexpr int SLOT_TIME_OFFSET_X_ATZG = 6;
+constexpr int SLOT_TIME_OFFSET_X_DEFAULT = 80;
+
+constexpr int slotTimeOffsetX(BadgeSize sz) {
+  switch (sz) {
+  case BadgeSize::Sm:
+    return SLOT_TIME_OFFSET_X_ATZG;
+  case BadgeSize::Md:
+  case BadgeSize::Lg:
+    return SLOT_TIME_OFFSET_X_DEFAULT;
+  }
+  return SLOT_TIME_OFFSET_X_DEFAULT;
+}
+
+// Per-row-font visual height (top-Y semantics: glyph height of the time
+// column, which is the tallest element in each row). Badge + direction
+// text get vertically centred against this. Values match the design
+// handoff's "TG/EG/Atzg departure row" font sizes.
+constexpr int ROW_HEIGHT_TG = 28;
+constexpr int ROW_HEIGHT_EG = 22;
+constexpr int ROW_HEIGHT_ATZG = 18;
+constexpr int ROW_HEIGHT_FALLBACK = 16;
+
+constexpr int rowContentHeight(FontRole role) {
+  switch (role) {
+  case FontRole::TG_Row:
+    return ROW_HEIGHT_TG;
+  case FontRole::EG_Row:
+    return ROW_HEIGHT_EG;
+  case FontRole::Atzg_Row:
+    return ROW_HEIGHT_ATZG;
+  default:
+    return ROW_HEIGHT_FALLBACK;
+  }
+}
+
+// Height of the small direction text rendered next to TG/EG badges
+// (helvB10 → ~10 px).
+constexpr int DIRECTION_TEXT_HEIGHT = 10;
 
 // Minimum buffer size to format "HH:MM\0".
 constexpr std::size_t HHMM_BUF_MIN = 6;
@@ -69,39 +113,66 @@ void drawSectionHeader(render::Canvas &canvas, FontRole role, int x, int y,
 // Format the HH:MM (or stale/invalid placeholder) into a small string.
 void formatSlotTime(char *out, std::size_t cap, const Departure &d,
                     bool stale) {
-  if (stale) {
-    std::snprintf(out, cap, "??:??");
-  } else if (d.valid) {
-    formatHHMM(d.when, out, cap);
-  } else {
+  if (stale || !d.valid) {
+    // Per docs/design_handoff_display/README.md §"Veraltet": stale and
+    // missing times both render as the dash placeholder. logisoso*_tn is
+    // numbers-only and lacks "?", so we always use the same dash form.
     std::snprintf(out, cap, "--:--");
+  } else {
+    formatHHMM(d.when, out, cap);
+  }
+}
+
+// Per-row inter-time gap (px between time1 end and time2 start). Handoff
+// §"TG / EG row anatomy": 20 px for TG, 14 px for EG. ATZG only renders
+// one time per slot, so its gap is unused.
+constexpr int INTER_TIME_GAP_TG = 20;
+constexpr int INTER_TIME_GAP_EG = 14;
+constexpr int INTER_TIME_GAP_FALLBACK = 14;
+
+constexpr int interTimeGap(FontRole role) {
+  switch (role) {
+  case FontRole::TG_Row:
+    return INTER_TIME_GAP_TG;
+  case FontRole::EG_Row:
+    return INTER_TIME_GAP_EG;
+  default:
+    return INTER_TIME_GAP_FALLBACK;
   }
 }
 
 // All the per-slot bits drawSlot needs. Bundled to keep the function below
-// the readability-function-size param threshold.
+// the readability-function-size param threshold. `d2` is the optional
+// second-departure column (TG/EG rows show two times side-by-side per the
+// design handoff); nullptr means single-time layout (ATZG / S-Bahn).
 struct SlotSpec {
   int x;
   int y;
   const char *line;
   const char *direction;
   const Departure &d;
+  const Departure *d2;
   BadgeSize sz;
   FontRole row_font;
   bool stale;
 };
 
 // Render a single departure slot — badge + direction text + HH:MM + plan
-// marker. Returns the X coordinate where the next slot in the same row
+// marker. `s.y` is the top of the row's content box (the tallest element,
+// the time column). Badge and direction are vertically centred against
+// that. Returns the X coordinate where the next slot in the same row
 // should start.
 int drawSlot(render::Canvas &canvas, const SlotSpec &s) {
-  const int badge_right = drawBadge(canvas, s.x, s.y, s.line, s.sz);
+  const int row_h = rowContentHeight(s.row_font);
   const int badge_h = badgeBounds(s.sz).h;
+  const int badge_y = s.y + (row_h - badge_h) / 2;
+  const int badge_right = drawBadge(canvas, s.x, badge_y, s.line, s.sz);
 
   if (s.direction != nullptr && s.direction[0] != '\0') {
     canvas.setRoleFont(FontRole::Section_Header_EG_Atzg);
     canvas.setTextColor(1);
-    canvas.setCursor(badge_right + SLOT_GAP_PX, s.y + badge_h - 4);
+    const int dir_y = s.y + (row_h - DIRECTION_TEXT_HEIGHT) / 2;
+    canvas.setCursor(badge_right + SLOT_GAP_PX, dir_y);
     canvas.print(s.direction);
   }
 
@@ -109,17 +180,39 @@ int drawSlot(render::Canvas &canvas, const SlotSpec &s) {
   formatSlotTime(hhmm, sizeof(hhmm), s.d, s.stale);
   canvas.setRoleFont(s.row_font);
   canvas.setTextColor(1);
-  const int time_x = badge_right + SLOT_TIME_OFFSET_X;
-  const int time_y = s.y + badge_h - 2;
-  canvas.setCursor(time_x, time_y);
+  const int time_offset = slotTimeOffsetX(s.sz);
+  const int time_x = badge_right + time_offset;
+  canvas.setCursor(time_x, s.y);
   canvas.print(hhmm);
+  const int time1_w = canvas.textWidth(hhmm);
+  const int plan_mark_y = s.y + (row_h - SLOT_PLAN_MARKER_SIZE) / 2;
 
-  if (s.d.valid && s.d.source != DepartureSource::Realtime) {
-    drawPlanMark(canvas, time_x + SLOT_PLAN_MARKER_OFFSET_X,
-                 time_y - SLOT_PLAN_MARKER_OFFSET_Y);
+  // Plan marker only when the time actually displays a real "HH:MM" — in
+  // stale mode the time is "--:--" and the handoff explicitly says "no
+  // plan marker on the dashes".
+  if (!s.stale && s.d.valid && s.d.source != DepartureSource::Realtime) {
+    drawPlanMark(canvas, time_x + time1_w + SLOT_PLAN_MARKER_OFFSET_X_GAP,
+                 plan_mark_y);
   }
 
-  return time_x + SLOT_TIME_OFFSET_X;
+  int right_x = time_x + time1_w;
+
+  if (s.d2 != nullptr) {
+    char hhmm2[8];
+    formatSlotTime(hhmm2, sizeof(hhmm2), *s.d2, s.stale);
+    const int gap = interTimeGap(s.row_font);
+    const int time2_x = time_x + time1_w + gap;
+    canvas.setCursor(time2_x, s.y);
+    canvas.print(hhmm2);
+    const int time2_w = canvas.textWidth(hhmm2);
+    if (!s.stale && s.d2->valid && s.d2->source != DepartureSource::Realtime) {
+      drawPlanMark(canvas, time2_x + time2_w + SLOT_PLAN_MARKER_OFFSET_X_GAP,
+                   plan_mark_y);
+    }
+    right_x = time2_x + time2_w;
+  }
+
+  return right_x;
 }
 
 // Pick the line label for an S-Bahn slot, with fallback when the parser
@@ -136,34 +229,37 @@ void drawBoard(render::Canvas &canvas, const RenderInput &in) {
 
   drawSectionHeader(canvas, FontRole::Section_Header_TG, LAYOUT_PAD_X,
                     LAYOUT_TG_HEADER_Y, "TULLNERTALGASSE");
-  drawSlot(canvas, SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW0_Y, "58A",
-                            display_dir(STREAM_58A_ATZ),
-                            in.snapshot.stream[STREAM_58A_ATZ].slot[0],
-                            BadgeSize::Lg, FontRole::TG_Row, stale});
+  const StreamData &s58a_atz = in.snapshot.stream[STREAM_58A_ATZ];
+  drawSlot(canvas,
+           SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW0_Y, "58A",
+                    display_dir(STREAM_58A_ATZ), s58a_atz.slot[0],
+                    &s58a_atz.slot[1], BadgeSize::Lg, FontRole::TG_Row, stale});
+  const StreamData &s58a_hietzing = in.snapshot.stream[STREAM_58A_HIETZING];
   drawSlot(canvas, SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW1_Y, "58A",
                             display_dir(STREAM_58A_HIETZING),
-                            in.snapshot.stream[STREAM_58A_HIETZING].slot[0],
+                            s58a_hietzing.slot[0], &s58a_hietzing.slot[1],
                             BadgeSize::Lg, FontRole::TG_Row, stale});
 
   canvas.fillRect(0, LAYOUT_SEP1_Y, FB_W, LAYOUT_SEP1_H, 1);
 
   drawSectionHeader(canvas, FontRole::Section_Header_EG_Atzg, LAYOUT_PAD_X,
                     LAYOUT_EG_HEADER_Y, "ENDEMANNGASSE - NACH SCHLEIFE");
-  drawSlot(canvas, SlotSpec{LAYOUT_PAD_X, LAYOUT_EG_ROW_Y, "58B",
-                            display_dir(STREAM_58B_ATZ),
-                            in.snapshot.stream[STREAM_58B_ATZ].slot[0],
-                            BadgeSize::Md, FontRole::EG_Row, stale});
+  const StreamData &s58b_atz = in.snapshot.stream[STREAM_58B_ATZ];
+  drawSlot(canvas,
+           SlotSpec{LAYOUT_PAD_X, LAYOUT_EG_ROW_Y, "58B",
+                    display_dir(STREAM_58B_ATZ), s58b_atz.slot[0],
+                    &s58b_atz.slot[1], BadgeSize::Md, FontRole::EG_Row, stale});
 
   canvas.fillRect(0, LAYOUT_SEP2_Y, FB_W, 1, 1);
 
   drawSectionHeader(canvas, FontRole::Section_Header_EG_Atzg, LAYOUT_PAD_X,
                     LAYOUT_ATZG_HEADER_Y, "ATZGERSDORF -> WIEN HBF");
   const StreamData &sb = in.snapshot.stream[STREAM_SBAHN_HBF];
-  drawSlot(canvas,
-           SlotSpec{LAYOUT_PAD_X, LAYOUT_ATZG_ROW_Y, sbahnLineLabel(sb.slot[0]),
-                    "", sb.slot[0], BadgeSize::Sm, FontRole::Atzg_Row, stale});
+  drawSlot(canvas, SlotSpec{LAYOUT_PAD_X, LAYOUT_ATZG_ROW_Y,
+                            sbahnLineLabel(sb.slot[0]), "", sb.slot[0], nullptr,
+                            BadgeSize::Sm, FontRole::Atzg_Row, stale});
   drawSlot(canvas, SlotSpec{LAYOUT_ATZG_COL2_X, LAYOUT_ATZG_ROW_Y,
-                            sbahnLineLabel(sb.slot[1]), "", sb.slot[1],
+                            sbahnLineLabel(sb.slot[1]), "", sb.slot[1], nullptr,
                             BadgeSize::Sm, FontRole::Atzg_Row, stale});
   // Variante A — third slot intentionally empty.
   canvas.setRoleFont(FontRole::Atzg_Row);

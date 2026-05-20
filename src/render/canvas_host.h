@@ -35,6 +35,7 @@ public:
   void setTextColor(std::uint16_t color) override;
   void setRoleFont(FontRole role) override;
   void print(const char *text) override;
+  int textWidth(const char *text) override;
 
 private:
   class Surface : public ::Adafruit_GFX {

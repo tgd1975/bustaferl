@@ -266,9 +266,14 @@ tidy:                  ## run clang-tidy on host-compilable src/ TUs
 	@# does not analyse third-party headers (would produce tens of
 	@# thousands of findings inside ArduinoJson etc.).
 	@sed -i -E 's@-I(\.pio/libdeps/[^ ]+)@-isystem \1@g' compile_commands.json
-	@# Tidy exactly the TUs the database knows about.
+	@# Tidy exactly the TUs the database knows about. Skip anything
+	@# whose source file lives under .pio/libdeps — those are vendor
+	@# TUs (ArduinoFake, Adafruit_GFX, U8g2_for_Adafruit_GFX) that get
+	@# compiled into the native build via library.json srcDir tricks
+	@# and would flood the report with non-actionable findings.
 	@python3 -c "import json; \
-	  print('\n'.join(e['file'] for e in json.load(open('compile_commands.json'))))" \
+	  print('\n'.join(e['file'] for e in json.load(open('compile_commands.json')) \
+	    if not e['file'].startswith('.pio/')))" \
 	  | xargs clang-tidy -p . --quiet
 
 # --- Housekeeping ---

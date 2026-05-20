@@ -25,11 +25,11 @@ const std::uint8_t *fontFor(FontRole role) {
   case FontRole::Network_Arrow:
     return u8g2_font_open_iconic_arrow_1x_t;
   case FontRole::Badge_sm:
-    return u8g2_font_helvB14_tr;
+    return u8g2_font_helvB08_tr;
   case FontRole::Badge_md:
-    return u8g2_font_helvB18_tr;
+    return u8g2_font_helvB10_tr;
   case FontRole::Badge_lg:
-    return u8g2_font_helvB24_tr;
+    return u8g2_font_helvB14_tr;
   case FontRole::Fullscreen_Glyph_90:
     return u8g2_font_helvB24_tr;
   case FontRole::Fullscreen_Title:
@@ -44,8 +44,7 @@ const std::uint8_t *fontFor(FontRole role) {
 
 } // namespace
 
-void HostCanvas::Surface::drawPixel(int16_t x, int16_t y,
-                                    std::uint16_t color) {
+void HostCanvas::Surface::drawPixel(int16_t x, int16_t y, std::uint16_t color) {
   if (x < 0 || x >= _width || y < 0 || y >= _height) {
     return;
   }
@@ -84,8 +83,7 @@ void HostCanvas::drawFastVLine(int x, int y, int h, std::uint16_t color) {
                      static_cast<int16_t>(h), color);
 }
 
-void HostCanvas::drawLine(int x0, int y0, int x1, int y1,
-                          std::uint16_t color) {
+void HostCanvas::drawLine(int x0, int y0, int x1, int y1, std::uint16_t color) {
   gfx_.drawLine(static_cast<int16_t>(x0), static_cast<int16_t>(y0),
                 static_cast<int16_t>(x1), static_cast<int16_t>(y1), color);
 }
@@ -96,18 +94,36 @@ void HostCanvas::drawRect(int x, int y, int w, int h, std::uint16_t color) {
 }
 
 void HostCanvas::setCursor(int x, int y) {
-  // Mirror the cursor convention from canvas_adafruit.cpp: U8g2_for_Adafruit_GFX
-  // treats y as the baseline; our layout constants use top-Y. Shift by the
-  // current font's ascent so callers can think in top-Y everywhere.
-  const int16_t ascent = u8g2_.getFontAscent();
-  u8g2_.setCursor(static_cast<int16_t>(x), static_cast<int16_t>(y) + ascent);
+  // Mirror the cursor convention from canvas_adafruit.cpp:
+  // U8g2_for_Adafruit_GFX treats y as the baseline; our layout constants use
+  // top-Y. Shift by the current font's ascent so callers can think in top-Y
+  // everywhere.
+  // getFontAscent returns int8_t; cast through unsigned char first so
+  // clang-tidy's bugprone-signed-char-misuse doesn't flag the int8_t → int
+  // sign extension. Ascent is always non-negative in practice.
+  const int ascent = static_cast<unsigned char>(u8g2_.getFontAscent());
+  u8g2_.setCursor(static_cast<int16_t>(x), static_cast<int16_t>(y + ascent));
 }
 
 void HostCanvas::setTextColor(std::uint16_t color) {
   u8g2_.setForegroundColor(color);
 }
 
-void HostCanvas::setRoleFont(FontRole role) { u8g2_.setFont(fontFor(role)); }
+void HostCanvas::setRoleFont(FontRole role) {
+  u8g2_.setFont(fontFor(role));
+  // u8g2_SetFont resets is_transparent to 0 on every font change — that paints
+  // the whole glyph bbox with bg_color in addition to fg_color, which renders
+  // any setForegroundColor(0) text as a solid ink rectangle. Force transparent
+  // mode back on so glyphs are drawn over whatever's already in the canvas.
+  u8g2_.setFontMode(1);
+}
+
+int HostCanvas::textWidth(const char *text) {
+  if (text == nullptr) {
+    return 0;
+  }
+  return static_cast<int>(u8g2_.getUTF8Width(text));
+}
 
 void HostCanvas::print(const char *text) {
   // Bypass Print::print(const char*) — ArduinoFake replaces it with a
