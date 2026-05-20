@@ -243,7 +243,7 @@ void drawBoard(render::Canvas &canvas, const RenderInput &in) {
   canvas.fillRect(0, LAYOUT_SEP1_Y, FB_W, LAYOUT_SEP1_H, 1);
 
   drawSectionHeader(canvas, FontRole::Section_Header_EG_Atzg, LAYOUT_PAD_X,
-                    LAYOUT_EG_HEADER_Y, "ENDEMANNGASSE - NACH SCHLEIFE");
+                    LAYOUT_EG_HEADER_Y, "ENDEMANNGASSE · NACH SCHLEIFE");
   const StreamData &s58b_atz = in.snapshot.stream[STREAM_58B_ATZ];
   drawSlot(canvas,
            SlotSpec{LAYOUT_PAD_X, LAYOUT_EG_ROW_Y, "58B",

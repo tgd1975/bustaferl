@@ -23,20 +23,16 @@ constexpr int TITLE_Y = GLYPH_Y + GLYPH_H + 24;
 constexpr int SUB_Y = TITLE_Y + 28;
 constexpr int FOOT_Y = FB_H - 12;
 
-// Crude horizontal-centring constant — pixels per ASCII char. U8g2's
-// getUTF8Width would be exact; "close enough" is the apprentice contract.
-constexpr int CENTRE_PX_PER_CHAR = 6;
-
 // Snprintf buffer sizes for the per-state foot/sub strings.
-constexpr std::size_t SUB_BUF_CAP = 40;
+constexpr std::size_t SUB_BUF_CAP = 48;
 constexpr std::size_t FOOT_BUF_CAP = 48;
 
 void drawCentered(render::Canvas &canvas, FontRole role, int y,
                   const char *text) {
   canvas.setRoleFont(role);
   canvas.setTextColor(1);
-  int est_w = CENTRE_PX_PER_CHAR * static_cast<int>(std::strlen(text));
-  canvas.setCursor((FB_W - est_w) / 2, y);
+  const int w = canvas.textWidth(text);
+  canvas.setCursor((FB_W - w) / 2, y);
   canvas.print(text);
 }
 
@@ -57,8 +53,8 @@ void formatHHMM(std::time_t t, char *out, std::size_t cap) {
 void drawBoot(render::Canvas &canvas, const char *version_str) {
   drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
                   GlyphBitmap{GLYPH_DOTTED_CIRCLE_90, GLYPH_W, GLYPH_H});
-  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "bustaferl");
-  drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y, "laedt Fahrplan...");
+  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "BUSTAFERL");
+  drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y, "lädt Fahrplan...");
   if (version_str != nullptr) {
     drawCentered(canvas, FontRole::Fullscreen_Foot, FOOT_Y, version_str);
   }
@@ -68,7 +64,7 @@ void drawOffline(render::Canvas &canvas, std::time_t last_fetch_at,
                  int retry_in_s) {
   drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
                   GlyphBitmap{GLYPH_EXCLAMATION_90, GLYPH_W, GLYPH_H});
-  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "Kein Empfang");
+  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "KEIN EMPFANG");
 
   char sub_buf[SUB_BUF_CAP] = "Noch nie aktualisiert";
   if (last_fetch_at > 0) {
@@ -80,10 +76,10 @@ void drawOffline(render::Canvas &canvas, std::time_t last_fetch_at,
 
   char foot_buf[SUB_BUF_CAP];
   if (retry_in_s > 0) {
-    std::snprintf(foot_buf, sizeof(foot_buf), "WLAN - Retry in %ds",
+    std::snprintf(foot_buf, sizeof(foot_buf), "WLAN · Retry in %ds",
                   retry_in_s);
   } else {
-    std::snprintf(foot_buf, sizeof(foot_buf), "WLAN - retrying...");
+    std::snprintf(foot_buf, sizeof(foot_buf), "WLAN · retrying...");
   }
   drawCentered(canvas, FontRole::Fullscreen_Foot, FOOT_Y, foot_buf);
 }
@@ -91,33 +87,35 @@ void drawOffline(render::Canvas &canvas, std::time_t last_fetch_at,
 void drawAuth(render::Canvas &canvas, const char *aid_short, int http_code) {
   drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
                   GlyphBitmap{GLYPH_PARA_NINE_90, GLYPH_W, GLYPH_H});
-  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "Auth-Fehler");
+  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "AUTH-FEHLER");
   drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y,
-               "Client-ID veraltet - bitte neu registrieren");
+               "Client-ID veraltet · bitte neu registrieren");
 
   char foot_buf[FOOT_BUF_CAP];
   const char *aid =
-      (aid_short != nullptr && aid_short[0] != '\0') ? aid_short : "AID:---";
+      (aid_short != nullptr && aid_short[0] != '\0') ? aid_short : "AID ---";
   if (http_code > 0) {
-    std::snprintf(foot_buf, sizeof(foot_buf), "%s - ERR %d", aid, http_code);
+    std::snprintf(foot_buf, sizeof(foot_buf), "%s · ERR %d", aid, http_code);
   } else {
-    std::snprintf(foot_buf, sizeof(foot_buf), "%s - ERR ---", aid);
+    std::snprintf(foot_buf, sizeof(foot_buf), "%s · ERR ---", aid);
   }
   drawCentered(canvas, FontRole::Fullscreen_Foot, FOOT_Y, foot_buf);
 }
 
 void drawQuiet(render::Canvas &canvas) {
-  // Heavy "---" substitute for the 72 px dash from the design handoff.
-  constexpr int QUIET_DASH_X_OFFSET = 30;
-  constexpr int QUIET_DASH_Y_OFFSET = 12;
-  canvas.setRoleFont(FontRole::Fullscreen_Title);
-  canvas.setTextColor(1);
-  canvas.setCursor(FB_W / 2 - QUIET_DASH_X_OFFSET,
-                   GLYPH_Y + GLYPH_H / 2 + QUIET_DASH_Y_OFFSET);
-  canvas.print("---");
-  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "Keine Abfahrten");
+  // Em-dash bar — the design uses a 72 px-wide VT323 em-dash glyph. The
+  // bitmap fonts have no glyph that wide, so we draw a solid paper-coloured
+  // bar with the same visual weight. Roughly centred horizontally and
+  // vertically against the 90 px glyph region the other fullscreen states
+  // use, so the section structure feels consistent.
+  constexpr int QUIET_BAR_W = 72;
+  constexpr int QUIET_BAR_H = 10;
+  const int bar_x = (FB_W - QUIET_BAR_W) / 2;
+  const int bar_y = GLYPH_Y + (GLYPH_H - QUIET_BAR_H) / 2;
+  canvas.fillRect(bar_x, bar_y, QUIET_BAR_W, QUIET_BAR_H, 1);
+  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "KEINE ABFAHRTEN");
   drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y,
-               "in den naechsten 20 min");
+               "in den nächsten 20 min");
 }
 
 } // namespace bustaferl

@@ -17,9 +17,9 @@ const std::uint8_t *fontFor(FontRole role) {
   case FontRole::Atzg_Row:
     return u8g2_font_logisoso18_tn;
   case FontRole::Section_Header_TG:
-    return u8g2_font_helvB12_tr;
+    return u8g2_font_helvB12_te;
   case FontRole::Section_Header_EG_Atzg:
-    return u8g2_font_helvB10_tr;
+    return u8g2_font_helvB10_te;
   case FontRole::Network_Label:
     return u8g2_font_5x7_tr;
   case FontRole::Network_Arrow:
@@ -33,11 +33,11 @@ const std::uint8_t *fontFor(FontRole role) {
   case FontRole::Fullscreen_Glyph_90:
     return u8g2_font_helvB24_tr;
   case FontRole::Fullscreen_Title:
-    return u8g2_font_helvB18_tr;
+    return u8g2_font_helvB18_te;
   case FontRole::Fullscreen_Sub:
-    return u8g2_font_helvR14_tr;
+    return u8g2_font_helvR14_te;
   case FontRole::Fullscreen_Foot:
-    return u8g2_font_helvR08_tr;
+    return u8g2_font_helvR08_te;
   }
   return u8g2_font_helvR08_tr;
 }
