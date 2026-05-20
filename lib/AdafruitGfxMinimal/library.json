@@ -1,0 +1,12 @@
+{
+  "name": "AdafruitGfxMinimal",
+  "version": "0.1.0",
+  "description": "Host-build view of Adafruit GFX that pulls only Adafruit_GFX.cpp (skips OLED/TFT/BusIO). Uses srcDir pointing back into .pio/libdeps so vendor code is never copied.",
+  "build": {
+    "srcDir": "../../.pio/libdeps/esp32dev/Adafruit GFX Library",
+    "srcFilter": ["+<Adafruit_GFX.cpp>", "+<*.h>", "+<glcdfont.c>"]
+  },
+  "dependencies": {
+    "ArduinoFake": "*"
+  }
+}

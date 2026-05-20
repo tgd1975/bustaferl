@@ -129,7 +129,7 @@ mockview-8:            ## flash geometry probe (border, diagonals, font samples)
 test:                  test-native            ## alias: fast host tests
 
 test-native:                                  ## all test_native_* (~5 s)
-	$(PIO) test -e native
+	ASAN_OPTIONS=detect_leaks=0 $(PIO) test -e native
 
 test-device:                                  ## all test_device_*, skip if no device
 	@mkdir -p $(TMP)

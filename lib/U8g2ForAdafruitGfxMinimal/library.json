@@ -1,0 +1,11 @@
+{
+  "name": "U8g2ForAdafruitGfxMinimal",
+  "version": "0.1.0",
+  "description": "Host-build view of U8g2_for_Adafruit_GFX. Same trick as AdafruitGfxMinimal: srcDir points back into the device-side libdeps tree so we never copy vendor code.",
+  "build": {
+    "srcDir": "../../.pio/libdeps/esp32dev/U8g2_for_Adafruit_GFX/src"
+  },
+  "dependencies": {
+    "AdafruitGfxMinimal": "*"
+  }
+}
