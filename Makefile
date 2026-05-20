@@ -16,6 +16,8 @@
         test-longterm-horizon-evening test-longterm-day-full \
         native-runtime-build native-runtime-smoke native-runtime-day \
         native-runtime-https-smoke \
+        mockview-1 mockview-2 mockview-3 mockview-4 mockview-5 mockview-6 mockview-7 \
+        mockview-8 \
         clean format format-check lint tidy size secrets ci ci-heavy
 
 PIO        := pio
@@ -92,6 +94,35 @@ monitor:               ## open serial monitor (115200)
 	$(PIO) device monitor -b 115200
 
 flash: upload monitor  ## upload + open monitor
+
+# --- Mock-view firmwares (Session E — §11 HW visual inspection) ---
+# Flashes one DisplayState with hard-coded mock data, runs deepClean
+# (3× B/W flash, ~6 s) for ghost-free rendering, then deep-sleeps.
+# Photograph, compare against docs/design_handoff_display/screen-N-*.png.
+# No WiFi/HAFAS needed; each flash is self-contained.
+mockview-1:            ## flash Normal state — vgl. screen-1-normal.png
+	$(PIO) run -e mockview-1-normal -t upload
+
+mockview-2:            ## flash Stale (Veraltet) — vgl. screen-2-veraltet.png
+	$(PIO) run -e mockview-2-veraltet -t upload
+
+mockview-3:            ## flash Night (Nachtbetrieb) — vgl. screen-3-nachtbetrieb.png
+	$(PIO) run -e mockview-3-nachtbetrieb -t upload
+
+mockview-4:            ## flash Quiet (Keine Abfahrten) — vgl. screen-4-keine-abfahrten.png
+	$(PIO) run -e mockview-4-keine-abfahrten -t upload
+
+mockview-5:            ## flash Offline (Kein Empfang) — vgl. screen-5-kein-empfang.png
+	$(PIO) run -e mockview-5-kein-empfang -t upload
+
+mockview-6:            ## flash Auth (Auth-Fehler) — vgl. screen-6-auth-fehler.png
+	$(PIO) run -e mockview-6-auth-fehler -t upload
+
+mockview-7:            ## flash Boot — vgl. screen-7-boot.png
+	$(PIO) run -e mockview-7-boot -t upload
+
+mockview-8:            ## flash geometry probe (border, diagonals, font samples)
+	$(PIO) run -e mockview-8-geometry -t upload
 
 # --- Routine tests ---
 

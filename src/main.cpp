@@ -1,3 +1,7 @@
+// Empty in env:native (NATIVE_BUILD set by host build_flags). The native env's
+// build_src_filter already drops production .cpp's, but this gate is a second
+// line of defence: any future env that picks up src/ broadly won't drag the
+// Arduino-only main into a host link.
 #ifndef NATIVE_BUILD
 
 #include "config.h"
