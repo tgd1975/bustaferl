@@ -110,6 +110,46 @@ void drawSectionHeader(render::Canvas &canvas, FontRole role, int x, int y,
   canvas.print(text);
 }
 
+// 7×5 right-arrow sprite (→). helvB10_te has no U+2192, so we paint our own
+// to match the design handoff's "ATZGERSDORF → WIEN HBF" header.
+constexpr int ARROW_RIGHT_W = 7;
+constexpr int ARROW_RIGHT_H = 5;
+// clang-format off
+constexpr std::uint8_t ARROW_RIGHT_SPRITE[ARROW_RIGHT_H] = {
+    0b00001000,
+    0b00001100,
+    0b11111110,
+    0b00001100,
+    0b00001000,
+};
+// clang-format on
+
+void drawArrowRight(render::Canvas &canvas, int x, int y) {
+  for (int row = 0; row < ARROW_RIGHT_H; ++row) {
+    const std::uint8_t bits = ARROW_RIGHT_SPRITE[row];
+    for (int col = 0; col < ARROW_RIGHT_W; ++col) {
+      if (bits & (0x80 >> col)) {
+        canvas.drawPixel(x + col, y + row, 1);
+      }
+    }
+  }
+}
+
+// Section header "ATZGERSDORF → WIEN HBF" — split into two text runs around
+// the custom arrow sprite, since the header font has no U+2192 glyph.
+void drawAtzgHeader(render::Canvas &canvas, int x, int y) {
+  constexpr int ARROW_PADDING_X = 4;
+  constexpr int ARROW_TOP_Y_OFFSET = 3; // visually centres against cap-height
+  canvas.setRoleFont(FontRole::Section_Header_EG_Atzg);
+  canvas.setTextColor(1);
+  canvas.setCursor(x, y);
+  canvas.print("ATZGERSDORF");
+  const int arrow_x = x + canvas.textWidth("ATZGERSDORF") + ARROW_PADDING_X;
+  drawArrowRight(canvas, arrow_x, y + ARROW_TOP_Y_OFFSET);
+  canvas.setCursor(arrow_x + ARROW_RIGHT_W + ARROW_PADDING_X, y);
+  canvas.print("WIEN HBF");
+}
+
 // Format the HH:MM (or stale/invalid placeholder) into a small string.
 void formatSlotTime(char *out, std::size_t cap, const Departure &d,
                     bool stale) {
@@ -243,7 +283,7 @@ void drawBoard(render::Canvas &canvas, const RenderInput &in) {
   canvas.fillRect(0, LAYOUT_SEP1_Y, FB_W, LAYOUT_SEP1_H, 1);
 
   drawSectionHeader(canvas, FontRole::Section_Header_EG_Atzg, LAYOUT_PAD_X,
-                    LAYOUT_EG_HEADER_Y, "ENDEMANNGASSE · NACH SCHLEIFE");
+                    LAYOUT_EG_HEADER_Y, "ENDEMANNGASSE - NACH SCHLEIFE");
   const StreamData &s58b_atz = in.snapshot.stream[STREAM_58B_ATZ];
   drawSlot(canvas,
            SlotSpec{LAYOUT_PAD_X, LAYOUT_EG_ROW_Y, "58B",
@@ -252,8 +292,7 @@ void drawBoard(render::Canvas &canvas, const RenderInput &in) {
 
   canvas.fillRect(0, LAYOUT_SEP2_Y, FB_W, 1, 1);
 
-  drawSectionHeader(canvas, FontRole::Section_Header_EG_Atzg, LAYOUT_PAD_X,
-                    LAYOUT_ATZG_HEADER_Y, "ATZGERSDORF -> WIEN HBF");
+  drawAtzgHeader(canvas, LAYOUT_PAD_X, LAYOUT_ATZG_HEADER_Y);
   const StreamData &sb = in.snapshot.stream[STREAM_SBAHN_HBF];
   drawSlot(canvas, SlotSpec{LAYOUT_PAD_X, LAYOUT_ATZG_ROW_Y,
                             sbahnLineLabel(sb.slot[0]), "", sb.slot[0], nullptr,
