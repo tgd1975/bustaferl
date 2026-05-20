@@ -53,6 +53,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": ".claude/hooks/bash-policy-check.py",
+            "statusMessage": "Enforcing bash-no-prompts policy..."
+          },
+          {
+            "type": "command",
             "command": "bash -c 'cmd=$(jq -r \".tool_input.command // \\\"\\\"\" 2>/dev/null); echo \"$cmd\" | grep -qE \"git (commit|merge|push)\" || exit 0; branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); [ \"$branch\" = \"main\" ] && echo \"WARNING: You are about to run \\\"$cmd\\\" on the main branch. This is usually wrong — consider working on a feature branch instead. Proceeding anyway? If not, stop and create a branch first.\" >&2; exit 0'",
             "statusMessage": "Checking branch before git operation..."
           }
