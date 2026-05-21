@@ -5,7 +5,8 @@
     "check-tool": "on",
     "commit": "on",
     "fix-cpp": "on",
-    "fix-markdown": "on"
+    "fix-markdown": "on",
+    "pgm-to-png": "on"
   },
   "permissions": {
     "allow": [
