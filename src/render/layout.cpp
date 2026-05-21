@@ -197,11 +197,28 @@ struct SlotSpec {
   bool stale;
 };
 
+// Right-aligned plan-marker total width (offset gap + 5×5 marker).
+constexpr int PLAN_MARKER_TOTAL_W =
+    SLOT_PLAN_MARKER_OFFSET_X_GAP + SLOT_PLAN_MARKER_SIZE;
+
+bool slotIsPlan(const Departure &d, bool stale) {
+  return !stale && d.valid && d.source != DepartureSource::Realtime;
+}
+
 // Render a single departure slot — badge + direction text + HH:MM + plan
 // marker. `s.y` is the top of the row's content box (the tallest element,
 // the time column). Badge and direction are vertically centred against
 // that. Returns the X coordinate where the next slot in the same row
 // should start.
+//
+// Time-column layout:
+//   * Single-time slot (s.d2 == nullptr, ATZG row): time sits at
+//     `badge_right + slotTimeOffsetX(s.sz)` (left-anchored next to the
+//     badge), matching the JSX `repeat(3, 1fr)` per-column layout.
+//   * Double-time slot (s.d2 != nullptr, TG/EG row): times are
+//     RIGHT-ALIGNED against the display edge (FB_W - LAYOUT_PAD_X), with
+//     `interTimeGap()` between them. Matches the JSX `auto | 1fr | auto`
+//     grid where the time block sits flush against the right padding.
 int drawSlot(render::Canvas &canvas, const SlotSpec &s) {
   const int row_h = rowContentHeight(s.row_font);
   const int badge_h = badgeBounds(s.sz).h;
@@ -220,39 +237,46 @@ int drawSlot(render::Canvas &canvas, const SlotSpec &s) {
   formatSlotTime(hhmm, sizeof(hhmm), s.d, s.stale);
   canvas.setRoleFont(s.row_font);
   canvas.setTextColor(1);
-  const int time_offset = slotTimeOffsetX(s.sz);
-  const int time_x = badge_right + time_offset;
-  canvas.setCursor(time_x, s.y);
-  canvas.print(hhmm);
   const int time1_w = canvas.textWidth(hhmm);
   const int plan_mark_y = s.y + (row_h - SLOT_PLAN_MARKER_SIZE) / 2;
+  const bool d_plan = slotIsPlan(s.d, s.stale);
 
-  // Plan marker only when the time actually displays a real "HH:MM" — in
-  // stale mode the time is "--:--" and the handoff explicitly says "no
-  // plan marker on the dashes".
-  if (!s.stale && s.d.valid && s.d.source != DepartureSource::Realtime) {
-    drawPlanMark(canvas, time_x + time1_w + SLOT_PLAN_MARKER_OFFSET_X_GAP,
-                 plan_mark_y);
-  }
-
-  int right_x = time_x + time1_w;
-
-  if (s.d2 != nullptr) {
-    char hhmm2[8];
-    formatSlotTime(hhmm2, sizeof(hhmm2), *s.d2, s.stale);
-    const int gap = interTimeGap(s.row_font);
-    const int time2_x = time_x + time1_w + gap;
-    canvas.setCursor(time2_x, s.y);
-    canvas.print(hhmm2);
-    const int time2_w = canvas.textWidth(hhmm2);
-    if (!s.stale && s.d2->valid && s.d2->source != DepartureSource::Realtime) {
-      drawPlanMark(canvas, time2_x + time2_w + SLOT_PLAN_MARKER_OFFSET_X_GAP,
+  if (s.d2 == nullptr) {
+    // Single-time slot (ATZG): left-anchored next to the badge.
+    const int time_x = badge_right + slotTimeOffsetX(s.sz);
+    canvas.setCursor(time_x, s.y);
+    canvas.print(hhmm);
+    if (d_plan) {
+      drawPlanMark(canvas, time_x + time1_w + SLOT_PLAN_MARKER_OFFSET_X_GAP,
                    plan_mark_y);
     }
-    right_x = time2_x + time2_w;
+    return time_x + time1_w + (d_plan ? PLAN_MARKER_TOTAL_W : 0);
   }
 
-  return right_x;
+  // Double-time slot (TG/EG): right-aligned against FB_W - LAYOUT_PAD_X.
+  char hhmm2[8];
+  formatSlotTime(hhmm2, sizeof(hhmm2), *s.d2, s.stale);
+  const int time2_w = canvas.textWidth(hhmm2);
+  const bool d2_plan = slotIsPlan(*s.d2, s.stale);
+  const int gap = interTimeGap(s.row_font);
+  const int right_edge = FB_W - LAYOUT_PAD_X;
+  const int time2_x =
+      right_edge - (d2_plan ? PLAN_MARKER_TOTAL_W : 0) - time2_w;
+  const int time1_x = time2_x - gap - time1_w;
+
+  canvas.setCursor(time1_x, s.y);
+  canvas.print(hhmm);
+  if (d_plan) {
+    drawPlanMark(canvas, time1_x + time1_w + SLOT_PLAN_MARKER_OFFSET_X_GAP,
+                 plan_mark_y);
+  }
+  canvas.setCursor(time2_x, s.y);
+  canvas.print(hhmm2);
+  if (d2_plan) {
+    drawPlanMark(canvas, time2_x + time2_w + SLOT_PLAN_MARKER_OFFSET_X_GAP,
+                 plan_mark_y);
+  }
+  return right_edge;
 }
 
 // Pick the line label for an S-Bahn slot, with fallback when the parser
@@ -283,7 +307,7 @@ void drawBoard(render::Canvas &canvas, const RenderInput &in) {
   canvas.fillRect(0, LAYOUT_SEP1_Y, FB_W, LAYOUT_SEP1_H, 1);
 
   drawSectionHeader(canvas, FontRole::Section_Header_EG_Atzg, LAYOUT_PAD_X,
-                    LAYOUT_EG_HEADER_Y, "ENDEMANNGASSE - NACH SCHLEIFE");
+                    LAYOUT_EG_HEADER_Y, "ENDEMANNGASSE · NACH SCHLEIFE");
   const StreamData &s58b_atz = in.snapshot.stream[STREAM_58B_ATZ];
   drawSlot(canvas,
            SlotSpec{LAYOUT_PAD_X, LAYOUT_EG_ROW_Y, "58B",

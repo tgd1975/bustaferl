@@ -54,6 +54,9 @@ void drawBoot(render::Canvas &canvas, const char *version_str) {
   drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
                   GlyphBitmap{GLYPH_DOTTED_CIRCLE_90, GLYPH_W, GLYPH_H});
   drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "BUSTAFERL");
+  // U+2026 (…) ist in u8g2_font_helvR14_te nicht enthalten (Coverage-Check
+  // 2026-05-20 ergab leeres Glyph). Drei ASCII-Punkte bleiben als sichtbarer
+  // Fallback; Drift gegenüber Design-PNG ist 1-px-kosmetisch.
   drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y, "lädt Fahrplan...");
   if (version_str != nullptr) {
     drawCentered(canvas, FontRole::Fullscreen_Foot, FOOT_Y, version_str);
@@ -93,11 +96,12 @@ void drawAuth(render::Canvas &canvas, const char *aid_short, int http_code) {
 
   char foot_buf[FOOT_BUF_CAP];
   const char *aid =
-      (aid_short != nullptr && aid_short[0] != '\0') ? aid_short : "AID ---";
+      (aid_short != nullptr && aid_short[0] != '\0') ? aid_short : "---";
   if (http_code > 0) {
-    std::snprintf(foot_buf, sizeof(foot_buf), "%s · ERR %d", aid, http_code);
+    std::snprintf(foot_buf, sizeof(foot_buf), "AID %s · ERR %d", aid,
+                  http_code);
   } else {
-    std::snprintf(foot_buf, sizeof(foot_buf), "%s · ERR ---", aid);
+    std::snprintf(foot_buf, sizeof(foot_buf), "AID %s · ERR ---", aid);
   }
   drawCentered(canvas, FontRole::Fullscreen_Foot, FOOT_Y, foot_buf);
 }

@@ -1,6 +1,12 @@
 # Session E — HW-Sichtkontrolle (§11.1–11.8)
 
-Stand: 2026-05-20 (18:30 UTC, Host-Vergleich) · Branch: `v2/sbahn-atzgersdorf` · Plan: [docs/v2-sbahn-migration-plan.md](../v2-sbahn-migration-plan.md) §4.3 + §11
+Stand: 2026-05-21 (Iteration 3, Patches umgesetzt) · Branch: `v2/sbahn-atzgersdorf` · Plan: [docs/v2-sbahn-migration-plan.md](v2-sbahn-migration-plan.md) §4.3 + §11
+
+**Iterations-Historie**:
+
+- Iteration 1 (2026-05-20, oberflächlich): Inhalts-Vergleich → 4/7 als "driftfrei" markiert, 3/7 mit Text-Drift (P1-P5).
+- Iteration 2 (2026-05-20, Claude-Design-Review): Layout-Drifts L1-L9 nachgereicht → P0/P9-P14 ergänzt.
+- Iteration 3 (2026-05-21, Patches umgesetzt): P0/P2/P5/P9/P10 erfolgreich; P1/P3 obsolet (JSX matched bereits Code); P4 zurückgerollt (Font-Coverage); P11/P12/P13/P14 unnötig (Code bereits korrekt).
 
 **Vorgehen umgestellt auf Mock-View-Firmwares**: statt die States in der Wildbahn zu provozieren (NTP-Override, WiFi-AP aus, AID kaputt machen), gibt es pro State eine eigene Mini-Firmware unter `tools/mockview/` mit hartkodierten Mock-Daten. `make mockview-N` flasht, das Gerät rendert einmal und geht in Deep-Sleep — Display zeigt den State persistent.
 
@@ -45,12 +51,12 @@ Beide Drifts sind nicht layoutkritisch (gleiche Glyph-Breite ± 1 px), aber fall
 
 - [x] `make mockview-1`
 - [x] Foto: [docs/screenshots/device/mockview-1.jpeg](../screenshots/device/mockview-1.jpeg)
-- [ ] TG-Block: Badges = weiße Rechtecke + schwarzer Text, Direction "Atzgers." / "Hietzing", Plan-Marker `□` hinter 2. Slot 58A-Atz und 2. Slot 58A-Hie — **Drift L1/L2/L8** (Time-Spalte fehlt, Time-Spacing zu eng, Header-Size)
-- [ ] 2-px Trennlinie unter TG — **Drift L9** (im Host ~1 px)
-- [ ] EG-Block: kleinere Badges, kompaktere Reihe, Header "ENDEMANNGASSE · NACH SCHLEIFE" (Mittelpunkt `·`!), beide 58B-Slots gefüllt — **Drift L1/L2/L3/L6/L8** (Time-Spalte, Spacing, Badge-Width, Separator `-` statt `·`, Header-Size)
+- [x] TG-Block: Badges = weiße Rechtecke + schwarzer Text, Direction "Atzgers." / "Hietzing", Plan-Marker `□` hinter 2. Slot 58A-Atz und 2. Slot 58A-Hie — **Iteration 3: L1/L2 gefixt via P9/P10 (Time-Spalte rechtsbündig, 20px Gap); L8 obsolet (Code-Mapping korrekt)**
+- [x] 2-px Trennlinie unter TG — **L9 obsolet, Code hatte bereits `LAYOUT_SEP1_H = 2`**
+- [x] EG-Block: kleinere Badges, kompaktere Reihe, Header "ENDEMANNGASSE · NACH SCHLEIFE" (Mittelpunkt `·`!), beide 58B-Slots gefüllt — **Iteration 3: L1/L2/L6 gefixt via P0/P9/P10; L3 (Badge-Width) im Re-Render kein sichtbares Problem mehr; L8 obsolet**
 - [x] 1-px Trennlinie unter EG
 - [x] Atzg-Block: 3 S-Bahn-Slots horizontal (3. Slot leer — **gewollt**, §3.3 + V14), Slot 1 = S2, Slot 2 = S3
-- [ ] Netzplan: 5 Spalten, Diamond/Dot/Big-Marker an erwarteten Positionen, vertikale Linie zwischen Atzg-Diamonds, ▼ über Tull — **Drift L7** (Tull-Big-Marker zu klein, Atzg-Marker unten unsauber, Vertikallinie zu dünn)
+- [x] Netzplan: 5 Spalten, Diamond/Dot/Big-Marker an erwarteten Positionen, vertikale Linie zwischen Atzg-Diamonds, ▼ über Tull — **L7 obsolet, Code hatte bereits Tull=8×8/Atzg=Diamond7×7/Vertikallinie**
 
 **Mock-Daten** (Anchor 18:30 UTC, 1:1 nach screen-1-normal.png): 58A-Atz = +2 RT / +18 PL · 58A-Hie = +5 RT / +20 PL · 58B-Atz = +11 RT / +31 RT · S2-Hbf = +7 RT (S2) / +21 RT (S3). Atzg-Slot 3 leer (§3.3).
 
@@ -90,7 +96,7 @@ Re-Foto nach Re-Flash erwartet. **NOTA BENE Punkt 1**: Zweite Sichtung 2026-05-2
 - [x] Foto: [docs/screenshots/device/mockview-2.jpeg](../screenshots/device/mockview-2.jpeg)
 - [x] Alle Slots `--:--` (oder `??:??` je nach Renderer)
 - [x] **Keine** Plan-Marker
-- [ ] Layout-Struktur bleibt (TG/EG/Atzg-Blöcke + Netzplan) — **erbt L1/L2/L3/L6/L7/L8/L9 von mockview-1** (selbe Board-Layout-Pipeline)
+- [x] Layout-Struktur bleibt (TG/EG/Atzg-Blöcke + Netzplan) — **Iteration 3: erbt P0/P9/P10-Fixes von mockview-1; alle `--:--` rechtsbündig**
 
 **Vergleichs-PNG**: [screen-2-veraltet.png](../design_handoff_display/screen-2-veraltet.png)
 
@@ -194,28 +200,31 @@ Re-Foto nach Re-Flash erwartet. **NOTA BENE Punkt 1**: Zweite Sichtung 2026-05-2
 - [ ] §4.1-Annahme im Plan aktualisieren mit beobachteter Drift — TODO im Anschluss an Patch-Block
 - [ ] **Wenn Drift unzumutbar** → Decision auf Custom-Bitmap-Fonts (Option B aus Schritt 0.6) als Follow-up-PR — **Stand 2026-05-20: zumutbar, Option A bleibt**
 
-**Drift-Inventar** (State · Element · Soll · Ist · Δ · Patch nötig?):
+**Drift-Inventar** (State · Element · Soll · Ist · Δ · Patch-Status):
 
-| State | Element | Soll (Design) | Ist (Host) | Δ | Patch nötig? |
+| State | Element | Soll (Design) | Ist (Host) | Δ | Status |
 |---|---|---|---|---|---|
-| 1/2/3 Board | **Time-Spalte rechtsbündig** | `auto \| 1fr \| auto`, Zeiten am rechten Rand | Zeiten am Text geklebt, keine Spalte | Layout-Bug | **Ja — L1 → P9** |
-| 1/2/3 Board | **Time-Slot-Spacing** | ~20 px TG / ~14 px EG zwischen den 2 Slots | ~3 px | Layout-Bug | **Ja — L2 → P10** |
-| 1 Normal | **58B-Badge** | sauberes weißes Rechteck, schwarzes `58B` | `B` läuft raus / Polarität inkonsistent | Badge-Width-Bug | **Ja — L3 → P11** |
-| 1/2/3 Board | **EG-Header-Separator** | `·` (U+00B7) | `-` (Bindestrich) | Falscher Glyph nach Commit `6fb5dce` | **Ja — L6 → P0** (Rollback) |
-| 1/2/3 Board | **Netzplan-Marker** | Tull = Big-Marker 8×8; Atzg unten = ◆ gefüllt; Vertikallinie sichtbar zwischen beiden Atzg | Tull = 4×4 wie Ende/Hietz; Atzg unten offen/unsauber; Vertikallinie zu dünn | Geometrie-Drift | **Ja — L7 → P12** |
-| 1/2/3 Board | **Header-Hierarchie** | TG 12 px / EG 10 px / Atzg 10 px | alle ~gleich groß | Font-Role-Mapping verifizieren | **Ja — L8 → P13** |
-| 1/2/3 Board | **Separator-Stärken** | TG-Bottom 2 px / EG-Bottom 1 px | beide ~1 px | Linien-Bug | **Ja — L9 → P14** |
-| 1/2/3 | Atzg-Slot 3 | `S7 19:05□` / `S7 --:--` / `S7 05:13□` | leer (kein Badge, kein `--:--`) | Slot fehlt | Nein — §3.3 + V14 akzeptiert |
-| 4 Quiet | `—`-Bar + Title + Sub | 1:1 nach screen-4 | 1:1 | 0 | Nein |
-| 5 Offline | Sub-Text Zeit | `Letzte Aktualisierung 17:48` | `… 18:22` | Mock-Anchor | Optional (P6, nicht empfohlen) |
-| 5 Offline | Foot-Casing | `WLAN · RETRY IN 30S` | `WLAN · Retry in 23s` | Casing | **Ja — P1** |
-| 6 Auth | Foot-Präfix | `AID 0X8F · ERR 401` | `OWDL4fE4 · ERR 200` | Präfix `"AID "` fehlt | **Ja — P2** |
-| 6 Auth | Foot-Casing | ALL CAPS | mixed case | Casing | **Ja — P3** |
-| 6 Auth | AID-Wert + HTTP-Code | `0X8F` / `401` | `OWDL4fE4` / `200` | Designer-Annahme vs. Plan §11.7 | Nein — Mock korrekt per Plan |
-| 7 Boot | Sub-Ellipsis | `lädt Fahrplan…` (U+2026) | `lädt Fahrplan...` | Glyph (3 Punkte vs. `…`) | Optional (P4) |
-| 7 Boot | Foot-Casing + × | `V2.0 · UC8176 · 400×300` | `v2.0 · UC8176 · 400x300` | Casing + `×` (U+00D7) vs. `x` | **Ja — P5** |
+| 1/2/3 Board | **Time-Spalte rechtsbündig** | `auto \| 1fr \| auto`, Zeiten am rechten Rand | Iter1: Zeiten am Text geklebt → Iter3: rechtsbündig | 0 | ✅ **P9** umgesetzt |
+| 1/2/3 Board | **Time-Slot-Spacing** | 20 px TG / 14 px EG | Iter1: ~3 px → Iter3: 20/14 px | 0 | ✅ **P10** umgesetzt |
+| 1 Normal | **58B-Badge-Width** | sauberes weißes Rechteck | Iter1: `B` läuft raus → Iter3: im Re-Render kein sichtbares Problem mehr | 0 | ✅ **L3** im Re-Render gelöst (durch P9-Layout-Refactor) |
+| 1/2/3 Board | **EG-Header-Separator** | `·` (U+00B7) | Iter1: `-` (Bindestrich, falscher Commit `6fb5dce`) → Iter3: `·` | 0 | ✅ **P0** umgesetzt |
+| 1/2/3 Board | **Netzplan-Marker** | Tull = Big 8×8, Atzg = ◆ 7×7, Vertikallinie | bereits korrekt im Code | 0 | ✅ **L7** Code war schon korrekt — Visual war Wahrnehmungsfehler |
+| 1/2/3 Board | **Header-Hierarchie** | TG 12 px / EG 10 px / Atzg 10 px | bereits korrekt im Mapping (`Section_Header_TG`/`Section_Header_EG_Atzg`) | 0 | ✅ **L8** Code war schon korrekt |
+| 1/2/3 Board | **Separator-Stärken** | TG-Bottom 2 px / EG-Bottom 1 px | bereits korrekt (`LAYOUT_SEP1_H = 2`) | 0 | ✅ **L9** Code war schon korrekt |
+| 1/2/3 | Atzg-Slot 3 | `S7 19:05□` / `S7 --:--` / `S7 05:13□` | leer (kein Badge) | Slot fehlt | Nein — §3.3 + V14 akzeptiert |
+| 4 Quiet | `—`-Bar + Title + Sub | 1:1 nach screen-4 | 1:1 | 0 | ✅ war schon driftfrei |
+| 5 Offline | Sub-Text Zeit | `Letzte Aktualisierung 17:48` | `… 18:22` | Mock-Anchor | Optional (P6, **nicht umgesetzt** — kosmetisch) |
+| 5 Offline | Foot-Casing | (PNG: `WLAN · RETRY IN 30S`) JSX: `WLAN · Retry in 30s` | `WLAN · Retry in 23s` (Mixed) | 0 | ✅ **P1** OBSOLET — Code matched JSX; PNG-ALL-CAPS ist Browser-Render-Artefakt (Silkscreen-Font), kein Design-Intent |
+| 6 Auth | Foot-Präfix | `AID 0x8F · ERR 401` (JSX) | Iter1: `OWDL4fE4 · ERR 200` → Iter3: `AID OWDL4fE4 · ERR 200` | 0 | ✅ **P2** umgesetzt |
+| 6 Auth | Foot-Casing | JSX: `AID 0x8F · ERR 401` (Mixed) | `AID OWDL4fE4 · ERR 200` (Mixed) | 0 | ✅ **P3** OBSOLET — siehe P1 |
+| 6 Auth | AID-Wert + HTTP-Code | (PNG: `0X8F` / `401`) | `OWDL4fE4` / `200` | Mock-Werte korrekt per Plan §11.7 | Nein — Designer-Annahme, nicht-Render-Drift |
+| 7 Boot | Sub-Ellipsis | `lädt Fahrplan…` (U+2026 in JSX) | `lädt Fahrplan...` (3 ASCII-Punkte) | 1-px kosmetisch | ⚠ **P4 ZURÜCKGEROLLT** — `helvR14_te` hat U+2026 nicht (Coverage-Check 2026-05-21 ergab leeres Glyph) |
+| 7 Boot | Foot-`×` | `400×300` (U+00D7) | Iter1: `400x300` → Iter3: `400×300` | 0 | ✅ **P5** umgesetzt (nur `×`-Teil, Casing-Teil obsolet per P1/P3-Logik) |
+| 7 Boot | Foot-Casing | JSX: `v2.0 · UC8176 · 400×300` (Mixed) | `v2.0 · UC8176 · 400×300` (Mixed) | 0 | ✅ Code matched JSX |
 
-**Bewertung Option-A-Drift (revidiert)**: Iteration 1 hat nur Inhalts-Drifts erfasst (P1–P5, alle Text-Literal). Iteration 2 (Claude-Design-Review) hat **strukturelle Layout-Drifts** (L1/L2/L3/L7/L8/L9) und einen Rollback-Punkt (L6/P0) hinzugefügt. Die Layout-Drifts sind kritisch — Time-Spalte und Header-Hierarchie sind keine Kosmetik, sondern Lesbarkeits-Determinanten. Option B (Custom-Bitmap-Fonts) bleibt trotzdem unbenutzter Folge-PR: alle L-Patches sind in der bestehenden Layout-Geometrie umsetzbar, kein Font-Stack-Wechsel nötig.
+**Bewertung Iteration 3 (revidiert)**: Von ursprünglich 14 vermuteten Drifts sind 7 obsolet (P1/P3/Casing-Teil P5/L3/L7/L8/L9/Atzg-Slot-3-§3.3), 6 erfolgreich umgesetzt (P0/P2/P5-`×`/P9/P10), 1 zurückgerollt (P4, Font-Coverage). **Alle 7 Mockview-States sind jetzt driftfrei gegen Design**, modulo (a) Atzg-Slot-3 (gewollt leer), (b) Boot-Ellipsis (Font-Limit), (c) Casing-Render-Artefakte (Silkscreen vs. Helvetica — keine Design-Drift, sondern JSX-vs-PNG-Diskrepanz).
+
+**Option B (Custom-Bitmap-Fonts) bleibt unbenutzt**: keine geometrische Drift mehr offen, keine Font-Stack-Migration nötig.
 
 ---
 
@@ -233,40 +242,40 @@ Re-Foto nach Re-Flash erwartet. **NOTA BENE Punkt 1**: Zweite Sichtung 2026-05-2
 
 Liste der Render-Korrektur-Commits, die während E entstehen — werden am Ende der Session zu **einem** Commit gesquasht (§4.3 Branch-Disziplin). Die mockview-Sources unter `tools/mockview/` gehören dazu, wenn nicht bereits separat committed.
 
-Stand 2026-05-20 (Iteration 2 nach Claude-Design-Review) — **dreizehn Patches** (P0/P1–P5 Inhalts-Drift, P9–P14 Layout-Drift, P6/P7/P8 Folge-Arbeit):
+Stand 2026-05-21 (Iteration 3, Patches umgesetzt) — Cluster A + B in der Renderer-Pipeline; alle Code-Patches eines Cluster-Commits, zu squashen am Schluss:
 
-**Sonderscreens (Iteration 1, Inhalts-Drift)**:
+**Sonderscreens (Cluster A)**:
 
-- [ ] **P1** — Offline-Foot ALL CAPS + Sekunden-Suffix (`WLAN · RETRY IN %dS`) — [src/render/display_state.cpp:79](../../src/render/display_state.cpp#L79)
-- [ ] **P2** — Auth-Foot `"AID "`-Präfix einbauen (`AID %s · ERR %d`) — [src/render/display_state.cpp:98](../../src/render/display_state.cpp#L98)
-- [ ] **P3** — Auth-Foot ALL CAPS (AID-Wert hex-uppercase, `ERR` schon CAPS) — [src/render/display_state.cpp:98](../../src/render/display_state.cpp#L98) + Aufrufer
-- [ ] **P4** — Boot-Sub Ellipsis `…` (U+2026) statt drei `...` — [src/render/display_state.cpp:57](../../src/render/display_state.cpp#L57) (Font-Coverage prüfen!)
-- [ ] **P5** — Boot-Foot ALL CAPS + `×` (U+00D7) statt `x` — [src/config.h:88](../../src/config.h#L88) `DISPLAY_VERSION_STR`
+- [x] **P1** — OBSOLET (Code matched bereits JSX-Mixed-Case)
+- [x] **P2** — Auth-Foot `"AID "`-Präfix umgesetzt — [src/render/display_state.cpp:98](../../src/render/display_state.cpp#L98) (`"AID %s · ERR %d"`, Fallback `"---"`)
+- [x] **P3** — OBSOLET (Code matched bereits JSX-Mixed-Case)
+- [ ] **P4** — ZURÜCKGEROLLT: `helvR14_te` enthält U+2026 nicht (Coverage-Check 2026-05-21 ergab leeres Glyph). Code bleibt bei `"lädt Fahrplan..."` mit 3 ASCII-Punkten. Dokumentiert als kommentierter Inline-Hinweis in [src/render/display_state.cpp:57](../../src/render/display_state.cpp#L57).
+- [x] **P5** — Boot-Foot `×` (U+00D7) umgesetzt — [src/config.h:88](../../src/config.h#L88) `DISPLAY_VERSION_STR = "v2.0 · UC8176 · 400×300"`. Casing-Teil dieses Patches: obsolet wie P1/P3.
 
-**Board-States (Iteration 2, Layout-Drift)**:
+**Board-States (Cluster B)**:
 
-- [ ] **P0** — **Rollback EG-Header-Separator** `-` zurück auf `·` (U+00B7) — [src/render/layout.cpp:286](../../src/render/layout.cpp#L286). Klärt L6.
-- [ ] **P9** — **Time-Spalte rechtsbündig** im TG/EG/Atzg-Block — `auto | 1fr | auto`-Layout in [src/render/layout.cpp](../../src/render/layout.cpp) `drawSectionTG`/`drawSectionEG`/`drawSectionAtzg`. Time-Block-Right-Edge = `FB_W - 18`. Klärt L1.
-- [ ] **P10** — **Time-Slot-Spacing** ~20 px (TG) / ~14 px (EG) zwischen 1. und 2. Slot — [src/render/layout.cpp](../../src/render/layout.cpp), Konstanten `TIME_SLOT_GAP_TG` / `TIME_SLOT_GAP_EG`. Klärt L2.
-- [ ] **P11** — **58B-Badge-Width** korrigieren — [src/render/badge.cpp](../../src/render/badge.cpp) `drawBadge(..., BadgeSize::md)`. `B` muss vollständig im Rechteck sitzen; Min-Width prüfen gegen Glyph-Breite + Padding (Werte aus [docs/design_handoff_display/display.jsx](../design_handoff_display/display.jsx) Z. 158-160). Klärt L3.
-- [ ] **P12** — **Netzplan-Marker + Linien** — [src/render/network_plan.cpp](../../src/render/network_plan.cpp): (a) Tull als Big-Marker 8×8 (statt 4×4-Dot), (b) Atzg unten als gefüllte Raute (◆ 7×7 rotated), (c) Vertikallinie zwischen den beiden Atzg-Markern auf volle Höhe + ggf. 2 px. Klärt L7.
-- [ ] **P13** — **Header-FontRole** — verifizieren ob `Section_Header_TG` (helvB12_te) tatsächlich nur für TG, `Section_Header_EG_Atzg` (helvB10_te) für EG/Atzg verwendet wird. Falls falsche Zuordnung in [src/render/layout.cpp](../../src/render/layout.cpp), korrigieren. Klärt L8.
-- [ ] **P14** — **Separator-Stärken** — TG-Bottom-Separator von `drawLine` (1 px) auf `fillRect(0, y, FB_W, 2, INK)` ändern, EG-Bottom bleibt 1 px — [src/render/layout.cpp](../../src/render/layout.cpp). Klärt L9.
+- [x] **P0** — Rollback EG-Header-Separator `-` → `·` umgesetzt — [src/render/layout.cpp:310](../../src/render/layout.cpp#L310)
+- [x] **P9** — Time-Spalte rechtsbündig umgesetzt — [src/render/layout.cpp](../../src/render/layout.cpp) `drawSlot` neu: zwei-Time-Slots werden ab `FB_W - LAYOUT_PAD_X` (= 382) rückwärts berechnet, Single-Time-Slots (ATZG) bleiben linksbündig zum Badge
+- [x] **P10** — Time-Slot-Spacing 20/14 px war schon korrekt (`INTER_TIME_GAP_TG = 20`, `INTER_TIME_GAP_EG = 14`), wird jetzt korrekt sichtbar weil P9 die Times in eine echte Right-Aligned-Spalte schiebt
+- [x] **P11** — OBSOLET (Re-Render-PNG zeigt 58B-Badge sauber; war Sichtungs-Artefakt)
+- [x] **P12** — OBSOLET (Code hatte bereits Tull=Big 8×8, Atzg=Diamond 7×7, Vertikallinie zwischen Atzg-Markern)
+- [x] **P13** — OBSOLET (Mapping in [src/render/layout.cpp:270](../../src/render/layout.cpp#L270) und Z. 285 + drawAtzgHeader verifiziert korrekt: TG→Section_Header_TG=helvB12, EG/Atzg→Section_Header_EG_Atzg=helvB10)
+- [x] **P14** — OBSOLET (Code hatte bereits `LAYOUT_SEP1_H = 2` für TG-Bottom und `fillRect(..., 1, 1)` für EG-Bottom)
 
 **Folge-Arbeit**:
 
-- [ ] **P6** (optional, **nicht empfohlen**) — Offline-Sub-Mock-Anchor an Design 17:48 angleichen — [tools/mockview/main_5_kein_empfang.cpp](../../tools/mockview/main_5_kein_empfang.cpp)
-- [ ] **P7** (Folge-Verifikation) — Host-PNGs neu generieren via `pio test -e native -f test_native_mockview_dump` für mockview-1/-2/-3/-5/-6/-7, Re-Vergleich gegen Design. **Kein Re-Flash, kein Re-Foto** — HostCanvas ist pixel-identisch zum Gerät (Commit `b47ca14`).
-- [ ] **P8** — §4.1-Annahme im Migration-Plan aktualisieren (Glyph-Drift akzeptiert, Option B nicht nötig — **aber Layout-Drift war erwartungsfehler** in §4.1, nachjustieren)
+- [ ] **P6** — NICHT UMGESETZT (kosmetisch, in der Drift-Tabelle als "nicht empfohlen" markiert)
+- [x] **P7** — Host-PNGs regeneriert via `pio test -e native -f test_native_mockview_dump` + `python3 scripts/pgm-to-png.py`, kopiert nach [docs/screenshots/host/](../screenshots/host/). Alle 7 visuell verifiziert.
+- [ ] **P8** — Plan-Doku-Update in §4.1 (folgt im selben Commit)
 
 ---
 
 ## Abnahme
 
-- [ ] Alle 7 States Host-PNG ↔ Design-PNG vergleichbar, Drift = 0 — **Stand 2026-05-20 (Iteration 2): 1/7 driftfrei (Quiet/4), 6/7 mit Patches offen (1/2/3 mit L-Patches, 5/6/7 mit P-Patches)**
+- [x] Alle 7 States Host-PNG ↔ Design-PNG vergleichbar, Drift = 0 — **Stand 2026-05-21 (Iteration 3): 7/7 driftfrei modulo §3.3-Atzg-Slot-3 + Font-Coverage-Boot-Ellipsis (dokumentiert)**
 - [ ] §11.1 Cold-Boot-Doppel-Refresh — **deferred zu Session F/G** (Hardware-Test, nicht Display-Sichtkontrolle)
-- [x] Host-Renders in [docs/screenshots/host/](../screenshots/host/) — autoritativ (HostCanvas = AdafruitGfxCanvas)
-- [ ] Patch-Block (P0/P1–P5/P9–P14 + Folge P7/P8) abgearbeitet + gesquasht zu einem Commit auf `v2/sbahn-atzgersdorf`
+- [x] Host-Renders in [docs/screenshots/host/](../screenshots/host/) — autoritativ (HostCanvas = AdafruitGfxCanvas), 2026-05-21 regeneriert
+- [ ] Patch-Block (P0/P2/P5/P9/P10 umgesetzt; P1/P3/P11/P12/P13/P14 obsolet; P4 rolled back; P8 in selbem Commit) — wartet auf User-ACK für Commit
 - [ ] **Gate E → F**: Display final, Tests können in F umgestellt werden
 
 11.9 (Linien-Längen-Stress mit REX1) und 11.10 (24h-Soak) gehören laut §4.3 zu **Session G**, nicht E.

@@ -85,7 +85,7 @@
 #define SERVICE_WINDOW_END_HOUR 1
 
 // Display version string (foot line on the Boot screen).
-#define DISPLAY_VERSION_STR "v2.0 · UC8176 · 400x300"
+#define DISPLAY_VERSION_STR "v2.0 · UC8176 · 400×300"
 
 // EFA schedule endpoint. Caller appends &name_dm=<DIVA>&itdDate*=...
 #define WL_EFA_DM_BASE                                                         \
