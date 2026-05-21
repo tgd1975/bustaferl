@@ -15,7 +15,7 @@ namespace bustaferl {
 //   3: Tull      — 8×8 big square ("you are here")
 //   4: Hietz     — 4×4 dot
 constexpr int NETPLAN_COL_COUNT = 5;
-constexpr int NETPLAN_HEIGHT = 36;
+constexpr int NETPLAN_HEIGHT = 52;
 
 // Draws geometry + station labels. centres_out receives the column
 // centres so tests / chained renderers can correlate further drawing.

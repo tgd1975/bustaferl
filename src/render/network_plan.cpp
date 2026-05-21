@@ -53,32 +53,43 @@ void drawNetworkPlan(render::Canvas &canvas, int x, int y, int width,
   }
   const int top_y = y + 5;
   const int bottom_y = y + NETPLAN_HEIGHT - 5;
+  constexpr int DOT_SIZE = 5;
+  constexpr int DIAMOND_HALF = 4;
+  constexpr int TULL_SQUARE_SIZE = 8;
 
   // Top row: dot (Hbf) — line — diamond (Atzg).
-  drawCenteredFilledRect(canvas, centres_out[0], top_y, 4, 4);
-  drawDiamond(canvas, centres_out[1], top_y, 3);
-  canvas.drawFastHLine(centres_out[0] + 2, top_y,
-                       centres_out[1] - 3 - (centres_out[0] + 2), 1);
+  drawCenteredFilledRect(canvas, centres_out[0], top_y, DOT_SIZE, DOT_SIZE);
+  drawDiamond(canvas, centres_out[1], top_y, DIAMOND_HALF);
+  canvas.drawFastHLine(
+      centres_out[0] + DOT_SIZE / 2 + 1, top_y,
+      (centres_out[1] - DIAMOND_HALF) - (centres_out[0] + DOT_SIZE / 2 + 1), 1);
 
   // Vertical link between the two Atzg diamonds.
-  canvas.drawFastVLine(centres_out[1], top_y + 3, (bottom_y - 3) - (top_y + 3),
-                       1);
+  canvas.drawFastVLine(centres_out[1], top_y + DIAMOND_HALF,
+                       (bottom_y - DIAMOND_HALF) - (top_y + DIAMOND_HALF), 1);
 
   // Triangle ▼ over Tull column.
   drawTriangleDown5(canvas, centres_out[3] - TRIANGLE_DOWN_SIZE / 2,
                     bottom_y - TRIANGLE_OVERHEAD_Y);
 
   // Bottom row: diamond (Atzg) — dot (Ende) — big square (Tull) — dot (Hietz).
-  drawDiamond(canvas, centres_out[1], bottom_y, 3);
-  drawCenteredFilledRect(canvas, centres_out[2], bottom_y, 4, 4);
-  drawCenteredFilledRect(canvas, centres_out[3], bottom_y, 8, 8);
-  drawCenteredFilledRect(canvas, centres_out[4], bottom_y, 4, 4);
-  canvas.drawFastHLine(centres_out[1] + 3, bottom_y,
-                       (centres_out[2] - 2) - (centres_out[1] + 3), 1);
-  canvas.drawFastHLine(centres_out[2] + 2, bottom_y,
-                       (centres_out[3] - 4) - (centres_out[2] + 2), 1);
-  canvas.drawFastHLine(centres_out[3] + 4, bottom_y,
-                       (centres_out[4] - 2) - (centres_out[3] + 4), 1);
+  drawDiamond(canvas, centres_out[1], bottom_y, DIAMOND_HALF);
+  drawCenteredFilledRect(canvas, centres_out[2], bottom_y, DOT_SIZE, DOT_SIZE);
+  drawCenteredFilledRect(canvas, centres_out[3], bottom_y, TULL_SQUARE_SIZE,
+                         TULL_SQUARE_SIZE);
+  drawCenteredFilledRect(canvas, centres_out[4], bottom_y, DOT_SIZE, DOT_SIZE);
+  canvas.drawFastHLine(centres_out[1] + DIAMOND_HALF + 1, bottom_y,
+                       (centres_out[2] - DOT_SIZE / 2 - 1) -
+                           (centres_out[1] + DIAMOND_HALF + 1),
+                       1);
+  canvas.drawFastHLine(centres_out[2] + DOT_SIZE / 2 + 1, bottom_y,
+                       (centres_out[3] - TULL_SQUARE_SIZE / 2 - 1) -
+                           (centres_out[2] + DOT_SIZE / 2 + 1),
+                       1);
+  canvas.drawFastHLine(centres_out[3] + TULL_SQUARE_SIZE / 2 + 1, bottom_y,
+                       (centres_out[4] - DOT_SIZE / 2 - 1) -
+                           (centres_out[3] + TULL_SQUARE_SIZE / 2 + 1),
+                       1);
 
   // Labels row.
   canvas.setRoleFont(FontRole::Network_Label);

@@ -1,7 +1,7 @@
-// drawPlanMark — 5×5 hollow square. Pixel-mask asserts on the perimeter
-// being paper (white) and the interior being ink (black). Exercises the
-// production code path via HostCanvas (same Canvas interface as the
-// device).
+// drawPlanMark — 5×5 hollow ring (rounded "°" marker). Pixel-mask asserts
+// on the rounded edges being paper (white), the four corners + interior
+// being ink (black). Exercises the production code path via HostCanvas
+// (same Canvas interface as the device).
 
 #include "render/canvas_host.h"
 #include "render/plan_marker.h"
@@ -13,21 +13,38 @@ using namespace bustaferl;
 void setUp() {}
 void tearDown() {}
 
-void test_plan_mark_perimeter_is_paper() {
+void test_plan_mark_rounded_edges_are_paper() {
   Frame fb;
   fb.clear(false);
   render::HostCanvas canvas(fb);
   drawPlanMark(canvas, 10, 20);
-  // Four corners.
-  TEST_ASSERT_TRUE(fb.getPixel(10, 20));
-  TEST_ASSERT_TRUE(fb.getPixel(14, 20));
-  TEST_ASSERT_TRUE(fb.getPixel(10, 24));
-  TEST_ASSERT_TRUE(fb.getPixel(14, 24));
-  // Mid-edge points.
+  // Top and bottom edge pixels (excluding the rounded corners).
+  TEST_ASSERT_TRUE(fb.getPixel(11, 20));
   TEST_ASSERT_TRUE(fb.getPixel(12, 20));
+  TEST_ASSERT_TRUE(fb.getPixel(13, 20));
+  TEST_ASSERT_TRUE(fb.getPixel(11, 24));
   TEST_ASSERT_TRUE(fb.getPixel(12, 24));
+  TEST_ASSERT_TRUE(fb.getPixel(13, 24));
+  // Left and right edge pixels (excluding the rounded corners).
+  TEST_ASSERT_TRUE(fb.getPixel(10, 21));
   TEST_ASSERT_TRUE(fb.getPixel(10, 22));
+  TEST_ASSERT_TRUE(fb.getPixel(10, 23));
+  TEST_ASSERT_TRUE(fb.getPixel(14, 21));
   TEST_ASSERT_TRUE(fb.getPixel(14, 22));
+  TEST_ASSERT_TRUE(fb.getPixel(14, 23));
+}
+
+void test_plan_mark_corners_are_ink() {
+  Frame fb;
+  fb.clear(false);
+  render::HostCanvas canvas(fb);
+  drawPlanMark(canvas, 10, 20);
+  // The four corners of the 5×5 bounding box stay ink — that's what makes
+  // the marker read as a ring rather than a square.
+  TEST_ASSERT_FALSE(fb.getPixel(10, 20));
+  TEST_ASSERT_FALSE(fb.getPixel(14, 20));
+  TEST_ASSERT_FALSE(fb.getPixel(10, 24));
+  TEST_ASSERT_FALSE(fb.getPixel(14, 24));
 }
 
 void test_plan_mark_interior_stays_ink() {
@@ -56,7 +73,8 @@ void test_plan_mark_does_not_leak_outside_5x5() {
 
 int main(int, char **) {
   UNITY_BEGIN();
-  RUN_TEST(test_plan_mark_perimeter_is_paper);
+  RUN_TEST(test_plan_mark_rounded_edges_are_paper);
+  RUN_TEST(test_plan_mark_corners_are_ink);
   RUN_TEST(test_plan_mark_interior_stays_ink);
   RUN_TEST(test_plan_mark_does_not_leak_outside_5x5);
   return UNITY_END();
