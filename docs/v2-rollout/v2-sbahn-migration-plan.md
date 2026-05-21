@@ -1057,7 +1057,7 @@ Substantieller Schritt — fünf neue Sub-Module in `render/`, ersetzte `render/
 
 #### Schritt 8 — Tests umstellen
 
-- [ ] erledigt
+- [x] erledigt
 
 Sammelschritt für alle Test-Touch-Sites, die durch STREAM_COUNT-Änderung, neuen State-Selektor und Layout-Rewrite rot wurden.
 
@@ -1146,7 +1146,7 @@ Sammelschritt für alle Test-Touch-Sites, die durch STREAM_COUNT-Änderung, neue
 
 #### Schritt 10 — Doku-Sync
 
-- [ ] erledigt
+- [x] erledigt
 
 - **10.1** [CONCEPT.md §v2-11](../CONCEPT.md#11-migrationsschritte-zur-späteren-umsetzung-nicht-teil-dieses-konzepts): Header von „Migrationsschritte (zur späteren Umsetzung, nicht Teil dieses Konzepts)" auf „Migrationsschritte (umgesetzt, siehe [docs/v2-sbahn-migration-plan.md](docs/v2-sbahn-migration-plan.md))" ändern. Liste der elf Sub-Steps abhaken oder durch Verweis auf diesen Plan ersetzen. Zusätzlich: CONCEPT.md §v2-7 (Layout-Block 3) durch Verweis auf `docs/design_handoff_display/` ersetzen oder synchronisieren — das alte Block-3-Mockup ist nach Schritt 7 nicht mehr aktuell. **Zusätzlich (Pre-Phase 2026-05-19)**: CONCEPT.md §v2-3 (Datenquellen-Tabelle, ca. Z. 420–425) und §v2-4 (Request-Schema, ca. Z. 445–457, 493–494, 603) korrigieren bzw. ergänzen, dass die 8-stelligen EVAs (`8100634` / `8100002`) nur für die Legacy-`stboard.exe`-HTML-Schnittstelle gelten; für `mgate.exe` benötigt HAFAS die internen Location-IDs `1292301` (Atzgersdorf) und `1290401` (Wien Hbf). Belege-Block ergänzen: LocMatch-Query gegen `mgate.exe` als nachvollziehbarer Weg, die HAFAS-IDs zu beschaffen.
 - **10.2** [README.md](../README.md) Zeile 4: „nächste Abfahrten der Wiener-Linien-Buslinien 58A, 58B" um „und der ÖBB-S-Bahn Atzgersdorf → Wien Hbf" ergänzen. Display-ASCII-Block (Zeile 10-18) komplett ersetzen durch das neue Layout-Schema aus [docs/design_handoff_display/README.md](design_handoff_display/README.md). Banner-Liste entfällt (Stale ist jetzt `--:--`-Signal statt Banner); stattdessen die 7 Display-States in zwei Sätzen erklären, mit Verweis auf USER.md.

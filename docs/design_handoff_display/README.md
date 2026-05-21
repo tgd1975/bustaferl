@@ -1,5 +1,11 @@
 # Handoff: bustaferl Display Layout (V2)
 
+> **Status (2026-05): umgesetzt in v2.0.** Dieses Bundle ist die
+> autoritative Referenz für das e-Paper-Layout. Die Pixel-Parität
+> zwischen Host-Renderer und Gerät ist über `test_native_render_all_states`
+> abgesichert. Der Rollout ist in [../v2-rollout/v2-sbahn-migration-plan.md](../v2-rollout/v2-sbahn-migration-plan.md)
+> Schritt für Schritt protokolliert.
+
 ## Overview
 
 The new display layout for the bustaferl e-paper module. Shows the next bus and S‑Bahn departures relevant to the stop where the device is mounted (Tullnertalgasse), plus the next departures from Endemanngasse (the following stop) and from the S‑Bahn station Atzgersdorf toward Wien Hbf. A small network plan at the bottom anchors the user spatially.
@@ -52,7 +58,7 @@ Numbers must be **tabular** — every digit the same width, so columns of times 
 
 ## Layout (Normal screen, 400 × 300)
 
-```
+```text
 ┌──────────────────────────────────────────────────┐
 │ (10 px top padding · 18 px side padding)         │
 │ TULLNERTALGASSE                                  │  ← header, 12 px Silkscreen
@@ -214,7 +220,7 @@ Initial render after power‑on or reset, before the first data has arrived.
 
 Each render takes a `data` object with this shape (TypeScript‑ish notation):
 
-```
+```ts
 type DepartureRow = {
   line: string;            // "58A", "58B", "S2", …
   dir?: string;            // "Atzgers.", "Hietzing", …  (TG/EG only)
@@ -251,7 +257,7 @@ These thresholds are starting points — tune to taste against real device behav
 
 ## Design Tokens
 
-```
+```text
 Colors
   ink           #0d0d0d   (drawn pixels)
   paper         #f4f1e8   (background — actual e-paper white on device)

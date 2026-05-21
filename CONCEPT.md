@@ -37,7 +37,7 @@ v2 — S-Bahn Atzgersdorf:
 - [8. Plan-Hints (Analogie zu v1 §12)](#8-plan-hints-analogie-zu-v1-12)
 - [9. Edge Cases und Fehlerbilder](#9-edge-cases-und-fehlerbilder)
 - [10. Pre-Flash-Verifikation & Open Questions](#10-pre-flash-verifikation--open-questions)
-- [11. Migrationsschritte (zur späteren Umsetzung, nicht Teil dieses Konzepts)](#11-migrationsschritte-zur-späteren-umsetzung-nicht-teil-dieses-konzepts)
+- [11. Migrationsschritte (umgesetzt)](#11-migrationsschritte-umgesetzt-siehe-docsv2-rolloutv2-sbahn-migration-planmd)
 - [Quellen (Web-Recherche zu v2)](#quellen-web-recherche-zu-v2)
 
 ---
@@ -417,14 +417,18 @@ Die Wiener-Linien-OGD-Schnittstelle (RBL-Monitor) deckt **keine ÖBB-S-Bahn ab**
 
 ## 3. Stationen-IDs
 
-ÖBB verwendet **EVA-Nummern**. Verifiziert über den offiziellen ÖBB-Stationssucher-Link in den Bahnhofs-Suchergebnissen:
+ÖBB verwendet zwei verschiedene ID-Räume:
 
-| Station | EVA | Beleg |
-|---|---|---|
-| Wien Atzgersdorf | **8100634** | `fahrplan.oebb.at/bin/stboard.exe/dn?input=8100634` — offizieller Stationsbutton |
-| Wien Hauptbahnhof | **8100002** | Standard-HAFAS-Mapping, auch in DB-EVA-Listen geführt |
+| Verwendung | Station | Wert | Beleg |
+|---|---|---|---|
+| Legacy `stboard.exe` (HTML, optional) | Wien Atzgersdorf | `8100634` | `fahrplan.oebb.at/bin/stboard.exe/dn?input=8100634` — offizieller Stationsbutton |
+| Legacy `stboard.exe` (HTML, optional) | Wien Hauptbahnhof | `8100002` | Standard-HAFAS-Mapping, auch in DB-EVA-Listen geführt |
+| **`mgate.exe` (Produktivpfad)** | Wien Atzgersdorf | `1292301` | `mgate.exe` LocMatch-Query (Beleg siehe §10) |
+| **`mgate.exe` (Produktivpfad)** | Wien Hauptbahnhof | `1290401` | `mgate.exe` LocMatch-Query (Beleg siehe §10) |
 
-Beide Werte sind Pre-Flash-Konstanten und gehören in `config.h`. Es gibt keine sinnvolle Laufzeit-Suche.
+Die 8-stelligen EVA-Nummern gelten ausschließlich für die Legacy-HTML-Schnittstelle. Für `mgate.exe` benötigt HAFAS die **internen Location-IDs** (`1292301` / `1290401`), wie die ÖBB-Webapp sie im LocMatch-Aufruf liefert (Pre-Phase 2026-05-19). Beide IDs sind Pre-Flash-Konstanten und gehören in `config.h` (`OEBB_EXTID_ATZG` / `OEBB_EXTID_WIENHBF`). Es gibt keine sinnvolle Laufzeit-Suche.
+
+Reproduktionsweg, falls IDs erneut beschafft werden müssen: gegen `mgate.exe` einen `LocMatch`-Request mit `input.loc.name` = `Wien Atzgersdorf*` schicken (Body-Skelett wie unten, nur `meth: "LocMatch"`); der Response enthält `match.locL[].extId`, das ist der Wert für `stbLoc.extId` im StationBoard-Aufruf.
 
 ## 4. Request-Schema (Primär: mgate.exe)
 
@@ -442,8 +446,8 @@ POST `https://fahrplan.oebb.at/bin/mgate.exe` mit folgendem Body (Beispiel; konk
     "meth": "StationBoard",
     "req": {
       "type": "DEP",
-      "stbLoc": { "type": "S", "extId": "8100634" },
-      "dirLoc": { "type": "S", "extId": "8100002" },
+      "stbLoc": { "type": "S", "extId": "1292301" },
+      "dirLoc": { "type": "S", "extId": "1290401" },
       "maxJny": 6,
       "jnyFltrL": [{ "type": "PROD", "mode": "INC", "value": "63" }]
     }
@@ -453,8 +457,8 @@ POST `https://fahrplan.oebb.at/bin/mgate.exe` mit folgendem Body (Beispiel; konk
 
 Felder:
 
-- `stbLoc.extId` → EVA Atzgersdorf
-- `dirLoc.extId` → EVA Wien Hbf. Filtert HAFAS-seitig auf Züge, die Hbf als kommenden Halt haben. Das schließt automatisch die Gegenrichtung (Mödling/Liesing) aus, ohne dass wir auf Endstation-Strings filtern müssen.
+- `stbLoc.extId` → HAFAS-Location-ID Atzgersdorf (`1292301`, **nicht** die 8-stellige EVA)
+- `dirLoc.extId` → HAFAS-Location-ID Wien Hbf (`1290401`). Filtert HAFAS-seitig auf Züge, die Hbf als kommenden Halt haben. Das schließt automatisch die Gegenrichtung (Mödling/Liesing) aus, ohne dass wir auf Endstation-Strings filtern müssen.
 - `jnyFltrL` → bitmask `value="63"` = S-Bahn + Regio + REX (Bits 0–5). Die echten Bitwerte für das ÖBB-Profil sind vor Flash zu verifizieren — siehe §10 Open Questions.
 - `maxJny: 6` → 6 Abfahrten anfragen, im Client die ersten ≤3 Richtung Hbf nehmen. Puffer, falls `dirLoc` einzelne Fahrten doch nicht ausfiltert (z. B. Triebwagenwende).
 
@@ -531,6 +535,8 @@ Neu zu beachten:
 
 ## 7. Layout-Block 3 (Display)
 
+> **Aktueller Stand seit v2.0**: Block 3 (und das gesamte Display-Layout) ist in [docs/design_handoff_display/](docs/design_handoff_display/) ausgelagert. Die Screenshots `screen-1-normal.png` … `screen-7-boot.png` sind die autoritative Referenz; das untenstehende ASCII-Mockup ist nur noch historischer Snapshot des frühen Entwurfs.
+
 Bisheriger Südtirolerplatz-Block:
 
 ```text
@@ -585,18 +591,17 @@ Vor dem ersten Flash auf der echten Hardware durchzuführen:
 5. **Hint-Variante.** §8: Default 1 (kein Hint). Vor Roll-out kurz im Vorzimmer beobachten, ob das morgendliche Verhalten reicht.
 6. **HTTP-Heap-Spitze** unter realer Antwort-Größe messen. Bestehende Tests in [test_device_render](test/test_device_render/test_main.cpp) um einen Heap-Check für den S-Bahn-Pfad erweitern.
 
-## 11. Migrationsschritte (zur späteren Umsetzung, nicht Teil dieses Konzepts)
+## 11. Migrationsschritte (umgesetzt, siehe [docs/v2-rollout/v2-sbahn-migration-plan.md](docs/v2-rollout/v2-sbahn-migration-plan.md))
 
-In Reihenfolge:
-
-1. `MAGIC` in [Esp32PersistentStore](src/hal/Esp32PersistentStore.h) bumpen.
-2. `Stream`-Enum und `STREAM_COUNT` anpassen, alte U1-Konstanten löschen, neue ÖBB-Konstanten anlegen.
-3. Neuer Parser `oebb_hafas_parse.{cpp,h}` analog zu `efa_parse`; Fixture aus echter Antwort in `test/test_oebb_hafas_parse/fixtures/oebb_live.h`.
-4. `api_fetcher`: POST-Pfad ergänzen (bisher nur GET); Body via `ArduinoJson` zusammenbauen.
-5. `main.cpp::buildFilters` und `buildScheduleFilters` umbauen (oder Schedule-Pfad für S-Bahn-Stream leer lassen, abhängig von §8 Hint-Entscheidung).
-6. `layout.cpp` Block 3 neu zeichnen.
-7. On-Device-Test mit `make test-device` (env:device-*) erweitert um S-Bahn-Stream-Suite (Parser, Layout, Heap).
-8. README/v1-Abschnitt final aktualisieren — *erst nach erfolgreicher Verifikation*, damit die Hauptdoku den tatsächlich gefahrenen Stand spiegelt.
+Die ursprüngliche Skizze ist in den ausführlichen Plan überführt worden;
+Stand und Reihenfolge werden dort gepflegt. Die hier ehemals aufgeführten
+Schritte sind über Sessions B–F vollständig in den Code geflossen
+(`MAGIC`-Bump, Stream-Enum-Umstellung, `oebb_hafas_parse.{h,cpp}`, `httpPost`
+in `INetwork`/`Esp32Network`, `filter_builder::buildOebbFilter`,
+`render/`-Module für das neue Layout, Tests in `test_native_*` und
+`test_device_*`). Layout-Block-3 ist außerdem nach `docs/design_handoff_display/`
+ausgelagert — `screen-*.png` sind die autoritative Referenz, dieser §-Block
+hier verweist nur darauf.
 
 ## Quellen (Web-Recherche zu v2)
 
