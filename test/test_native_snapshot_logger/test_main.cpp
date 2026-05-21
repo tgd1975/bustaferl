@@ -53,8 +53,8 @@ void test_format_slot_hint_tag() {
   d.valid = true;
   d.when = 1704112440;
   d.source = DepartureSource::Hint;
-  std::string out = formatSlot("U1-Obe[1]", d);
-  TEST_ASSERT_EQUAL_STRING("[api]   U1-Obe[1]: 12:34 HINT epoch=1704112440\n",
+  std::string out = formatSlot("SBahn[1]", d);
+  TEST_ASSERT_EQUAL_STRING("[api]   SBahn[1]: 12:34 HINT epoch=1704112440\n",
                            out.c_str());
 }
 

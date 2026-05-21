@@ -1,13 +1,23 @@
 // On-device smoke test: walks the production fetch path layer by layer so a
 // silent failure (HTTPS, parse, filter mismatch) names itself in the Unity
 // report instead of disappearing behind a deepSleep().
+//
+// v2 (Schritt 8.3): pipeline now has two endpoints — Wiener Linien OGD
+// monitor for the 3 bus streams and ÖBB HAFAS mgate.exe for the S-Bahn
+// stream. Both are exercised here. Bus streams use the prod URL/filter
+// helpers directly (`apiUrlForBatch`, `buildStreamFilters`); the HAFAS path
+// runs through `fetchSnapshot` end-to-end so the full integration plus
+// auth-tripwire bookkeeping is on the critical path.
 
 #include "config.h"
+#include "data/PersistedMeta.h"
+#include "data/oebb_hafas_parse.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Network.h"
 #include "logic/filter_builder.h"
 #include "logic/sleep_planner.h"
+#include "logic/snapshot_fetcher.h"
 #include "secrets.h"
 
 #include <Arduino.h>
@@ -41,19 +51,20 @@ void printSlot(const char *stream, const Departure &d) {
   }
   struct tm local;
   localtime_r(&d.when, &local);
-  Serial.printf("[api] %s slot=%02d:%02d %s epoch=%lld\n", stream,
+  Serial.printf("[api] %s slot=%02d:%02d %s line=%-3s epoch=%lld\n", stream,
                 local.tm_hour, local.tm_min,
                 d.source == DepartureSource::Realtime ? "RT" : "PLAN",
-                static_cast<long long>(d.when));
+                d.line_label, static_cast<long long>(d.when));
 }
 
-std::string apiUrl() {
+// Build a single-batch OGD probe URL with all three bus stopIds. Production
+// splits these into batches of two (STOPIDS_PER_QUERY=2), but for a one-shot
+// reachability check a single URL is simpler and exercises the same parser.
+std::string ogdProbeUrl() {
   std::string url = WL_API_BASE;
   char buf[96];
-  snprintf(buf, sizeof(buf),
-           "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
-           RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
-           RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
+  std::snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d",
+                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN);
   url += buf;
   return url;
 }
@@ -70,9 +81,9 @@ void test_wifi_connects(void) {
 }
 
 void test_http_get_returns_body(void) {
-  Serial.printf("[api] GET %s\n", apiUrl().c_str());
+  Serial.printf("[api] GET %s\n", ogdProbeUrl().c_str());
   {
-    auto _r = g_net.httpGet(apiUrl(), g_body);
+    auto _r = g_net.httpGet(ogdProbeUrl(), g_body);
     TEST_ASSERT_TRUE_MESSAGE(_r.ok && _r.http_status >= 200 &&
                                  _r.http_status < 300,
                              "httpGet returned non-2xx");
@@ -94,7 +105,7 @@ void test_http_get_returns_body(void) {
                            "response missing \"monitors\" key");
 }
 
-void test_parse_all_rbls_respond(void) {
+void test_parse_all_bus_streams_respond(void) {
   StreamFilter filters[STREAM_COUNT];
   buildStreamFilters(filters);
   StreamSnapshot snap;
@@ -103,18 +114,13 @@ void test_parse_all_rbls_respond(void) {
   TEST_ASSERT_TRUE_MESSAGE(snap.api_ok, "api_ok was false after parse");
 
   Serial.printf("[api] streams: 58A-Atz r=%d f=%d | "
-                "58A-Hie r=%d f=%d | 58B r=%d f=%d | "
-                "U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
+                "58A-Hie r=%d f=%d | 58B r=%d f=%d\n",
                 snap.stream[STREAM_58A_ATZ].endpoint_responded,
                 snap.stream[STREAM_58A_ATZ].filter_matched,
                 snap.stream[STREAM_58A_HIETZING].endpoint_responded,
                 snap.stream[STREAM_58A_HIETZING].filter_matched,
                 snap.stream[STREAM_58B_ATZ].endpoint_responded,
-                snap.stream[STREAM_58B_ATZ].filter_matched,
-                snap.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
-                snap.stream[STREAM_U1_LEOPOLDAU].filter_matched,
-                snap.stream[STREAM_U1_OBERLAA].endpoint_responded,
-                snap.stream[STREAM_U1_OBERLAA].filter_matched);
+                snap.stream[STREAM_58B_ATZ].filter_matched);
 
   // Per-stream parsed departure times — visible in serial so a wrong towards
   // filter (endpoint_responded but no slots) is obvious at a glance.
@@ -126,10 +132,6 @@ void test_parse_all_rbls_respond(void) {
     printSlot(tag, snap.stream[STREAM_58A_HIETZING].slot[slot]);
     std::snprintf(tag, sizeof(tag), "58B-Atz[%d]", slot);
     printSlot(tag, snap.stream[STREAM_58B_ATZ].slot[slot]);
-    std::snprintf(tag, sizeof(tag), "U1-Leo[%d]", slot);
-    printSlot(tag, snap.stream[STREAM_U1_LEOPOLDAU].slot[slot]);
-    std::snprintf(tag, sizeof(tag), "U1-Obe[%d]", slot);
-    printSlot(tag, snap.stream[STREAM_U1_OBERLAA].slot[slot]);
   }
 
   TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58A_ATZ].endpoint_responded,
@@ -138,13 +140,60 @@ void test_parse_all_rbls_respond(void) {
                            "RBL_TULL_HIETZING (3757) did not respond");
   TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58B_ATZ].endpoint_responded,
                            "RBL_ENDEMANN (8132) did not respond");
-  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
-                           "RBL_SUEDTIROLER_LEOPOLDAU (4105) did not respond");
-  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_OBERLAA].endpoint_responded,
-                           "RBL_SUEDTIROLER_OBERLAA (4124) did not respond");
+
+  // S-Bahn stream is handled by the HAFAS path (next test) — it must stay
+  // untouched by the OGD parse.
+  TEST_ASSERT_FALSE_MESSAGE(snap.stream[STREAM_SBAHN_HBF].endpoint_responded,
+                            "OGD parse unexpectedly touched the S-Bahn slot");
 
   // Filter match is time-of-day dependent (no buses overnight). Don't assert
   // it — but make it visible above so a mismatch is obvious in the log.
+}
+
+void test_fetchSnapshot_fills_oebb_stream(void) {
+  // End-to-end: run the production `fetchSnapshot` which executes the OGD
+  // batch loop AND the HAFAS mgate.exe POST. Asserts that the S-Bahn slot is
+  // populated, line_label is non-empty (S2/S3/S4/REX vary per slot), and
+  // that the auth-tripwire stays clear on a happy-path response.
+  StreamFilter filters[STREAM_COUNT];
+  buildStreamFilters(filters);
+  OebbStreamFilter oebb_filter = buildOebbFilter();
+  std::string ogd_base = WL_API_BASE;
+  std::string mgate_url = OEBB_MGATE_URL;
+  FetchInputs inputs{ogd_base, mgate_url, filters, oebb_filter};
+  StreamSnapshot snap;
+  FetchSummary summary;
+  PersistedMeta meta{};
+  Serial.printf("[api] fetchSnapshot start, free heap = %u\n",
+                ESP.getFreeHeap());
+  bool ok = fetchSnapshot(g_net, inputs, snap, summary, meta);
+  Serial.printf("[api] fetchSnapshot ok=%d batches=%d failed=%d auth_seen=%d "
+                "heap=%u\n",
+                ok, summary.total_batches, summary.failed_batches,
+                meta.auth_error_seen, ESP.getFreeHeap());
+
+  TEST_ASSERT_TRUE_MESSAGE(ok, "fetchSnapshot reported not ok");
+  TEST_ASSERT_FALSE_MESSAGE(meta.auth_error_seen,
+                            "auth tripwire fired on a happy-path fetch");
+
+  for (int slot = 0; slot < SLOTS_PER_STREAM; ++slot) {
+    char tag[24];
+    std::snprintf(tag, sizeof(tag), "SBahn[%d]", slot);
+    printSlot(tag, snap.stream[STREAM_SBAHN_HBF].slot[slot]);
+  }
+
+  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_SBAHN_HBF].endpoint_responded,
+                           "HAFAS mgate.exe did not respond (S-Bahn)");
+  // Filter-matched depends on time-of-day (no trains overnight). Don't
+  // hard-assert — but during daytime expect at least slot[0] to be valid and
+  // carry a line_label. Soak gate (Session G) re-validates this at scale.
+  if (snap.stream[STREAM_SBAHN_HBF].filter_matched) {
+    TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_SBAHN_HBF].slot[0].valid,
+                             "filter_matched but slot[0] is invalid");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(
+        0, std::strlen(snap.stream[STREAM_SBAHN_HBF].slot[0].line_label),
+        "line_label empty on a filter-matched S-Bahn slot");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -264,7 +313,7 @@ void test_ntp_completes_before_api_query(void) {
 
   std::string body;
   {
-    auto _r = g_net.httpGet(apiUrl(), body);
+    auto _r = g_net.httpGet(ogdProbeUrl(), body);
     TEST_ASSERT_TRUE_MESSAGE(_r.ok && _r.http_status >= 200 &&
                                  _r.http_status < 300,
                              "ordering test: httpGet non-2xx");
@@ -316,7 +365,8 @@ void setup() {
   RUN_TEST(test_warm_boot_recovery_sequence);
 
   RUN_TEST(test_http_get_returns_body);
-  RUN_TEST(test_parse_all_rbls_respond);
+  RUN_TEST(test_parse_all_bus_streams_respond);
+  RUN_TEST(test_fetchSnapshot_fills_oebb_stream);
 
   // Clock is now synced (by the recovery test). These verify post-sync state.
   RUN_TEST(test_ntp_sync_brings_clock_to_present);

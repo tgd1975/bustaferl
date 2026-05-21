@@ -15,8 +15,10 @@
 #include "hal/IPersistentStore.h"
 #include "logic/api_fetcher.h"
 #include "logic/display_apply.h"
+#include "logic/filter_builder.h"
 #include "logic/refresh_planner.h"
 #include "logic/slot_merger.h"
+#include "logic/snapshot_fetcher.h"
 #include "render/layout.h"
 #include "secrets.h"
 
@@ -43,24 +45,15 @@ Frame g_frame_prev;
 PersistedMeta g_disp_meta;
 uint32_t g_initial_heap = 0;
 
+// v2: probe the three OGD bus stopIds in one URL. The S-Bahn stream is
+// exercised via `fetchSnapshot` (which adds the HAFAS mgate.exe call).
 std::string apiUrl() {
   std::string url = WL_API_BASE;
   char buf[96];
-  std::snprintf(buf, sizeof(buf),
-                "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
-                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
-                RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
+  std::snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d",
+                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN);
   url += buf;
   return url;
-}
-
-void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
-  f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
-  f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
-  f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
-  f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
-                            TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
 }
 
 } // namespace
@@ -102,19 +95,25 @@ void test_pipeline_one_full_cycle(void) {
                                         "smoke: live body suspiciously small");
 
   StreamFilter filters[STREAM_COUNT];
-  buildFilters(filters);
+  buildStreamFilters(filters);
   StreamSnapshot snap;
   bool parsed = parseMonitorResponse(body, filters, snap);
   TEST_ASSERT_TRUE_MESSAGE(parsed, "smoke: parse of live body failed");
 
-  int endpoints_responded = 0;
-  for (int i = 0; i < STREAM_COUNT; ++i)
-    endpoints_responded += snap.stream[i].endpoint_responded ? 1 : 0;
-  Serial.printf("[smoke] endpoints_responded=%d/%d\n", endpoints_responded,
-                STREAM_COUNT);
-  TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(
-      3, endpoints_responded,
-      "smoke: fewer than 3 endpoints responded — hardware/network suspect");
+  // STREAM_SBAHN_HBF is not filled by the OGD parse — its endpoint counter
+  // would always read 0 here. Restrict the per-stream tally to the bus
+  // streams; the S-Bahn path is checked at the bottom via fetchSnapshot.
+  int bus_endpoints_responded = 0;
+  for (int i = 0; i < STREAM_COUNT; ++i) {
+    if (i == STREAM_SBAHN_HBF)
+      continue;
+    bus_endpoints_responded += snap.stream[i].endpoint_responded ? 1 : 0;
+  }
+  Serial.printf("[smoke] bus endpoints_responded=%d/3\n",
+                bus_endpoints_responded);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(
+      3, bus_endpoints_responded,
+      "smoke: not all 3 bus endpoints responded — hardware/network suspect");
 
   // Walk the render + planRefresh + RecordingDisplay (RLE roundtrip)
   // path once on the live parse result. Catches "renderFrame blows up

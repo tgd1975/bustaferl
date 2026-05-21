@@ -121,7 +121,11 @@ void test_save_schedule_round_trip() {
   s.hint[STREAM_58A_ATZ].last_today = 1700009999;
   s.hint[STREAM_58A_ATZ].first_tomorrow[0] = 1700020000;
   s.hint[STREAM_58A_ATZ].first_tomorrow[1] = 1700020600;
-  s.hint[STREAM_U1_OBERLAA].last_today = 1700008888;
+  // STREAM_SBAHN_HBF is the v2 successor to the old U1-Oberlaa slot index
+  // and has no EFA hint path in production — but the RTC slot must still
+  // round-trip any value written into it (saveSchedule is structural, not
+  // semantic).
+  s.hint[STREAM_SBAHN_HBF].last_today = 1700008888;
   g_store.saveSchedule(s);
   ScheduleSnapshot loaded = g_store.loadSchedule();
   TEST_ASSERT_EQUAL_INT64(1700001234, loaded.fetched_at);
@@ -130,8 +134,7 @@ void test_save_schedule_round_trip() {
                           loaded.hint[STREAM_58A_ATZ].first_tomorrow[0]);
   TEST_ASSERT_EQUAL_INT64(1700020600,
                           loaded.hint[STREAM_58A_ATZ].first_tomorrow[1]);
-  TEST_ASSERT_EQUAL_INT64(1700008888,
-                          loaded.hint[STREAM_U1_OBERLAA].last_today);
+  TEST_ASSERT_EQUAL_INT64(1700008888, loaded.hint[STREAM_SBAHN_HBF].last_today);
   // Streams we did not touch must still come back zeroed.
   TEST_ASSERT_EQUAL_INT64(0, loaded.hint[STREAM_58B_ATZ].first_tomorrow[0]);
 }

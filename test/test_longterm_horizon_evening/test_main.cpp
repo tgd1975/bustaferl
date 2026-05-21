@@ -1,10 +1,13 @@
 // Long-term Horizon-Evening test (~5 h). Starts at ~21:30 local time
-// and runs through the evening dry-up: U1 has earlier night-stop than
-// the 58A/B buses, so the streams empty out at different cycles. The
-// test asserts (a) at least one stream actively dries up during the
-// observation window, (b) the sleep-planner returns NO_DATA_SLEEP_S
-// at least once after all live streams empty, and (c) heap stays
-// stable through the transition into nighttime silence.
+// and runs through the evening dry-up: the bus streams (58A/58B) empty
+// out at different cycles around the night-stop. The test asserts (a)
+// at least one stream actively dries up during the observation window,
+// (b) the sleep-planner returns NO_DATA_SLEEP_S at least once after
+// all live streams empty, and (c) heap stays stable through the
+// transition into nighttime silence.
+//
+// v2: the S-Bahn stream (STREAM_SBAHN_HBF) has no EFA hint path —
+// only the 3 bus streams participate in the Hint-Bridge check.
 //
 // Operator note: launch ~21:30; finishes ~02:30. PIO's default test
 // timeout may not tolerate 5 h — if it kills the run, drive this via
@@ -70,21 +73,10 @@ ScheduleSnapshot g_schedule; // populated once at start_conditions
 std::string apiUrl() {
   std::string url = WL_API_BASE;
   char buf[96];
-  std::snprintf(buf, sizeof(buf),
-                "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
-                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
-                RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
+  std::snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d",
+                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN);
   url += buf;
   return url;
-}
-
-void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
-  f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
-  f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
-  f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
-  f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
-                            TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
 }
 
 } // namespace
@@ -130,7 +122,7 @@ void test_evening_start_conditions(void) {
 
 void test_dryup_and_sleep_decisions(void) {
   StreamFilter filters[STREAM_COUNT];
-  buildFilters(filters);
+  buildStreamFilters(filters);
 
   for (int cycle = 1; cycle <= CYCLES; ++cycle) {
     time_t t_cycle = g_clock.now();
@@ -176,6 +168,9 @@ void test_dryup_and_sleep_decisions(void) {
     if (parsed) {
       merged_for_render = mergeSlots(snap, g_schedule, t_cycle);
       for (int s = 0; s < STREAM_COUNT; ++s) {
+        // S-Bahn has no EFA hint path in v2 — exclude from bridge count.
+        if (s == STREAM_SBAHN_HBF)
+          continue;
         const bool rt_empty = !snap.stream[s].slot[0].valid;
         const bool merged_filled =
             merged_for_render.stream[s].slot[0].valid &&

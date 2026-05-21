@@ -41,7 +41,7 @@ namespace bustaferl {
 namespace {
 
 // Returns true iff DIVA `d` appears in filters[0..i-1] — used to skip
-// duplicate Haltestellen (Südtiroler Platz is shared by both U1 streams).
+// duplicate Haltestellen (a single Haltestelle can host multiple streams).
 bool isDuplicateDiva(const ScheduleStreamFilter (&filters)[STREAM_COUNT],
                      int up_to, int d) {
   for (int j = 0; j < up_to; ++j) {

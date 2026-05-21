@@ -21,6 +21,7 @@
 #include "hal/IPersistentStore.h"
 #include "logic/api_fetcher.h"
 #include "logic/display_apply.h"
+#include "logic/filter_builder.h"
 #include "logic/filter_health.h"
 #include "logic/refresh_planner.h"
 #include "logic/slot_merger.h"
@@ -64,21 +65,10 @@ int g_retry_succeeded = 0; // succeeded on attempt > 1
 std::string apiUrl() {
   std::string url = WL_API_BASE;
   char buf[96];
-  std::snprintf(buf, sizeof(buf),
-                "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
-                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
-                RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
+  std::snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d",
+                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN);
   url += buf;
   return url;
-}
-
-void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
-  f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
-  f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
-  f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
-  f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
-                            TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
 }
 
 } // namespace
@@ -100,7 +90,7 @@ void test_setup_wifi_and_clock(void) {
 
 void test_run_soak_cycles(void) {
   StreamFilter filters[STREAM_COUNT];
-  buildFilters(filters);
+  buildStreamFilters(filters);
 
   time_t test_started = g_clock.now();
 
@@ -164,7 +154,7 @@ void test_run_soak_cycles(void) {
     Serial.printf(
         "[longterm] cycle=%d/%d %02d:%02d:%02d ok=%d parsed=%d attempts=%d "
         "body=%u heap_b=%u heap_a=%u Δ=%d 58A-Atz r=%d f=%d | 58A-Hie r=%d "
-        "f=%d | 58B r=%d f=%d | U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
+        "f=%d | 58B r=%d f=%d\n",
         cycle, CYCLES, local.tm_hour, local.tm_min, local.tm_sec, fo.ok, parsed,
         fo.attempts_taken, static_cast<unsigned>(body.size()), heap_before,
         heap_after,
@@ -174,11 +164,7 @@ void test_run_soak_cycles(void) {
         snap.stream[STREAM_58A_HIETZING].endpoint_responded,
         snap.stream[STREAM_58A_HIETZING].filter_matched,
         snap.stream[STREAM_58B_ATZ].endpoint_responded,
-        snap.stream[STREAM_58B_ATZ].filter_matched,
-        snap.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
-        snap.stream[STREAM_U1_LEOPOLDAU].filter_matched,
-        snap.stream[STREAM_U1_OBERLAA].endpoint_responded,
-        snap.stream[STREAM_U1_OBERLAA].filter_matched);
+        snap.stream[STREAM_58B_ATZ].filter_matched);
 
     // Monotonic clock check — catches NTP storms / DST math regressions.
     TEST_ASSERT_GREATER_OR_EQUAL_MESSAGE(test_started, g_clock.now(),

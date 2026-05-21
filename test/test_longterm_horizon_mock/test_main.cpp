@@ -21,6 +21,7 @@
 #include "hal/Esp32Display.h"
 #include "hal/IPersistentStore.h"
 #include "logic/display_apply.h"
+#include "logic/filter_builder.h"
 #include "logic/refresh_planner.h"
 #include "logic/slot_merger.h"
 #include "render/layout.h"
@@ -64,21 +65,10 @@ PersistedMeta g_disp_meta;
 std::string apiUrl() {
   std::string url = MOCK_API_BASE;
   char buf[96];
-  std::snprintf(buf, sizeof(buf),
-                "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
-                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
-                RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
+  std::snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d",
+                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN);
   url += buf;
   return url;
-}
-
-void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
-  f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
-  f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
-  f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
-  f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
-                            TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
 }
 
 // Minimal plain-HTTP GET (the mock server is loopback, no TLS). Mirrors
@@ -128,7 +118,7 @@ void setup() {
   g_display.init();
 
   StreamFilter filters[STREAM_COUNT];
-  buildFilters(filters);
+  buildStreamFilters(filters);
 
   for (int cycle = 1; cycle <= MOCK_TOTAL_CYCLES; ++cycle) {
     uint32_t t_cycle_start = millis();

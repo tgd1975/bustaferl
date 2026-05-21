@@ -21,9 +21,10 @@ struct ScheduleStreamFilter {
   std::string line;             // exact match against servingLine.number
   std::string direction_prefix; // prefix match against servingLine.direction
   // Optional second prefix; a departure matches the stream if EITHER prefix
-  // matches. Used for U1-Süd where EFA returns both "Wien Oberlaa" (full
-  // line) and "Wien Alaudagasse" (short turnaround) as legitimate same-
-  // direction variants. Empty = no alternative.
+  // matches. Useful for lines where EFA returns multiple legitimate
+  // direction variants (e.g. a short-turnaround terminus). Empty = no
+  // alternative. Currently unused by v2's live filters but kept for future
+  // stops that need it.
   std::string direction_prefix_alt;
 };
 

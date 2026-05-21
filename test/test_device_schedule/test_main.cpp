@@ -1,15 +1,20 @@
-// On-device test for the EFA schedule pipeline. Reproduces the exact
-// cold-boot sequence that was crashing with abort() during the third EFA
-// fetch: WiFi up -> NTP sync -> three sequential XSLT_DM_REQUEST calls.
-// Logs free heap at every step so the regression of "heap exhausted before
-// 3rd call" is visible in the Unity report instead of disappearing into a
+// On-device test for the EFA schedule pipeline. Reproduces the cold-boot
+// sequence that historically crashed with abort() during back-to-back EFA
+// fetches: WiFi up -> NTP sync -> distinct XSLT_DM_REQUEST calls.
+// Logs free heap at every step so a "heap exhausted before final call"
+// regression is visible in the Unity report instead of disappearing into a
 // reboot loop.
+//
+// v2 (Schritt 8.3): the S-Bahn stream has no EFA hint path (Variante 1) —
+// `buildScheduleFilters` leaves diva=0, the fetcher's skip-guard takes it,
+// and the prod call count drops from 3 distinct DIVAs to 2.
 
 #include "config.h"
 #include "data/ScheduleHint.h"
 #include "data/efa_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Network.h"
+#include "logic/filter_builder.h"
 #include "logic/schedule_fetcher.h"
 #include "secrets.h"
 
@@ -31,17 +36,6 @@ void logHeap(const char *tag) {
                 static_cast<unsigned>(
                     heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT)),
                 static_cast<unsigned>(esp_get_minimum_free_heap_size()));
-}
-
-void buildScheduleFilters(ScheduleStreamFilter (&f)[STREAM_COUNT]) {
-  f[STREAM_58A_ATZ] = {DIVA_TULLNERTALGASSE, LINE_58A, EFA_TOWARDS_58A_ATZ};
-  f[STREAM_58A_HIETZING] = {DIVA_TULLNERTALGASSE, LINE_58A,
-                            EFA_TOWARDS_58A_HIETZING};
-  f[STREAM_58B_ATZ] = {DIVA_ENDEMANNGASSE, LINE_58B, EFA_TOWARDS_58B_ATZ};
-  f[STREAM_U1_LEOPOLDAU] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
-                            EFA_TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
-                          EFA_TOWARDS_U1_OBERLAA};
 }
 
 } // namespace
@@ -109,9 +103,10 @@ void test_single_efa_call_does_not_crash() {
 }
 
 void test_full_schedule_fetch_does_not_crash() {
-  // The whole production sequence: three DIVAs back-to-back. This is the
-  // exact path that was rebooting the device. Pass = we got here without an
-  // abort, plus we collected at least some hint data.
+  // The whole production sequence: two DIVAs back-to-back (Tullnertalgasse +
+  // Endemanngasse — the S-Bahn stream has no EFA hint path in v2, so the
+  // fetcher's diva-skip-guard takes it). Pass = we got here without an
+  // abort, plus the bus streams collected hint data.
   ScheduleStreamFilter f[STREAM_COUNT];
   buildScheduleFilters(f);
   ScheduleFetchConfig cfg;
@@ -131,29 +126,36 @@ void test_full_schedule_fetch_does_not_crash() {
         static_cast<long long>(r.hint[i].first_tomorrow[1]));
   }
 
-  TEST_ASSERT_EQUAL_INT_MESSAGE(3, r.calls_attempted,
-                                "expected 3 DIVA calls (one per Haltestelle)");
+  TEST_ASSERT_EQUAL_INT_MESSAGE(
+      2, r.calls_attempted,
+      "expected 2 distinct DIVA calls (Tullnertalgasse + Endemanngasse — "
+      "S-Bahn has no EFA hint path in v2)");
   TEST_ASSERT_EQUAL_INT_MESSAGE(
       0, r.calls_failed,
       "at least one EFA call failed — heap guard skipped or HTTP error");
   TEST_ASSERT_TRUE_MESSAGE(r.ok, "fetchSchedule reported not ok");
 
-  // Each of our 5 streams must have collected at least one schedule hint:
+  // The three bus streams must each collect at least one schedule hint:
   // either a last_today (any departure before tomorrow's 03:00 cutoff) or
   // a first_tomorrow (departures after the cutoff). Mid-day runs see only
   // last_today because the default EFA window (limit=50, anchored at
   // 22:00) typically doesn't span past 03:00; late-evening runs see both.
-  // A stream with NEITHER is a direction-filter mismatch — that's what
-  // we're guarding against here (the bug that hid behind U1's
-  // "Wien Leopoldau" / "Wien Alaudagasse" naming until the live probe in
-  // 2026-05-19).
+  // A stream with NEITHER is a direction-filter mismatch.
+  // STREAM_SBAHN_HBF is skipped on purpose (diva=0) — it must stay empty.
   for (int i = 0; i < STREAM_COUNT; ++i) {
     const bool any_hint =
         r.hint[i].last_today != 0 || r.hint[i].first_tomorrow[0] != 0;
-    char msg[80];
-    std::snprintf(msg, sizeof(msg),
-                  "stream %d got no hint at all — EFA direction mismatch?", i);
-    TEST_ASSERT_TRUE_MESSAGE(any_hint, msg);
+    char msg[96];
+    if (i == STREAM_SBAHN_HBF) {
+      std::snprintf(msg, sizeof(msg),
+                    "S-Bahn stream got a hint — diva-skip-guard regression?");
+      TEST_ASSERT_FALSE_MESSAGE(any_hint, msg);
+    } else {
+      std::snprintf(msg, sizeof(msg),
+                    "stream %d got no hint at all — EFA direction mismatch?",
+                    i);
+      TEST_ASSERT_TRUE_MESSAGE(any_hint, msg);
+    }
   }
 }
 

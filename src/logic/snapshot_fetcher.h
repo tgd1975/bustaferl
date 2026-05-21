@@ -12,9 +12,9 @@
 namespace bustaferl {
 
 // Maximum stopIds per OGD monitor query. Smaller batches are empirically more
-// stable — the all-five-at-once call occasionally dropped individual entries
-// (observed: U1 Oberlaa missing on one call, present on the next). 2 stopIds
-// per call → 3 batches for our 5 streams.
+// stable — the all-at-once call (v1, five streams) occasionally dropped
+// individual entries from the response. 2 stopIds per call → 2 batches for
+// v2's three bus streams (1 of 2 + 1 of 1).
 constexpr int STOPIDS_PER_QUERY = 2;
 
 // Order in which OGD stream slots are queried. v2: only the three bus
