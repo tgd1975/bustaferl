@@ -2,13 +2,16 @@
 
 #include "logic/api_fetcher.h"
 
+#include <chrono>
 #include <cstdio>
 
 #ifndef NATIVE_BUILD
 #include <Arduino.h>
 #define SNAP_LOG(...) Serial.printf(__VA_ARGS__)
+#define SNAP_FREE_HEAP() static_cast<uint32_t>(ESP.getFreeHeap())
 #else
 #define SNAP_LOG(...) ((void)0)
+#define SNAP_FREE_HEAP() static_cast<uint32_t>(0)
 #endif
 
 namespace bustaferl {
@@ -170,19 +173,32 @@ std::string apiUrlForBatch(const std::string &endpoint_base,
 bool fetchSnapshot(INetwork &net, const FetchInputs &inputs,
                    StreamSnapshot &out, FetchSummary &summary,
                    PersistedMeta &meta) {
+  using clock = std::chrono::steady_clock;
+  using std::chrono::duration_cast;
+  using std::chrono::milliseconds;
+
   out = StreamSnapshot{};
   summary = FetchSummary{};
 
   // OGD first — its calls are cheap and its body is small. A HAFAS failure
   // shouldn't suppress fresh bus times.
+  const auto t0 = clock::now();
   runOgdBatchLoop(net, inputs.endpoint_base, inputs.filters, out, summary,
                   meta);
+  const auto t1 = clock::now();
+  summary.ogd_ms =
+      static_cast<uint32_t>(duration_cast<milliseconds>(t1 - t0).count());
 
   // Then the single HAFAS call. mgate_url empty → host test that does not
   // exercise the OEBB path; skip.
   if (!inputs.mgate_url.empty()) {
+    summary.free_heap_before_oebb = SNAP_FREE_HEAP();
     fetchOebbStream(net, inputs.mgate_url, inputs.oebb_filter, out, summary,
                     meta);
+    summary.free_heap_after_oebb = SNAP_FREE_HEAP();
+    const auto t2 = clock::now();
+    summary.oebb_ms =
+        static_cast<uint32_t>(duration_cast<milliseconds>(t2 - t1).count());
   }
 
   // api_ok if at least one batch returned valid JSON.

@@ -172,6 +172,18 @@ void test_fetchSnapshot_fills_oebb_stream(void) {
                 ok, summary.total_batches, summary.failed_batches,
                 meta.auth_error_seen, ESP.getFreeHeap());
 
+  // Schritt 9.3/9.4 — Heap- und Sleep-Budget pro Leg. Diese Zeilen sind das
+  // Roh-Material für die Vergleichsläufe (vor v2 / nach Schritt 5 /
+  // Cold-Boot) und für die V13-Mitigations-Entscheidung. `[budget]` ist
+  // bewusst auf einer Zeile, damit `grep '\[budget\]'` aus dem Serial-Log
+  // direkt die Tabelle ergibt.
+  Serial.printf("[budget] ogd=%ums oebb=%ums total=%ums\n", summary.ogd_ms,
+                summary.oebb_ms, summary.ogd_ms + summary.oebb_ms);
+  Serial.printf("[heap] free_before_oebb=%u free_after_oebb=%u delta=%d\n",
+                summary.free_heap_before_oebb, summary.free_heap_after_oebb,
+                static_cast<int>(summary.free_heap_after_oebb) -
+                    static_cast<int>(summary.free_heap_before_oebb));
+
   TEST_ASSERT_TRUE_MESSAGE(ok, "fetchSnapshot reported not ok");
   TEST_ASSERT_FALSE_MESSAGE(meta.auth_error_seen,
                             "auth tripwire fired on a happy-path fetch");

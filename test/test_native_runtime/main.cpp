@@ -64,6 +64,8 @@ int main() {
   // ENV-driven config:
   //   BUSTAFERL_API_BASE        — realtime endpoint, default = live production
   //   BUSTAFERL_EFA_BASE        — EFA schedule endpoint, default = live
+  //   BUSTAFERL_MGATE_URL       — HAFAS mgate.exe URL, default = live; empty
+  //                                 string skips the OEBB leg (host-only tests)
   //   BUSTAFERL_INSECURE        — "1" → TLS verify off (for the mock runner)
   //   BUSTAFERL_TIME_SCALE      — sleep multiplier, default 1.0 (real seconds)
   //   BUSTAFERL_MAX_CYCLES      — stop after N warm cycles, 0 = unlimited
@@ -75,6 +77,8 @@ int main() {
   cfg.efa_base =
       envOr("BUSTAFERL_EFA_BASE",
             "https://www.wienerlinien.at/ogd_routing/XSLT_DM_REQUEST");
+  cfg.mgate_url =
+      envOr("BUSTAFERL_MGATE_URL", "https://fahrplan.oebb.at/bin/mgate.exe");
 
   const double time_scale = envDouble("BUSTAFERL_TIME_SCALE", 1.0);
   const unsigned max_cycles = envUint("BUSTAFERL_MAX_CYCLES", 0);

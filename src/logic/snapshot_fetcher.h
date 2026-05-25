@@ -7,6 +7,7 @@
 #include "../hal/INetwork.h"
 #include "../hal/IPersistentStore.h"
 
+#include <cstdint>
 #include <string>
 
 namespace bustaferl {
@@ -32,6 +33,17 @@ constexpr uint8_t OGD_AUTH_STREAK_TRIPWIRE = 3;
 struct FetchSummary {
   int total_batches = 0;
   int failed_batches = 0;
+  // Schritt 9.4 sleep-budget instrumentation. Wall-clock per leg (ms) so
+  // cycle_runner / device test can flag a wake exceeding ~10 s and decide
+  // whether V13 mitigation is needed (session resumption, parallelisation,
+  // every-other-cycle OEBB). 0 on legs that did not run.
+  uint32_t ogd_ms = 0;
+  uint32_t oebb_ms = 0;
+  // Schritt 9.3 heap-budget instrumentation. Captured immediately before and
+  // after the HAFAS POST so we can see how close the run got to the EFA heap
+  // guard (~90 KB free). 0 on NATIVE_BUILD where ESP heap APIs are absent.
+  uint32_t free_heap_before_oebb = 0;
+  uint32_t free_heap_after_oebb = 0;
 };
 
 // Cycle-invariant inputs for fetchSnapshot(). Bundling them keeps the

@@ -15,7 +15,7 @@
         test-longterm-soak-1h test-longterm-horizon-scan \
         test-longterm-horizon-evening test-longterm-day-full \
         native-runtime-build native-runtime-smoke native-runtime-day \
-        native-runtime-https-smoke \
+        native-runtime-massif native-runtime-https-smoke \
         mockview-1 mockview-2 mockview-3 mockview-4 mockview-5 mockview-6 mockview-7 \
         mockview-8 \
         clean format format-check lint tidy size secrets ci ci-heavy
@@ -39,6 +39,7 @@ NR_SRC := \
   test/test_native_runtime/HttpsNet.cpp \
   test/test_native_runtime/RecordingRenderer.cpp \
   src/data/efa_parse.cpp \
+  src/data/oebb_hafas_parse.cpp \
   src/data/wienerlinien_parse.cpp \
   src/logic/api_fetcher.cpp \
   src/logic/boot_sequencer.cpp \
@@ -219,6 +220,19 @@ native-runtime-smoke: $(NR_BIN)  ## 10 cycles unter valgrind, ~5 min
 	           --suppressions=test/test_native_runtime/valgrind.supp \
 	           --log-file=$(NR_DIR)/valgrind.log \
 	           $(NR_BIN)
+
+native-runtime-massif: $(NR_BIN)  ## 50 cycles unter massif, schreibt $(NR_DIR)/massif-v2.{out,txt}
+	@mkdir -p $(NR_DIR)
+	BUSTAFERL_MAX_CYCLES=50 BUSTAFERL_TIME_SCALE=0.05 BUSTAFERL_FRESH_BOOT=1 \
+	  valgrind --tool=massif \
+	           --pages-as-heap=no \
+	           --time-unit=ms \
+	           --detailed-freq=10 \
+	           --massif-out-file=$(NR_DIR)/massif-v2.out \
+	           $(NR_BIN)
+	@ms_print $(NR_DIR)/massif-v2.out > $(NR_DIR)/massif-v2.txt
+	@echo "[massif] peak snapshot summary:"
+	@grep -E "peak|^[ ]+[0-9]+ " $(NR_DIR)/massif-v2.txt | head -n 20 || true
 
 native-runtime-day: $(NR_BIN)  ## 24 h Soak, schreibt PGM-Sammlung
 	@mkdir -p $(NR_DIR)
