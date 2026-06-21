@@ -5,7 +5,7 @@
 
 namespace bustaferl {
 
-// Short human labels for the five streams, indexed by `Stream`. Used for
+// Short human labels for the four streams, indexed by `Stream`. Used for
 // per-slot log lines and the summary block. Single source of truth — v2 only
 // has to touch this file (and STREAM_COUNT) to relabel/extend streams.
 inline const char *streamLabel(int idx) {
@@ -16,10 +16,8 @@ inline const char *streamLabel(int idx) {
     return "58A-Hie";
   case STREAM_58B_ATZ:
     return "58B-Atz";
-  case STREAM_U1_LEOPOLDAU:
-    return "U1-Leo";
-  case STREAM_U1_OBERLAA:
-    return "U1-Obe";
+  case STREAM_SBAHN_HBF:
+    return "SBahn-Hbf";
   default:
     return "?";
   }

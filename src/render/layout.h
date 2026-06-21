@@ -12,16 +12,21 @@ constexpr int FB_W = 400;
 constexpr int FB_H = 300;
 using Frame = FrameBuffer<FB_W, FB_H>;
 
+// Full-frame state: mutually exclusive whole-screen treatments. Per-section
+// inline banners (58B filter dead, ÖBB auth dead) ride on the RenderInput
+// flags below instead, so they can coexist with live data in other sections.
 enum class OverlayKind : std::uint8_t {
   None,
-  Stale,       // "veraltet"
-  FilterDead,  // "58B Filter ungültig"
-  StartFailed, // "Start fehlgeschlagen"
+  Stale,       // global: all times "??:??" + VERALTET banner
+  StartFailed, // full-screen cold-boot failure plate
+  Boot,        // full-screen power-on splash
 };
 
 struct RenderInput {
   StreamSnapshot snapshot;
   OverlayKind overlay = OverlayKind::None;
+  bool filter_dead_58b = false; // section 2 → "58B Filter ungueltig" banner
+  bool oebb_auth_dead = false;  // section 3 → "OEBB-API: Auth ungueltig" banner
 };
 
 // Renders the layout described in CONCEPT.md §3 into the framebuffer.

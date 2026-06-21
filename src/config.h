@@ -10,8 +10,6 @@
 #define RBL_TULL_HIETZING 3757    // Tullnertalgasse, 58A → Hietzing
 #define RBL_ENDEMANN                                                           \
   8132 // Endemanngasse,    58B → Bhf. Atzgersdorf S (post-loop)
-#define RBL_SUEDTIROLER_LEOPOLDAU 4105 // Südtiroler Platz, U1 → Leopoldau
-#define RBL_SUEDTIROLER_OBERLAA 4124   // Südtiroler Platz, U1 → Oberlaa
 
 // All towards-prefixes are case-sensitive prefix matches against the OGD
 // API's `towards` field. The strings below are taken from a live response
@@ -26,7 +24,6 @@
 // Line names as the API reports them.
 #define LINE_58A "58A"
 #define LINE_58B "58B"
-#define LINE_U1 "U1"
 
 // Direction labels for the 58A streams. The 58A→Atzgersdorf branch reports
 // "Bhf. Atzgersdorf S (üb. Atzgersdorfer Str.)"; the Hietzing branch reports
@@ -34,17 +31,11 @@
 #define TOWARDS_58A_ATZ "Bhf. Atzgersdorf"
 #define TOWARDS_58A_HIETZING "Hietzing"
 
-// U1 endpoints; each RBL is one-directional, so the towards filter is mostly
-// a belt-and-braces guard against a future schedule change.
-#define TOWARDS_U1_LEOPOLDAU "Leopoldau"
-#define TOWARDS_U1_OBERLAA "Oberlaa"
-
 // DIVA stop IDs for the EFA schedule API (XSLT_DM_REQUEST). One per
 // physical Haltestelle (not per RBL — DIVA aggregates the directions).
 // Looked up via XSLT_STOPFINDER_REQUEST?name_sf=…; see CONCEPT.md §12.
 #define DIVA_TULLNERTALGASSE 60201395
 #define DIVA_ENDEMANNGASSE 60200278
-#define DIVA_SUEDTIROLER_PLATZ 60201349
 
 // Direction strings as the EFA API reports them in
 // `departureList[].servingLine.direction`. These DIFFER from the OGD
@@ -52,21 +43,29 @@
 #define EFA_TOWARDS_58A_ATZ "Wien Atzgersdorf"
 #define EFA_TOWARDS_58A_HIETZING "Wien Hietzing"
 #define EFA_TOWARDS_58B_ATZ "Wien Atzgersdorf" // TODO verify post-loop variant
-// EFA prefixes its U1 direction strings with "Wien " (unlike the OGD
-// realtime endpoint, where the bare station name is used). The Richtung
-// Süden also splits between two terminus variants: "Wien Oberlaa" is the
-// full line, "Wien Alaudagasse" is the short turnaround one station
-// earlier — both serve the same user-facing direction, so we treat them
-// as equivalent via EFA_TOWARDS_U1_OBERLAA_ALT.
-#define EFA_TOWARDS_U1_LEOPOLDAU "Wien Leopoldau"
-#define EFA_TOWARDS_U1_OBERLAA "Wien Oberlaa"
-#define EFA_TOWARDS_U1_OBERLAA_ALT "Wien Alaudagasse"
 
 // EFA schedule endpoint. Caller appends &name_dm=<DIVA>&itdDate*=...
 #define WL_EFA_DM_BASE                                                         \
   "https://www.wienerlinien.at/ogd_routing/"                                   \
   "XSLT_DM_REQUEST?outputFormat=JSON&language=de&stateless=1"                  \
   "&mode=direct&type_dm=stop&useRealtime=0"
+
+// --- ÖBB S-Bahn (v2): Atzgersdorf → Wien Hauptbahnhof via HAFAS mgate.exe ---
+//
+// AID / client / version / product-filter MUST be confirmed against the live
+// ÖBB webapp before flashing (DevTools → mgate.exe request; see
+// docs/v2-sbahn-migration-plan.md §0). The values below are the pre-flash
+// placeholders from that plan — TODO: verify + date-stamp on first flash.
+#define EVA_WIEN_ATZGERSDORF "8100634"
+#define EVA_WIEN_HBF "8100002"
+#define OEBB_MGATE_URL "https://fahrplan.oebb.at/bin/mgate.exe"
+#define OEBB_HAFAS_AID "OWDL4fE4ixNiPBBm" // TODO verify against live webapp
+#define OEBB_HAFAS_VER "1.67"
+#define OEBB_HAFAS_CLIENT_JSON                                                 \
+  "{\"id\":\"OEBB\",\"type\":\"WEB\",\"name\":\"webapp\",\"l\":\"vs_webapp\"}"
+// Product bitmask for S-Bahn + Regio + REX. TODO verify against live webapp.
+#define OEBB_JNYFLTR_PRODUCTS "63"
+#define OEBB_MAX_JNY 6
 
 // e-Paper GPIO
 #define EPD_CS 5

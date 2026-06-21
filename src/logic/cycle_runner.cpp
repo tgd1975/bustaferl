@@ -17,6 +17,8 @@
 #include "logic/stale_policy.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 
 #ifndef NATIVE_BUILD
 #include <Arduino.h>
@@ -33,11 +35,13 @@ namespace bustaferl {
 
 namespace {
 
-bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out) {
+bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
+                         FetchSummary &summary) {
   StreamFilter filters[STREAM_COUNT];
   buildStreamFilters(filters);
-  FetchSummary summary;
-  bool ok = fetchSnapshot(deps.net, deps.cfg.api_base, filters, out, summary);
+  OebbStreamFilter oebb = buildOebbFilter();
+  bool ok = fetchSnapshot(deps.net, deps.cfg.api_base, deps.cfg.mgate_url,
+                          filters, oebb, out, summary);
   CYCLE_LOG_STR(
       formatSnapshotSummary(out, summary.total_batches, summary.failed_batches)
           .c_str());
@@ -59,10 +63,13 @@ bool refreshSchedule(CycleDeps &deps, ScheduleSnapshot &out) {
 }
 
 void renderAndPush(CycleDeps &deps, const StreamSnapshot &snap,
-                   OverlayKind overlay, PersistedMeta &meta,
+                   OverlayKind overlay, bool filter_dead_58b,
+                   bool oebb_auth_dead, PersistedMeta &meta,
                    const ScheduleSnapshot &schedule) {
   time_t now = deps.clock.now();
   RenderInput in = composeRenderInput(snap, schedule, overlay, now);
+  in.filter_dead_58b = filter_dead_58b;
+  in.oebb_auth_dead = oebb_auth_dead;
   deps.renderer.render(in, deps.curr);
 
   bool prev_valid = meta.framebuffer_valid;
@@ -103,19 +110,22 @@ SleepConfig makeSleepConfig(const CycleConfig &cfg) {
 }
 
 // Shared fetch+merge step. Hands back the realtime snapshot, the merged view
-// for planSleep, plus the overlay the renderer should apply (None / Stale /
-// FilterDead).
+// for planSleep, the global overlay (None / Stale), and the two per-section
+// banner flags (58B filter dead, ÖBB auth dead).
 struct FetchCycleResult {
   StreamSnapshot snap;
   StreamSnapshot merged;
   OverlayKind overlay = OverlayKind::None;
+  bool filter_dead_58b = false; // section-2 inline banner (58B filter dead)
+  bool oebb_auth_dead = false;  // section-3 inline banner (ÖBB auth dead)
   bool fetched_ok = false;
 };
 
 FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
                               const ScheduleSnapshot &schedule) {
   FetchCycleResult r;
-  r.fetched_ok = fetchSnapshotAndLog(deps, r.snap);
+  FetchSummary summary;
+  r.fetched_ok = fetchSnapshotAndLog(deps, r.snap, summary);
   time_t now = deps.clock.now();
 
   FilterHealth fh(deps.cfg.filter_health_dead_after);
@@ -127,7 +137,7 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
     // actual departures. During the nightly Betriebstag-Pause the API
     // returns matching RBLs/lines but with empty `departures` arrays — that
     // would otherwise read as "filter responded but didn't match" for hours
-    // and falsely trip FilterDead. Treat "no service anywhere" as no signal.
+    // and falsely trip the banner. Treat "no service anywhere" as no signal.
     const bool any_service =
         std::any_of(std::begin(r.snap.stream), std::end(r.snap.stream),
                     [](const StreamData &s) { return s.slot[0].valid; });
@@ -135,8 +145,20 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
       fh.recordCall(r.snap.stream[STREAM_58B_ATZ].endpoint_responded,
                     r.snap.stream[STREAM_58B_ATZ].filter_matched);
       meta.filter_miss_streak = fh.streak();
-      if (fh.isDead())
-        r.overlay = OverlayKind::FilterDead;
+      r.filter_dead_58b = fh.isDead();
+    }
+    // ÖBB auth-health: a signal only when the POST actually returned (2xx).
+    // err != "OK" (e.g. a stale AID) leaves endpoint_responded false → the
+    // streak grows; a clean response resets it.
+    if (summary.oebb_http_ok) {
+      if (r.snap.stream[STREAM_SBAHN_HBF].endpoint_responded) {
+        meta.oebb_auth_miss_streak = 0;
+      } else if (meta.oebb_auth_miss_streak <
+                 std::numeric_limits<uint8_t>::max()) {
+        ++meta.oebb_auth_miss_streak;
+      }
+      r.oebb_auth_dead =
+          meta.oebb_auth_miss_streak >= deps.cfg.filter_health_dead_after;
     }
   } else if (isStale(meta.last_api_success, now, deps.cfg.stale_threshold_s)) {
     r.overlay = OverlayKind::Stale;
@@ -192,7 +214,8 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
 
   // First-ever render after a cold boot: deep clean for a known-good panel.
   StreamSnapshot snap;
-  bool ok = fetchSnapshotAndLog(deps, snap);
+  FetchSummary summary;
+  bool ok = fetchSnapshotAndLog(deps, snap, summary);
   if (ok) {
     meta.last_api_success = deps.clock.now();
   }
@@ -247,6 +270,8 @@ void doNightlyClean(CycleDeps &deps, PersistedMeta &meta,
                     const ScheduleSnapshot &schedule,
                     const FetchCycleResult &fc, time_t now) {
   RenderInput in = composeRenderInput(fc.snap, schedule, fc.overlay, now);
+  in.filter_dead_58b = fc.filter_dead_58b;
+  in.oebb_auth_dead = fc.oebb_auth_dead;
   deps.renderer.render(in, deps.curr);
   deps.display.deepClean(deps.curr.data());
   meta.last_deep_clean = now;
@@ -263,7 +288,8 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
     CYCLE_LOG_LN("[warm] wifi down");
     if (isStale(meta.last_api_success, deps.clock.now(),
                 deps.cfg.stale_threshold_s)) {
-      renderAndPush(deps, StreamSnapshot{}, OverlayKind::Stale, meta, schedule);
+      renderAndPush(deps, StreamSnapshot{}, OverlayKind::Stale, false, false,
+                    meta, schedule);
     }
     deps.sleep.deepSleep(deps.cfg.poll_interval_s);
     return;
@@ -296,7 +322,8 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
   if (nightly) {
     doNightlyClean(deps, meta, schedule, fc, now);
   } else if (fc.fetched_ok || fc.overlay != OverlayKind::None) {
-    renderAndPush(deps, fc.snap, fc.overlay, meta, schedule);
+    renderAndPush(deps, fc.snap, fc.overlay, fc.filter_dead_58b,
+                  fc.oebb_auth_dead, meta, schedule);
   } else {
     // Transient fetch failure (not yet stale): keep showing the last good
     // frame. Re-rendering with an empty snap would flicker every slot to

@@ -223,6 +223,45 @@ bool Esp32Network::httpGet(const std::string &url, std::string &out) {
   return true;
 }
 
+bool Esp32Network::httpPost(const std::string &url, const std::string &body,
+                            const std::string &content_type, std::string &out) {
+  std::string().swap(out);
+  Serial.printf("[net] POST %s heap_free=%u largest=%u\n", url.c_str(),
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(
+                    heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT)));
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure(); // ÖBB Let's Encrypt/DigiCert; CA bundle not shipped
+  if (!http.begin(client, url.c_str())) {
+    Serial.println("[net] http.begin() failed");
+    return false;
+  }
+  http.setTimeout(8000);
+  http.addHeader("Content-Type", content_type.c_str());
+  int code = http.POST(
+      reinterpret_cast<uint8_t *>(const_cast<char *>(body.data())), body.size());
+  if (code < 200 || code >= 300) {
+    Serial.printf("[net] HTTP %d (non-2xx, aborting)\n", code);
+    http.end();
+    return false;
+  }
+  int content_length = http.getSize();
+  if (content_length > 0) {
+    out.reserve(static_cast<size_t>(content_length));
+  }
+  StringAppender appender(out);
+  int written = http.writeToStream(&appender);
+  http.end();
+  if (written < 0) {
+    Serial.printf("[net] writeToStream failed: %d\n", written);
+    return false;
+  }
+  Serial.printf("[net] HTTP %d, %u bytes\n", code,
+                static_cast<unsigned>(out.size()));
+  return true;
+}
+
 bool Esp32Network::httpGetStream(const std::string &url,
                                  StreamConsumer consumer) {
   Serial.printf("[net] STREAM GET %s heap_free=%u largest=%u\n", url.c_str(),
