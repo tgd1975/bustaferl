@@ -9,11 +9,11 @@ Dieses Handbuch erklärt, **was auf dem Display zu sehen ist** und **was es
 bedeutet**. Inbetriebnahme, Verkabelung und Konfiguration findest du in
 [USER.md](USER.md) und [HARDWARE.md](HARDWARE.md).
 
-> Hinweis zu den Screenshots: Die Bilder unten sind softwareseitig
-> nachgebaute Darstellungen des e-Paper-Inhalts (400 × 300 px, weiße
-> Schrift auf schwarzem Hintergrund). Das echte Modul zeigt dieselben
-> Pixel mit dem typischen e-Paper-Kontrast. Erzeugt mit
-> [`.tmp/gen_screenshots.py`](../.tmp/gen_screenshots.py).
+> Hinweis zu den Screenshots: Die Bilder unten sind direkt aus dem echten
+> Renderer (`src/render/layout.cpp`) erzeugt — 400 × 300 px, weiße Schrift auf
+> schwarzem Hintergrund, hier 2× skaliert. Das echte Modul zeigt dieselben
+> Pixel mit dem typischen e-Paper-Kontrast. Neu erzeugen (ohne ESP32):
+> [`tools/host_render/render.sh`](../tools/host_render/render.sh).
 
 ## 1. Aufbau der Anzeige
 
@@ -206,6 +206,8 @@ einen AID/Client-Schlüssel erwartet. Rotieren die ÖBB diesen Schlüssel,
 antwortet die API mit einem Fehler statt mit Daten. Nach **3** aufeinander
 folgenden solchen Antworten erscheint im S-Bahn-Block der Banner
 `OEBB-API: Auth ungueltig`; die Bus-Zeilen laufen normal weiter.
+
+![S-Bahn-Block mit OEBB-API-Auth-Banner](screenshots/08-oebb-auth.png)
 
 **Behebung:** aktuelle Werte aus der ÖBB-Webapp abfangen und `OEBB_HAFAS_AID` /
 `OEBB_HAFAS_CLIENT_JSON` in `config.h` aktualisieren, neu flashen. Details siehe
