@@ -32,6 +32,7 @@ CycleConfig makeCycleConfig() {
   CycleConfig c;
   c.api_base = WL_API_BASE;
   c.efa_base = WL_EFA_DM_BASE;
+  c.mgate_url = OEBB_MGATE_URL;
   c.wifi_connect_ms = 10000;
   c.cold_boot_retry_s = COLD_BOOT_RETRY_S;
   c.cold_boot_giveup_sleep_s = 300;

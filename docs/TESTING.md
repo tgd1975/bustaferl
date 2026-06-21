@@ -5,7 +5,7 @@ kanonische Einstieg — `make help` listet alles.
 
 | Bucket | Wo läuft's | Wann | Make-Target |
 | --- | --- | --- | --- |
-| `test_native_*` (25) | Host (`env:native`) | nach jedem Edit, ~5 s | `make test-native` (alias `make test`) |
+| `test_native_*` (26) | Host (`env:native`) | nach jedem Edit, ~5 s | `make test-native` (alias `make test`) |
 | `test_device_*` (5) | ESP32 (`env:device-*`) | pre-commit mit Gerät, ~5–10 min | `make test-device` |
 | `test_longterm_*` (8 Sources / 10 Targets) | ESP32 (oder PC-driven Mock) | opt-in, 3 min … 24 h | `make test-longterm-*` |
 | `native-runtime` (Host-Engine) | Host (direktes `g++`) | opt-in, ~3 s … 24 h | `make native-runtime-*` |
@@ -156,6 +156,7 @@ on-device.
 | `test_native_rle` | `test_device_persistent` |
 | `test_native_wienerlinien_parse` | `test_device_fetch` |
 | `test_native_efa_parse` | `test_device_schedule` |
+| `test_native_oebb_hafas_parse` | `test_device_fetch` (S-Bahn-POST-Pfad on-device noch nachzuziehen) |
 | `test_native_runtime_diskstore` | `test_device_persistent` |
 | `test_native_runtime_renderer` | `test_device_render` |
 | `test_native_cycle_runner_*` (cold/warm/helpers/invariants) | `test_device_fetch` + `test_device_sleep` |

@@ -28,6 +28,14 @@ struct FetchOutcome {
 FetchOutcome fetchWithRetry(INetwork &net, const std::string &url,
                             std::string &body, const FetchConfig &cfg);
 
+// POST variant: calls `net.httpPost(url, body, content_type, out)` up to
+// `cfg.max_attempts` times with the same linear backoff. Used by the ÖBB
+// HAFAS S-Bahn fetch.
+FetchOutcome fetchPostWithRetry(INetwork &net, const std::string &url,
+                                const std::string &body,
+                                const std::string &content_type,
+                                std::string &out, const FetchConfig &cfg);
+
 } // namespace bustaferl
 
 #endif

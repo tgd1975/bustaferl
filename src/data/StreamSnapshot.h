@@ -7,14 +7,13 @@
 
 namespace bustaferl {
 
-// Index into the three streams the display shows.
+// Index into the streams the display shows.
 enum Stream : std::uint8_t {
   STREAM_58A_ATZ = 0,
   STREAM_58A_HIETZING = 1,
   STREAM_58B_ATZ = 2,
-  STREAM_U1_LEOPOLDAU = 3,
-  STREAM_U1_OBERLAA = 4,
-  STREAM_COUNT = 5,
+  STREAM_SBAHN_HBF = 3,
+  STREAM_COUNT = 4,
 };
 
 constexpr int SLOTS_PER_STREAM = 2;

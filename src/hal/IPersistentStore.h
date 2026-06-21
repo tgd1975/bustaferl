@@ -17,6 +17,7 @@ struct PersistedMeta {
   time_t last_deep_clean = 0;
   uint16_t partial_count = 0;
   uint8_t filter_miss_streak = 0;
+  uint8_t oebb_auth_miss_streak = 0;
   uint8_t cold_boot_retries = 0;
   bool framebuffer_valid = false;
 };

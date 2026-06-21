@@ -33,6 +33,10 @@ public:
     }
     return false;
   }
+  bool httpPost(const std::string &, const std::string &, const std::string &,
+                std::string &) override {
+    return false; // schedule fetch is GET-only
+  }
 };
 
 time_t makeLocal(int year, int month, int day, int hour, int minute) {
@@ -54,17 +58,6 @@ const char *kTullResponse = R"JSON({
       "servingLine": { "number":"58A", "direction":"Wien Atzgersdorf" } },
     { "dateTime": { "year":"2026","month":"5","day":"17","hour":"5","minute":"30" },
       "servingLine": { "number":"58A", "direction":"Wien Atzgersdorf" } }
-  ]
-})JSON";
-
-const char *kSuedResponse = R"JSON({
-  "departureList": [
-    { "dateTime": { "year":"2026","month":"5","day":"17","hour":"4","minute":"50" },
-      "servingLine": { "number":"U1", "direction":"Wien Leopoldau" } },
-    { "dateTime": { "year":"2026","month":"5","day":"17","hour":"5","minute":"10" },
-      "servingLine": { "number":"U1", "direction":"Wien Oberlaa" } },
-    { "dateTime": { "year":"2026","month":"5","day":"17","hour":"5","minute":"40" },
-      "servingLine": { "number":"U1", "direction":"Wien Alaudagasse" } }
   ]
 })JSON";
 
@@ -136,33 +129,6 @@ void test_fetchSchedule_one_diva_two_streams() {
                           r.hint[STREAM_58A_ATZ].first_tomorrow[0]);
 }
 
-void test_fetchSchedule_dedup_shared_diva_only_calls_once() {
-  FakeNet net;
-  net.routes.emplace_back("name_dm=60201349", kSuedResponse);
-
-  ScheduleStreamFilter f[STREAM_COUNT];
-  // Both U1 streams share Südtiroler Platz / Hauptbahnhof DIVA.
-  // EFA returns "Wien Oberlaa" and "Wien Alaudagasse" as two legitimate
-  // U1-south direction variants; the alt-prefix lets both populate the
-  // same stream.
-  f[STREAM_U1_LEOPOLDAU] = {60201349, "U1", "Wien Leopoldau", ""};
-  f[STREAM_U1_OBERLAA] = {60201349, "U1", "Wien Oberlaa", "Wien Alaudagasse"};
-
-  time_t now = makeLocal(2026, 5, 16, 22, 0);
-  auto r = fetchSchedule(net, now, f, makeCfg());
-  TEST_ASSERT_TRUE(r.ok);
-  TEST_ASSERT_EQUAL_INT_MESSAGE(1, r.calls_attempted,
-                                "shared DIVA must collapse to one call");
-  TEST_ASSERT_EQUAL_INT64(makeLocal(2026, 5, 17, 4, 50),
-                          r.hint[STREAM_U1_LEOPOLDAU].first_tomorrow[0]);
-  // first_tomorrow[0] = 5:10 (Wien Oberlaa), [1] = 5:40 (Wien Alaudagasse)
-  // — alt-prefix funnels both into STREAM_U1_OBERLAA.
-  TEST_ASSERT_EQUAL_INT64(makeLocal(2026, 5, 17, 5, 10),
-                          r.hint[STREAM_U1_OBERLAA].first_tomorrow[0]);
-  TEST_ASSERT_EQUAL_INT64(makeLocal(2026, 5, 17, 5, 40),
-                          r.hint[STREAM_U1_OBERLAA].first_tomorrow[1]);
-}
-
 void test_fetchSchedule_all_calls_failing_marks_not_ok() {
   FakeNet net;
   net.fail_all = true;
@@ -182,7 +148,6 @@ int main(int, char **) {
   RUN_TEST(test_computeCutoff_returns_next_local_03_00);
   RUN_TEST(test_computeCutoff_after_midnight_still_picks_next_03_00);
   RUN_TEST(test_fetchSchedule_one_diva_two_streams);
-  RUN_TEST(test_fetchSchedule_dedup_shared_diva_only_calls_once);
   RUN_TEST(test_fetchSchedule_all_calls_failing_marks_not_ok);
   return UNITY_END();
 }

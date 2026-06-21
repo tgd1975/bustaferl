@@ -2,7 +2,8 @@
 
 E-Paper-Anzeige fürs Vorzimmer: nächste Abfahrten der Wiener-Linien-Buslinien
 58A (Tullnertalgasse, beide Richtungen) und 58B (Endemanngasse → Atzgersdorf,
-nach der Schleife). Rohe Echtzeitdaten, keine Empfehlungslogik — die
+nach der Schleife) sowie der ÖBB-S-Bahn ab Bahnhof Atzgersdorf Richtung Wien
+Hauptbahnhof. Rohe Echtzeitdaten, keine Empfehlungslogik — die
 Entscheidung „aufbrechen oder warten" trifft der Mensch selbst.
 
 ## Was es zeigt
@@ -15,12 +16,17 @@ TULLNERTALGASSE
 ENDEMANNGASSE
 58B -> Atzgersdorf      HH:MM  HH:MM
    (nach Schleife)
+
+ATZGERSDORF S-BAHN -> Hauptbahnhof
+S2  HH:MM   S3  HH:MM
 ```
 
 - `HH:MM` — nächste Abfahrt (Echtzeit, mit stillem Fallback auf Plan)
 - `--:--` — keine Abfahrt im Datenstrom
+- `S2`/`S3`/… vor einer S-Bahn-Zeit — die Linie variiert pro Zug
 - Banner `VERALTET` — API-Daten älter als 3 min
 - Banner `58B Filter ungueltig` — die Richtungs-Filterung schlägt fehl, RBL prüfen
+- Banner `OEBB-API: Auth ungueltig` — ÖBB-HAFAS lehnt ab; AID/Client in `config.h` erneuern
 - Banner `Start fehlgeschlagen` — Cold Boot hat WiFi/NTP nicht hochbekommen
 
 ## Quick Start

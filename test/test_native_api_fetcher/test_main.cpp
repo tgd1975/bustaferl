@@ -25,6 +25,16 @@ public:
     out.clear();
     return false;
   }
+  bool httpPost(const std::string &, const std::string &, const std::string &,
+                std::string &out) override {
+    ++call_count;
+    if (call_count >= succeed_on_attempt) {
+      out = body_to_return;
+      return true;
+    }
+    out.clear();
+    return false;
+  }
 };
 
 } // namespace
@@ -109,6 +119,49 @@ void test_body_overwritten_on_success() {
   TEST_ASSERT_EQUAL_STRING("fresh", body.c_str());
 }
 
+void test_post_first_try_success() {
+  FakeNet net;
+  net.succeed_on_attempt = 1;
+  net.body_to_return = "post-ok";
+  std::string body;
+  FetchConfig cfg;
+  cfg.max_attempts = 3;
+  cfg.backoff_ms_base = 0;
+  FetchOutcome r =
+      fetchPostWithRetry(net, "http://x", "{}", "application/json", body, cfg);
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL_INT(1, r.attempts_taken);
+  TEST_ASSERT_EQUAL_STRING("post-ok", body.c_str());
+}
+
+void test_post_succeeds_on_second_attempt() {
+  FakeNet net;
+  net.succeed_on_attempt = 2;
+  std::string body;
+  FetchConfig cfg;
+  cfg.max_attempts = 3;
+  cfg.backoff_ms_base = 0;
+  FetchOutcome r =
+      fetchPostWithRetry(net, "http://x", "{}", "application/json", body, cfg);
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL_INT(2, r.attempts_taken);
+  TEST_ASSERT_EQUAL_INT(2, net.call_count);
+}
+
+void test_post_all_attempts_fail() {
+  FakeNet net;
+  net.succeed_on_attempt = 99;
+  std::string body = "dirty-prev-content";
+  FetchConfig cfg;
+  cfg.max_attempts = 3;
+  cfg.backoff_ms_base = 0;
+  FetchOutcome r =
+      fetchPostWithRetry(net, "http://x", "{}", "application/json", body, cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_INT(3, r.attempts_taken);
+  TEST_ASSERT_TRUE_MESSAGE(body.empty(), "body must be cleared on failure");
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -120,5 +173,8 @@ int main(int, char **) {
   RUN_TEST(test_all_attempts_fail);
   RUN_TEST(test_single_attempt_no_retry);
   RUN_TEST(test_body_overwritten_on_success);
+  RUN_TEST(test_post_first_try_success);
+  RUN_TEST(test_post_succeeds_on_second_attempt);
+  RUN_TEST(test_post_all_attempts_fail);
   return UNITY_END();
 }

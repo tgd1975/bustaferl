@@ -36,4 +36,23 @@ FetchOutcome fetchWithRetry(INetwork &net, const std::string &url,
   return out;
 }
 
+FetchOutcome fetchPostWithRetry(INetwork &net, const std::string &url,
+                                const std::string &body,
+                                const std::string &content_type,
+                                std::string &out, const FetchConfig &cfg) {
+  FetchOutcome o;
+  for (int attempt = 1; attempt <= cfg.max_attempts; ++attempt) {
+    o.attempts_taken = attempt;
+    out.clear();
+    if (net.httpPost(url, body, content_type, out)) {
+      o.ok = true;
+      return o;
+    }
+    if (attempt < cfg.max_attempts) {
+      sleepMsBetweenAttempts(cfg.backoff_ms_base * attempt);
+    }
+  }
+  return o;
+}
+
 } // namespace bustaferl

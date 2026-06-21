@@ -18,6 +18,11 @@ public:
   virtual bool isConnected() = 0;
   // GET, writes body to `out`. Returns true on HTTP 2xx.
   virtual bool httpGet(const std::string &url, std::string &out) = 0;
+  // POST `body` with `content_type`, writes response body to `out`. Returns
+  // true on HTTP 2xx. Used by the ÖBB HAFAS (mgate.exe) S-Bahn fetch; the
+  // response (~5–8 KB) is small enough that no streaming variant is needed.
+  virtual bool httpPost(const std::string &url, const std::string &body,
+                        const std::string &content_type, std::string &out) = 0;
 
 #ifndef NATIVE_BUILD
   // Streaming GET: invokes `consumer(stream)` with the response body

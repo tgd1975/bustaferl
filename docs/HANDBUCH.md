@@ -9,16 +9,16 @@ Dieses Handbuch erklärt, **was auf dem Display zu sehen ist** und **was es
 bedeutet**. Inbetriebnahme, Verkabelung und Konfiguration findest du in
 [USER.md](USER.md) und [HARDWARE.md](HARDWARE.md).
 
-> Hinweis zu den Screenshots: Die Bilder unten sind softwareseitig
-> nachgebaute Darstellungen des e-Paper-Inhalts (400 × 300 px, weiße
-> Schrift auf schwarzem Hintergrund). Das echte Modul zeigt dieselben
-> Pixel mit dem typischen e-Paper-Kontrast. Erzeugt mit
-> [`.tmp/gen_screenshots.py`](../.tmp/gen_screenshots.py).
+> Hinweis zu den Screenshots: Die Bilder unten sind direkt aus dem echten
+> Renderer (`src/render/layout.cpp`) erzeugt — 400 × 300 px, weiße Schrift auf
+> schwarzem Hintergrund, hier 2× skaliert. Das echte Modul zeigt dieselben
+> Pixel mit dem typischen e-Paper-Kontrast. Neu erzeugen (ohne ESP32):
+> [`tools/host_render/render.sh`](../tools/host_render/render.sh).
 
 ## 1. Aufbau der Anzeige
 
 Drei Blöcke, von oben nach unten: **Tullnertalgasse**, **Endemanngasse**,
-**Südtiroler Platz**.
+**Atzgersdorf S-Bahn**.
 
 ![Normalzustand mit Echtzeit-Abfahrten](screenshots/01-normal.png)
 
@@ -27,8 +27,7 @@ Drei Blöcke, von oben nach unten: **Tullnertalgasse**, **Endemanngasse**,
 | Tullnertalgasse  | 58A → Atzgersdorf          | nächste 2 Abfahrten     |
 | Tullnertalgasse  | 58A → Hietzing             | nächste 2 Abfahrten     |
 | Endemanngasse    | 58B → Atzgersdorf          | nächste 2 Abfahrten     |
-| Südtiroler Platz | U1 → Leopoldau             | nächste 2 Abfahrten     |
-| Südtiroler Platz | U1 → Oberlaa               | nächste 2 Abfahrten     |
+| Atzgersdorf S-Bahn | S-Bahn → Wien Hbf (S2/S3/S4/REX) | nächste 2 Züge    |
 
 „(nach Schleife)" unter dem 58B-Block weist darauf hin, dass der gefilterte
 Steig an der Endemanngasse erst **nach** der Schleifenfahrt bedient wird —
@@ -116,7 +115,7 @@ gerundet). Das spart Strom und beugt Ghosting vor.
 Nach jedem Render berechnet das Gerät den nächsten Aufwach-Zeitpunkt:
 
 ```text
-t_ref   = min(alle angezeigten Abfahrtszeiten über alle 5 Streams)
+t_ref   = min(alle angezeigten Abfahrtszeiten über alle 4 Streams)
 wake_at = t_ref − 15 min − 30 s Boot-Margin
 ```
 
@@ -199,6 +198,20 @@ Listen zurückliefert.
 **Behebung:** aktuellen Richtungstext aus einem realen API-Call abfragen
 (`curl …monitor?rbl=$RBL_ENDEMANN`), `FILTER_TOWARDS_58B` in `config.h`
 anpassen, neu flashen. Details siehe [USER.md](USER.md).
+
+### `OEBB-API: Auth ungueltig` — ÖBB-HAFAS lehnt ab
+
+Die ÖBB-S-Bahn-Daten kommen über die HAFAS-Schnittstelle (`mgate.exe`), die
+einen AID/Client-Schlüssel erwartet. Rotieren die ÖBB diesen Schlüssel,
+antwortet die API mit einem Fehler statt mit Daten. Nach **3** aufeinander
+folgenden solchen Antworten erscheint im S-Bahn-Block der Banner
+`OEBB-API: Auth ungueltig`; die Bus-Zeilen laufen normal weiter.
+
+![S-Bahn-Block mit OEBB-API-Auth-Banner](screenshots/08-oebb-auth.png)
+
+**Behebung:** aktuelle Werte aus der ÖBB-Webapp abfangen und `OEBB_HAFAS_AID` /
+`OEBB_HAFAS_CLIENT_JSON` in `config.h` aktualisieren, neu flashen. Details siehe
+[v2-sbahn-migration-plan.md](v2-sbahn-migration-plan.md) §0.
 
 ### `Start fehlgeschlagen` — Cold Boot kam nicht hoch
 

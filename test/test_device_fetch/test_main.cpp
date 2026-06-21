@@ -50,10 +50,8 @@ void printSlot(const char *stream, const Departure &d) {
 std::string apiUrl() {
   std::string url = WL_API_BASE;
   char buf[96];
-  snprintf(buf, sizeof(buf),
-           "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
-           RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
-           RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
+  snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d",
+           RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN);
   url += buf;
   return url;
 }
@@ -99,18 +97,13 @@ void test_parse_all_rbls_respond(void) {
   TEST_ASSERT_TRUE_MESSAGE(snap.api_ok, "api_ok was false after parse");
 
   Serial.printf("[api] streams: 58A-Atz r=%d f=%d | "
-                "58A-Hie r=%d f=%d | 58B r=%d f=%d | "
-                "U1-Leo r=%d f=%d | U1-Obe r=%d f=%d\n",
+                "58A-Hie r=%d f=%d | 58B r=%d f=%d\n",
                 snap.stream[STREAM_58A_ATZ].endpoint_responded,
                 snap.stream[STREAM_58A_ATZ].filter_matched,
                 snap.stream[STREAM_58A_HIETZING].endpoint_responded,
                 snap.stream[STREAM_58A_HIETZING].filter_matched,
                 snap.stream[STREAM_58B_ATZ].endpoint_responded,
-                snap.stream[STREAM_58B_ATZ].filter_matched,
-                snap.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
-                snap.stream[STREAM_U1_LEOPOLDAU].filter_matched,
-                snap.stream[STREAM_U1_OBERLAA].endpoint_responded,
-                snap.stream[STREAM_U1_OBERLAA].filter_matched);
+                snap.stream[STREAM_58B_ATZ].filter_matched);
 
   // Per-stream parsed departure times — visible in serial so a wrong towards
   // filter (endpoint_responded but no slots) is obvious at a glance.
@@ -122,10 +115,6 @@ void test_parse_all_rbls_respond(void) {
     printSlot(tag, snap.stream[STREAM_58A_HIETZING].slot[slot]);
     std::snprintf(tag, sizeof(tag), "58B-Atz[%d]", slot);
     printSlot(tag, snap.stream[STREAM_58B_ATZ].slot[slot]);
-    std::snprintf(tag, sizeof(tag), "U1-Leo[%d]", slot);
-    printSlot(tag, snap.stream[STREAM_U1_LEOPOLDAU].slot[slot]);
-    std::snprintf(tag, sizeof(tag), "U1-Obe[%d]", slot);
-    printSlot(tag, snap.stream[STREAM_U1_OBERLAA].slot[slot]);
   }
 
   TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58A_ATZ].endpoint_responded,
@@ -134,10 +123,6 @@ void test_parse_all_rbls_respond(void) {
                            "RBL_TULL_HIETZING (3757) did not respond");
   TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_58B_ATZ].endpoint_responded,
                            "RBL_ENDEMANN (8132) did not respond");
-  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_LEOPOLDAU].endpoint_responded,
-                           "RBL_SUEDTIROLER_LEOPOLDAU (4105) did not respond");
-  TEST_ASSERT_TRUE_MESSAGE(snap.stream[STREAM_U1_OBERLAA].endpoint_responded,
-                           "RBL_SUEDTIROLER_OBERLAA (4124) did not respond");
 
   // Filter match is time-of-day dependent (no buses overnight). Don't assert
   // it — but make it visible above so a mismatch is obvious in the log.

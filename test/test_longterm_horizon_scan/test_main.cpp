@@ -52,10 +52,8 @@ time_t g_prev_first_slot[STREAM_COUNT] = {0};
 std::string apiUrl() {
   std::string url = WL_API_BASE;
   char buf[96];
-  std::snprintf(buf, sizeof(buf),
-                "&stopId=%d&stopId=%d&stopId=%d&stopId=%d&stopId=%d",
-                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN,
-                RBL_SUEDTIROLER_LEOPOLDAU, RBL_SUEDTIROLER_OBERLAA);
+  std::snprintf(buf, sizeof(buf), "&stopId=%d&stopId=%d&stopId=%d",
+                RBL_TULL_ATZGERSDORF, RBL_TULL_HIETZING, RBL_ENDEMANN);
   url += buf;
   return url;
 }
@@ -64,9 +62,7 @@ void buildFilters(StreamFilter (&f)[STREAM_COUNT]) {
   f[STREAM_58A_ATZ] = {RBL_TULL_ATZGERSDORF, LINE_58A, TOWARDS_58A_ATZ};
   f[STREAM_58A_HIETZING] = {RBL_TULL_HIETZING, LINE_58A, TOWARDS_58A_HIETZING};
   f[STREAM_58B_ATZ] = {RBL_ENDEMANN, LINE_58B, FILTER_TOWARDS_58B};
-  f[STREAM_U1_LEOPOLDAU] = {RBL_SUEDTIROLER_LEOPOLDAU, LINE_U1,
-                            TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {RBL_SUEDTIROLER_OBERLAA, LINE_U1, TOWARDS_U1_OBERLAA};
+  // STREAM_SBAHN_HBF left default (rbl = 0) — not fetched via OGD here.
 }
 
 const char *streamName(int i) {
@@ -77,10 +73,8 @@ const char *streamName(int i) {
     return "58A-Hie";
   case STREAM_58B_ATZ:
     return "58B";
-  case STREAM_U1_LEOPOLDAU:
-    return "U1-Leo";
-  case STREAM_U1_OBERLAA:
-    return "U1-Obe";
+  case STREAM_SBAHN_HBF:
+    return "SBahn-Hbf";
   }
   return "?";
 }

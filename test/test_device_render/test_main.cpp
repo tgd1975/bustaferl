@@ -50,18 +50,20 @@ void test_render_empty_snapshot_draws_chrome() {
       "renderFrame produced a blank framebuffer — chrome not drawn?");
 }
 
-void test_overlay_changes_framebuffer_in_band() {
-  // FilterDead / StartFailed only add a banner — their diff must stay inside
-  // the overlay band [266, 294). Stale is the exception (inverts whole
-  // content area) and is covered separately below.
+void test_section_banner_changes_framebuffer_in_band() {
+  // The 58B section banner replaces only the Endemanngasse data row; the diff
+  // vs a normal render must stay inside that row's y-band [136, 162).
   FramePtr fb_a = makeFrame();
   FramePtr fb_b = makeFrame();
   StreamSnapshot snap{};
-  renderFrame({snap, OverlayKind::None}, *fb_a);
-  renderFrame({snap, OverlayKind::FilterDead}, *fb_b);
+  RenderInput normal{snap, OverlayKind::None};
+  RenderInput banner{snap, OverlayKind::None};
+  banner.filter_dead_58b = true;
+  renderFrame(normal, *fb_a);
+  renderFrame(banner, *fb_b);
   TEST_ASSERT_TRUE_MESSAGE(
       std::memcmp(fb_a->data(), fb_b->data(), Frame::bytes) != 0,
-      "FilterDead overlay did not change framebuffer");
+      "58B section banner did not change framebuffer");
 
   const int stride = FB_W / 8;
   int diff_inside = 0;
@@ -72,17 +74,17 @@ void test_overlay_changes_framebuffer_in_band() {
           fb_a->data()[y * stride + xb] != fb_b->data()[y * stride + xb];
       if (!diff)
         continue;
-      if (y >= 266 && y < 294)
+      if (y >= 136 && y < 162)
         ++diff_inside;
       else
         ++diff_outside;
     }
   }
-  Serial.printf("[engine] overlay diff: inside=%d outside=%d\n", diff_inside,
+  Serial.printf("[engine] banner diff: inside=%d outside=%d\n", diff_inside,
                 diff_outside);
   TEST_ASSERT_GREATER_THAN(0, diff_inside);
   TEST_ASSERT_EQUAL_INT_MESSAGE(0, diff_outside,
-                                "overlay leaked outside its y-band");
+                                "section banner leaked outside its row band");
 }
 
 void test_filling_slot_changes_framebuffer() {
@@ -104,30 +106,44 @@ void test_filling_slot_changes_framebuffer() {
       "Filling a slot did not change framebuffer — formatHHMM broken?");
 }
 
-void test_each_overlay_kind_changes_framebuffer() {
+void test_each_state_changes_framebuffer() {
+  // Every distinct state (4 full-frame OverlayKinds + the 2 per-section banner
+  // flags) must produce a distinguishable framebuffer — guards against a
+  // fall-through bug in renderFrame's dispatch.
   FramePtr base = makeFrame();
   FramePtr stale = makeFrame();
-  FramePtr dead = makeFrame();
   FramePtr failed = makeFrame();
+  FramePtr boot = makeFrame();
+  FramePtr dead58b = makeFrame();
+  FramePtr oebb = makeFrame();
   StreamSnapshot snap{};
   renderFrame({snap, OverlayKind::None}, *base);
   renderFrame({snap, OverlayKind::Stale}, *stale);
-  renderFrame({snap, OverlayKind::FilterDead}, *dead);
   renderFrame({snap, OverlayKind::StartFailed}, *failed);
+  renderFrame({snap, OverlayKind::Boot}, *boot);
+  RenderInput d{snap, OverlayKind::None};
+  d.filter_dead_58b = true;
+  renderFrame(d, *dead58b);
+  RenderInput o{snap, OverlayKind::None};
+  o.oebb_auth_dead = true;
+  renderFrame(o, *oebb);
+
   TEST_ASSERT_NOT_EQUAL(0,
                         std::memcmp(base->data(), stale->data(), Frame::bytes));
-  TEST_ASSERT_NOT_EQUAL(0,
-                        std::memcmp(base->data(), dead->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
       0, std::memcmp(base->data(), failed->data(), Frame::bytes));
-  // Each overlay kind must produce a distinguishable framebuffer — guards
-  // against e.g. a fall-through bug in drawOverlay's switch.
   TEST_ASSERT_NOT_EQUAL(0,
-                        std::memcmp(stale->data(), dead->data(), Frame::bytes));
+                        std::memcmp(base->data(), boot->data(), Frame::bytes));
+  TEST_ASSERT_NOT_EQUAL(
+      0, std::memcmp(base->data(), dead58b->data(), Frame::bytes));
+  TEST_ASSERT_NOT_EQUAL(0,
+                        std::memcmp(base->data(), oebb->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
       0, std::memcmp(stale->data(), failed->data(), Frame::bytes));
+  TEST_ASSERT_NOT_EQUAL(0,
+                        std::memcmp(failed->data(), boot->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
-      0, std::memcmp(dead->data(), failed->data(), Frame::bytes));
+      0, std::memcmp(dead58b->data(), oebb->data(), Frame::bytes));
 }
 
 void setup() {
@@ -135,9 +151,9 @@ void setup() {
   delay(2000);
   UNITY_BEGIN();
   RUN_TEST(test_render_empty_snapshot_draws_chrome);
-  RUN_TEST(test_overlay_changes_framebuffer_in_band);
+  RUN_TEST(test_section_banner_changes_framebuffer_in_band);
   RUN_TEST(test_filling_slot_changes_framebuffer);
-  RUN_TEST(test_each_overlay_kind_changes_framebuffer);
+  RUN_TEST(test_each_state_changes_framebuffer);
   UNITY_END();
 }
 

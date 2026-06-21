@@ -13,9 +13,10 @@
 
 namespace bustaferl {
 
-const int FETCH_ORDER[STREAM_COUNT] = {
-    STREAM_U1_OBERLAA,   STREAM_U1_LEOPOLDAU, STREAM_58B_ATZ,
-    STREAM_58A_HIETZING, STREAM_58A_ATZ,
+const int FETCH_ORDER[OGD_STREAM_COUNT] = {
+    STREAM_58B_ATZ,
+    STREAM_58A_HIETZING,
+    STREAM_58A_ATZ,
 };
 
 namespace {
@@ -49,14 +50,47 @@ std::string apiUrlForBatch(const std::string &endpoint_base,
   return url;
 }
 
+// One ÖBB HAFAS StationBoard POST → parse into out.stream[STREAM_SBAHN_HBF].
+// Counts as one batch in `summary`; sets summary.oebb_http_ok on a 2xx so the
+// cycle can run auth-health off the parsed endpoint_responded flag.
+static bool fetchOebbStream(INetwork &net, const std::string &mgate_url,
+                            const OebbStreamFilter &filter, StreamSnapshot &out,
+                            FetchSummary &summary) {
+  std::string body = buildOebbRequest(filter);
+  std::string resp;
+  FetchConfig fc;
+  FetchOutcome fo =
+      fetchPostWithRetry(net, mgate_url, body, "application/json", resp, fc);
+  ++summary.total_batches;
+  if (!fo.ok) {
+    SNAP_LOG("[api] oebb httpPost failed after %d attempts\n",
+             fo.attempts_taken);
+    ++summary.failed_batches;
+    return false;
+  }
+  summary.oebb_http_ok = true;
+  if (fo.attempts_taken > 1) {
+    SNAP_LOG("[api] oebb succeeded on attempt %d/%d\n", fo.attempts_taken,
+             fc.max_attempts);
+  }
+  if (!parseOebbStationBoard(resp, out.stream[STREAM_SBAHN_HBF])) {
+    SNAP_LOG("[api] oebb parse failed\n");
+    ++summary.failed_batches;
+    return false;
+  }
+  return true;
+}
+
 bool fetchSnapshot(INetwork &net, const std::string &endpoint_base,
+                   const std::string &mgate_url,
                    const StreamFilter (&filters)[STREAM_COUNT],
-                   StreamSnapshot &out, FetchSummary &summary) {
+                   const OebbStreamFilter &oebb_filter, StreamSnapshot &out,
+                   FetchSummary &summary) {
   out = StreamSnapshot{};
   summary = FetchSummary{};
 
-  for (int start = 0; start < STREAM_COUNT; start += STOPIDS_PER_QUERY) {
-    int batch_size = STREAM_COUNT - start;
+  for (int start = 0; start < OGD_STREAM_COUNT; start += STOPIDS_PER_QUERY) {
+    int batch_size = OGD_STREAM_COUNT - start;
     if (batch_size > STOPIDS_PER_QUERY)
       batch_size = STOPIDS_PER_QUERY;
 
@@ -102,9 +136,13 @@ bool fetchSnapshot(INetwork &net, const std::string &endpoint_base,
     }
   }
 
+  // ÖBB S-Bahn stream: separate POST endpoint, fetched after the OGD batch so
+  // an OGD failure never hides it (and vice versa).
+  fetchOebbStream(net, mgate_url, oebb_filter, out, summary);
+
   // api_ok if at least one batch returned valid JSON. A complete network
-  // failure (all batches failed httpGet/parse) falls through to api_ok=false
-  // and warmCyclePath's short-retry policy.
+  // failure (all batches failed) falls through to api_ok=false and
+  // warmCyclePath's short-retry policy.
   out.api_ok = (summary.failed_batches < summary.total_batches);
   return out.api_ok;
 }

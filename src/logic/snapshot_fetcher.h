@@ -2,6 +2,7 @@
 #define BUSTAFERL_SNAPSHOT_FETCHER_H
 
 #include "../data/StreamSnapshot.h"
+#include "../data/oebb_hafas_parse.h"
 #include "../data/wienerlinien_parse.h"
 #include "../hal/INetwork.h"
 
@@ -15,16 +16,23 @@ namespace bustaferl {
 // per call → 3 batches for our 5 streams.
 constexpr int STOPIDS_PER_QUERY = 2;
 
-// Order in which stream slots are queried. Reversed from display/enum order so
-// STREAM_U1_OBERLAA moves into the first paired batch instead of being the
-// lone 5th query. Diagnostic: if data gaps now appear on STREAM_58A_ATZ (the
-// new singleton), the problem follows query position; if they still appear on
-// U1-Oberlaa, the problem is RBL-specific.
-extern const int FETCH_ORDER[STREAM_COUNT];
+// Number of OGD (Wiener Linien) bus streams, fetched via the GET monitor
+// batch. Equals the index of the first non-OGD stream (the S-Bahn), which is
+// fetched separately via the ÖBB POST path.
+constexpr int OGD_STREAM_COUNT = STREAM_SBAHN_HBF;
+
+// Order in which the OGD stream slots are queried. STREAM_58A_ATZ is the lone
+// trailing single-stop query; if data gaps appear there the problem follows
+// query position, not the RBL.
+extern const int FETCH_ORDER[OGD_STREAM_COUNT];
 
 struct FetchSummary {
   int total_batches = 0;
   int failed_batches = 0;
+  // True iff the ÖBB POST returned 2xx (regardless of the HAFAS err field).
+  // Lets the cycle tell "no S-Bahn HTTP response" apart from "responded with
+  // an auth error" for ÖBB auth-health tracking.
+  bool oebb_http_ok = false;
 };
 
 // Compose the OGD monitor URL for one batch of stopIds. Caller supplies the
@@ -33,23 +41,26 @@ struct FetchSummary {
 std::string apiUrlForBatch(const std::string &endpoint_base,
                            const int *stop_ids, int count);
 
-// Iterate the 5 streams in batches of STOPIDS_PER_QUERY, fetch each batch via
-// `net.httpGet` (with the api_fetcher retry policy), parse the response, and
-// merge the per-stream results into `out`. `endpoint_base` is the URL prefix
-// production code reads from config.h::WL_API_BASE — passed in so host tests
-// can route to a fake endpoint.
+// Fetch the OGD bus streams in batches of STOPIDS_PER_QUERY via `net.httpGet`
+// (with the api_fetcher retry policy), then the S-Bahn stream via the ÖBB
+// HAFAS POST (`net.httpPost`). `endpoint_base` is the OGD monitor prefix
+// (config.h::WL_API_BASE); `mgate_url` the ÖBB mgate.exe endpoint
+// (config.h::OEBB_MGATE_URL); `oebb_filter` the single S-Bahn filter. Both are
+// passed in so host tests can route to fake endpoints.
 //
-// Sets `out.api_ok = true` iff at least one batch returned a parsable
-// response. `summary` is populated with the batch counters that the snapshot
-// summary log line consumes. Returns the same flag as out.api_ok for the
-// caller's convenience.
+// Sets `out.api_ok = true` iff at least one batch (OGD or ÖBB) returned a
+// parsable response. `summary` is populated with the batch counters the
+// snapshot summary log line consumes, plus `oebb_http_ok`. Returns the same
+// flag as out.api_ok for the caller's convenience.
 //
 // Per-batch logging (HTTP failure, retry success, parse failure) stays inside
 // this function via Serial.printf — that log is per-batch and not part of the
-// snapshot summary block extracted in Schritt 3.
+// snapshot summary block.
 bool fetchSnapshot(INetwork &net, const std::string &endpoint_base,
+                   const std::string &mgate_url,
                    const StreamFilter (&filters)[STREAM_COUNT],
-                   StreamSnapshot &out, FetchSummary &summary);
+                   const OebbStreamFilter &oebb_filter, StreamSnapshot &out,
+                   FetchSummary &summary);
 
 } // namespace bustaferl
 

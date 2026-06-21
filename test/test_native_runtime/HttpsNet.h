@@ -27,6 +27,8 @@ public:
   bool connect(unsigned /*timeout_ms*/) override { return true; }
   bool isConnected() override { return true; }
   bool httpGet(const std::string &url, std::string &out) override;
+  bool httpPost(const std::string &url, const std::string &body,
+                const std::string &content_type, std::string &out) override;
 
   // Disable TLS verification (needed for the local mock runner). Off by
   // default — production calls go through the system trust store.

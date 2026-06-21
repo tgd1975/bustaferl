@@ -53,9 +53,9 @@ void test_format_slot_hint_tag() {
   d.valid = true;
   d.when = 1704112440;
   d.source = DepartureSource::Hint;
-  std::string out = formatSlot("U1-Obe[1]", d);
-  TEST_ASSERT_EQUAL_STRING("[api]   U1-Obe[1]: 12:34 HINT epoch=1704112440\n",
-                           out.c_str());
+  std::string out = formatSlot("SBahn-Hbf[1]", d);
+  TEST_ASSERT_EQUAL_STRING(
+      "[api]   SBahn-Hbf[1]: 12:34 HINT epoch=1704112440\n", out.c_str());
 }
 
 void test_format_summary_header_and_per_slot_lines() {
@@ -83,19 +83,21 @@ void test_format_summary_header_and_per_slot_lines() {
   TEST_ASSERT_NOT_NULL(std::strstr(
       out.c_str(),
       "[api] batches=3 failed=0 api_ok=1  streams: 58A-Atz r=1 f=1 | "
-      "58A-Hie r=1 f=1 | 58B-Atz r=1 f=1 | U1-Leo r=1 f=1 | U1-Obe r=1 f=1\n"));
+      "58A-Hie r=1 f=1 | 58B-Atz r=1 f=1 | SBahn-Hbf r=1 f=1\n"));
 
   // Per-slot line for the valid Plan departure.
   TEST_ASSERT_NOT_NULL(std::strstr(
       out.c_str(), "[api]   58A-Atz[0]: 12:34 PLAN epoch=1704112440\n"));
 
   // Every other slot must show "--:--". Sample one from each remaining stream
-  // to be sure the loop ran across all five streams.
+  // to be sure the loop ran across all four streams.
   TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   58A-Atz[1]: --:--\n"));
   TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   58A-Hie[0]: --:--\n"));
   TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   58B-Atz[0]: --:--\n"));
-  TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   U1-Leo[0]: --:--\n"));
-  TEST_ASSERT_NOT_NULL(std::strstr(out.c_str(), "[api]   U1-Obe[1]: --:--\n"));
+  TEST_ASSERT_NOT_NULL(
+      std::strstr(out.c_str(), "[api]   SBahn-Hbf[0]: --:--\n"));
+  TEST_ASSERT_NOT_NULL(
+      std::strstr(out.c_str(), "[api]   SBahn-Hbf[1]: --:--\n"));
 }
 
 void test_format_summary_api_ok_false_and_failed_counts() {

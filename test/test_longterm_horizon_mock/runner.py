@@ -84,8 +84,6 @@ def _full_body() -> bytes:
                     (8131, "58A", "Bhf. Atzgersdorf"),
                     (3757, "58A", "Hietzing U"),
                     (8132, "58B", "Bhf. Atzgersdorf"),
-                    (4105, "U1", "Leopoldau"),
-                    (4124, "U1", "Oberlaa"),
                 ]
             ]
         },

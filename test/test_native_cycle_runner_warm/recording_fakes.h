@@ -85,15 +85,29 @@ public:
     out = body_;
     return true;
   }
+  // ÖBB S-Bahn POST. Defaults to an empty-but-OK HAFAS body so the cycle's
+  // auth-health stays green; tests that care set a richer body.
+  bool httpPost(const std::string &url, const std::string &, const std::string &,
+                std::string &out) override {
+    trace_.emplace_back("net.httpPost(" + truncate(url, 40) + ")");
+    ++http_post_calls;
+    if (!http_ok_)
+      return false;
+    out = oebb_body_;
+    return true;
+  }
+  void setOebbBody(std::string b) { oebb_body_ = std::move(b); }
 
 private:
   std::vector<std::string> &trace_;
   bool wifi_ok_;
   bool http_ok_;
   std::string body_;
+  std::string oebb_body_ = R"({"svcResL":[{"res":{"jnyL":[]}}],"err":"OK"})";
 
 public:
   int http_calls = 0;
+  int http_post_calls = 0;
 };
 
 class RecordingSleep : public ISleep {

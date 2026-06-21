@@ -38,10 +38,7 @@ void buildScheduleFilters(ScheduleStreamFilter (&f)[STREAM_COUNT]) {
   f[STREAM_58A_HIETZING] = {DIVA_TULLNERTALGASSE, LINE_58A,
                             EFA_TOWARDS_58A_HIETZING};
   f[STREAM_58B_ATZ] = {DIVA_ENDEMANNGASSE, LINE_58B, EFA_TOWARDS_58B_ATZ};
-  f[STREAM_U1_LEOPOLDAU] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
-                            EFA_TOWARDS_U1_LEOPOLDAU};
-  f[STREAM_U1_OBERLAA] = {DIVA_SUEDTIROLER_PLATZ, LINE_U1,
-                          EFA_TOWARDS_U1_OBERLAA};
+  // STREAM_SBAHN_HBF left default (diva = 0) — no EFA schedule for the S-Bahn.
 }
 
 } // namespace
@@ -126,23 +123,20 @@ void test_full_schedule_fetch_does_not_crash() {
         static_cast<long long>(r.hint[i].first_tomorrow[1]));
   }
 
-  TEST_ASSERT_EQUAL_INT_MESSAGE(3, r.calls_attempted,
-                                "expected 3 DIVA calls (one per Haltestelle)");
+  TEST_ASSERT_EQUAL_INT_MESSAGE(2, r.calls_attempted,
+                                "expected 2 DIVA calls (Tullnertalgasse + "
+                                "Endemanngasse; S-Bahn has no EFA hint)");
   TEST_ASSERT_EQUAL_INT_MESSAGE(
       0, r.calls_failed,
       "at least one EFA call failed — heap guard skipped or HTTP error");
   TEST_ASSERT_TRUE_MESSAGE(r.ok, "fetchSchedule reported not ok");
 
-  // Each of our 5 streams must have collected at least one schedule hint:
-  // either a last_today (any departure before tomorrow's 03:00 cutoff) or
-  // a first_tomorrow (departures after the cutoff). Mid-day runs see only
-  // last_today because the default EFA window (limit=50, anchored at
-  // 22:00) typically doesn't span past 03:00; late-evening runs see both.
-  // A stream with NEITHER is a direction-filter mismatch — that's what
-  // we're guarding against here (the bug that hid behind U1's
-  // "Wien Leopoldau" / "Wien Alaudagasse" naming until the live probe in
-  // 2026-05-19).
-  for (int i = 0; i < STREAM_COUNT; ++i) {
+  // Each of our three bus streams must have collected at least one schedule
+  // hint: a last_today (any departure before tomorrow's 03:00 cutoff) or a
+  // first_tomorrow (after the cutoff). A stream with NEITHER is a
+  // direction-filter mismatch. The S-Bahn stream (STREAM_SBAHN_HBF) has no
+  // EFA hint path and is excluded from this check.
+  for (int i = 0; i < STREAM_SBAHN_HBF; ++i) {
     const bool any_hint =
         r.hint[i].last_today != 0 || r.hint[i].first_tomorrow[0] != 0;
     char msg[80];
