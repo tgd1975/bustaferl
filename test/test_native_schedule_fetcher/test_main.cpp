@@ -33,6 +33,10 @@ public:
     }
     return false;
   }
+  bool httpPost(const std::string &, const std::string &, const std::string &,
+                std::string &) override {
+    return false; // schedule fetch is GET-only
+  }
 };
 
 time_t makeLocal(int year, int month, int day, int hour, int minute) {
