@@ -17,9 +17,10 @@ src/
 │   └── Esp32*.{h,cpp}        ESP32-Implementierungen
 │
 ├── data/                     plattformneutral, parsing/structs
-│   ├── Departure.h
-│   ├── StreamSnapshot.h
-│   └── wienerlinien_parse.{h,cpp}
+│   ├── Departure.h           + line_label[6] (S-Bahn: variable Linie pro Slot)
+│   ├── StreamSnapshot.h      4 Streams (STREAM_SBAHN_HBF statt 2× U1)
+│   ├── wienerlinien_parse.{h,cpp}   OGD-Monitor (Bus, GET)
+│   └── oebb_hafas_parse.{h,cpp}     ÖBB HAFAS mgate.exe (S-Bahn, POST)
 │
 ├── logic/                    plattformneutral, reine Funktionen + kleine Klassen
 │   ├── stale_policy.{h,cpp}         §4
@@ -29,7 +30,7 @@ src/
 │   ├── boot_sequencer.{h,cpp}       §8
 │   ├── filter_builder.{h,cpp}       Default-Filter-Set (`towards`-Mapping)
 │   ├── api_fetcher.{h,cpp}          Retry-Wrapper um `INetwork::httpGet`
-│   ├── snapshot_fetcher.{h,cpp}     pro Cycle: alle Streams holen + parsen
+│   ├── snapshot_fetcher.{h,cpp}     pro Cycle: OGD-Bus-Batch (GET) + ÖBB-S-Bahn (POST)
 │   ├── snapshot_logger.{h,cpp}      einheitliches `[snapshot]`-Log-Format
 │   ├── schedule_fetcher.{h,cpp}     EFA-Endpoint → `ScheduleHint`
 │   ├── schedule_refresh.{h,cpp}     entscheidet, ob EFA neu geladen wird
@@ -176,6 +177,10 @@ Departure mit passendem `towards` liefert, blendet das Bustaferl
 `58B Filter ungueltig` ein. Sonst würde der Wegfall stillschweigend zu
 `--:--` werden und ewig so bleiben.
 
+Analog für die S-Bahn: antwortet die ÖBB-HAFAS-Schnittstelle 3-mal in Folge mit
+`err != "OK"` (typisch ein rotierter AID/Client-Schlüssel), erscheint im
+S-Bahn-Block `OEBB-API: Auth ungueltig`; die Bus-Zeilen laufen weiter.
+
 ## Wo welche Konstante wirkt
 
 | Konstante                  | Modul                         | Effekt                              |
@@ -190,6 +195,8 @@ Departure mit passendem `towards` liefert, blendet das Bustaferl
 | `LIGHT_FULL_INTERVAL_S`    | logic/refresh_planner         | Light Full alle 2 h                 |
 | `NTP_INTERVAL_S`           | logic/cycle_runner            | NTP-Resync täglich                  |
 | `FILTER_HEALTH_DEAD_AFTER` | logic/filter_health           | Misses bis „Filter ungültig"        |
+| `OEBB_HAFAS_AID` / `_CLIENT_JSON` | data/oebb_hafas_parse  | ÖBB-HAFAS-Auth (pre-flash verifizieren) |
+| `OEBB_JNYFLTR_PRODUCTS`    | data/oebb_hafas_parse         | Produktfilter S-Bahn+Regio+REX      |
 | `RLE_HARDCAP_BYTES`        | hal/Esp32PersistentStore      | maximaler RLE-Buffer im RTC-RAM     |
 
 ## Speicher-Layout (ESP32)
@@ -210,7 +217,7 @@ sondern ein direktes `g++`-Target via `make native-runtime-*`.
 | Adapter                              | Ersetzt …            | Verhalten                                                                 |
 |--------------------------------------|----------------------|---------------------------------------------------------------------------|
 | `WallClockClock`                     | `Esp32Clock`         | `time(nullptr)` + `gmtime_r`; `isSynced()` immer `true`                   |
-| `HttpsNet` (libcurl)                 | `Esp32Network`       | HTTPS-GET gegen den realen Endpoint; ENV-Overrides für Base + TLS-Verify  |
+| `HttpsNet` (libcurl)                 | `Esp32Network`       | HTTPS GET/POST gegen den realen Endpoint; ENV-Overrides für Base + TLS-Verify  |
 | `DiskStore`                          | `Esp32PersistentStore` | `PersistedMeta` + RLE-Frame + `ScheduleSnapshot` in `persist.bin`        |
 | `NoOpDisplay`                        | `Esp32Display`       | verschluckt `partial/full/clear`; kein Panel                              |
 | `NoOpSleep`                          | `Esp32Sleep`         | `deepSleep` kehrt zurück (ein Prozess, valgrind sieht alle Cycles)        |

@@ -37,7 +37,7 @@ v2 — S-Bahn Atzgersdorf:
 - [8. Plan-Hints (Analogie zu v1 §12)](#8-plan-hints-analogie-zu-v1-12)
 - [9. Edge Cases und Fehlerbilder](#9-edge-cases-und-fehlerbilder)
 - [10. Pre-Flash-Verifikation & Open Questions](#10-pre-flash-verifikation--open-questions)
-- [11. Migrationsschritte (zur späteren Umsetzung, nicht Teil dieses Konzepts)](#11-migrationsschritte-zur-späteren-umsetzung-nicht-teil-dieses-konzepts)
+- [11. Migrationsschritte (umgesetzt)](#11-migrationsschritte-umgesetzt)
 - [Quellen (Web-Recherche zu v2)](#quellen-web-recherche-zu-v2)
 
 ---
@@ -585,9 +585,11 @@ Vor dem ersten Flash auf der echten Hardware durchzuführen:
 5. **Hint-Variante.** §8: Default 1 (kein Hint). Vor Roll-out kurz im Vorzimmer beobachten, ob das morgendliche Verhalten reicht.
 6. **HTTP-Heap-Spitze** unter realer Antwort-Größe messen. Bestehende Tests in [test_device_render](test/test_device_render/test_main.cpp) um einen Heap-Check für den S-Bahn-Pfad erweitern.
 
-## 11. Migrationsschritte (zur späteren Umsetzung, nicht Teil dieses Konzepts)
+## 11. Migrationsschritte (umgesetzt)
 
-In Reihenfolge:
+> Status: umgesetzt (Datenmodell, ÖBB-HAFAS-Backend, Layout, Tests, Doku-Sync).
+> Offen bleibt die Pre-Flash-Verifikation der ÖBB-AID/Client/Produktfilter
+> (§10 Punkt 1–2) und die On-Device-Verifikation. Ursprüngliche Reihenfolge:
 
 1. `MAGIC` in [Esp32PersistentStore](src/hal/Esp32PersistentStore.h) bumpen.
 2. `Stream`-Enum und `STREAM_COUNT` anpassen, alte U1-Konstanten löschen, neue ÖBB-Konstanten anlegen.

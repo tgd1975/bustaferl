@@ -67,6 +67,23 @@ Achtung: die Wiener Linien hängen manchmal Suffixe an (z. B. `Hietzing S+U`).
 Prefix-Match heißt: `"Hietzing"` matcht auch `"Hietzing S+U"`. Du brauchst
 also nur den eindeutigen Anfang.
 
+### 4. ÖBB-S-Bahn-Parameter (v2)
+
+Der dritte Block zeigt die ÖBB-S-Bahn ab Bahnhof Atzgersdorf Richtung Wien
+Hauptbahnhof. Die Daten kommen über die HAFAS-Schnittstelle `mgate.exe`, die
+einen AID/Client-Schlüssel erwartet. Diese Werte rotieren die ÖBB gelegentlich,
+darum **vor dem ersten Flash gegen die laufende ÖBB-Webapp verifizieren**:
+
+1. <https://fahrplan.oebb.at/webapp> öffnen, DevTools → Network-Tab
+2. Eine Abfrage Atzgersdorf → Wien Hbf machen, den `mgate.exe`-Request finden
+3. Aus dem Request-Body `auth.aid`, `client.*` und `ver` nach `OEBB_HAFAS_AID`,
+   `OEBB_HAFAS_CLIENT_JSON`, `OEBB_HAFAS_VER` in `config.h` übernehmen
+4. Den Produktfilter (`jnyFltrL[].value`) nach `OEBB_JNYFLTR_PRODUCTS` übernehmen
+
+Solange die Werte nicht stimmen, zeigt der S-Bahn-Block `--:--` und nach drei
+Fehlversuchen den Banner `OEBB-API: Auth ungueltig`. Schritt-für-Schritt:
+[v2-sbahn-migration-plan.md](v2-sbahn-migration-plan.md) §0.
+
 ## Flashen
 
 ```bash
@@ -81,9 +98,12 @@ WiFi → NTP-Sync → API → Deep Clean → erster Render. Dauert ca. 10–20 s
 | Anzeige                     | Bedeutung                                          |
 |-----------------------------|----------------------------------------------------|
 | `HH:MM`                     | nächste Abfahrt (Echtzeit oder Plan-Fallback)      |
+| `S2`/`S3`/… vor der Zeit    | S-Bahn-Linie des Zuges (variiert pro Slot)         |
 | `--:--`                     | API hat für diesen Slot nichts geliefert           |
+| `??:??`                     | Stale: alle Werte zu alt (siehe Banner `VERALTET`) |
 | Banner `VERALTET`           | Daten älter als 3 min — WiFi oder API tot          |
 | Banner `58B Filter ungueltig` | `towards`-String passt nicht mehr, RBL prüfen    |
+| Banner `OEBB-API: Auth ungueltig` | ÖBB-HAFAS lehnt ab — AID/Client in `config.h` erneuern |
 | Banner `Start fehlgeschlagen` | Cold Boot konnte WiFi/NTP nicht hochbekommen     |
 
 ## Stromversorgung
@@ -115,6 +135,13 @@ Empfohlen:
 - Wiener Linien haben den Richtungstext geändert
 - Aktuelle Werte abfragen: `curl https://www.wienerlinien.at/ogd_realtime/monitor?rbl=$RBL_ENDEMANN`
 - Neuen Prefix in `FILTER_TOWARDS_58B` eintragen, neu flashen
+
+### Banner „OEBB-API: Auth ungueltig"
+
+- ÖBB haben den AID/Client-Schlüssel der HAFAS-API rotiert
+- Aktuelle Werte aus der ÖBB-Webapp abfangen (DevTools → `mgate.exe`-Request)
+- `OEBB_HAFAS_AID` / `OEBB_HAFAS_CLIENT_JSON` in `config.h` aktualisieren, neu flashen
+- Nur der S-Bahn-Block ist betroffen; die Bus-Zeilen laufen weiter
 
 ### Banner „Start fehlgeschlagen"
 
