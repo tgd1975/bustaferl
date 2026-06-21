@@ -14,6 +14,10 @@ public:
   bool connect(unsigned) override { return will_connect; }
   bool isConnected() override { return will_connect; }
   bool httpGet(const std::string &, std::string &) override { return false; }
+  bool httpPost(const std::string &, const std::string &, const std::string &,
+                std::string &) override {
+    return false;
+  }
 };
 
 class FakeClock : public IClock {
