@@ -15,13 +15,18 @@ namespace {
 // HAFAS nests prodL/opL/himL fairly deep; lift ArduinoJson's default cap (10).
 constexpr int OEBB_JSON_NESTING_LIMIT = 20;
 
+// Minimum lengths of the HAFAS date/time fields: "YYYYMMDD" / "HHMMSS".
+constexpr size_t HAFAS_DATE_MIN_LEN = 8;
+constexpr size_t HAFAS_TIME_MIN_LEN = 6;
+
 // HAFAS dDateS = "YYYYMMDD", dTimeS = "HHMMSS" (HHMMSS can exceed 24h when a
 // service crosses midnight relative to the board's base date — mktime
 // normalises the overflow). Both are local Vienna time. Returns 0 on failure.
 time_t parseHafasDateTime(const char *date, const char *time_s) {
   if (!date || !time_s)
     return 0;
-  if (std::strlen(date) < 8 || std::strlen(time_s) < 6)
+  if (std::strlen(date) < HAFAS_DATE_MIN_LEN ||
+      std::strlen(time_s) < HAFAS_TIME_MIN_LEN)
     return 0;
   int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0;
   if (std::sscanf(date, "%4d%2d%2d", &y, &mo, &d) != 3)
@@ -41,13 +46,13 @@ time_t parseHafasDateTime(const char *date, const char *time_s) {
 }
 
 // Copy a HAFAS product name into the fixed line_label buffer, abbreviating
-// anything longer than 5 glyphs to "xx" (keeps the narrow column intact).
-void setLineLabel(char (&dst)[6], const char *name) {
+// anything that does not fit to "xx" (keeps the narrow column intact).
+void setLineLabel(char (&dst)[LINE_LABEL_CAP], const char *name) {
   if (!name || !*name) {
     dst[0] = '\0';
     return;
   }
-  if (std::strlen(name) > 5) {
+  if (std::strlen(name) > sizeof(dst) - 1) {
     std::strcpy(dst, "xx");
     return;
   }
@@ -104,6 +109,10 @@ std::string buildOebbRequest(const OebbStreamFilter &f) {
   return out;
 }
 
+// Like parseMonitorResponse, the length tracks the response shape — auth check
+// → svcResL → jnyL → stbStop time fields → prodL label resolution, one pass.
+// Splitting would fragment the parse into helpers sharing private state.
+// NOLINTNEXTLINE(readability-function-size)
 bool parseOebbStationBoard(const std::string &json, StreamData &out_stream) {
   out_stream = StreamData{};
 

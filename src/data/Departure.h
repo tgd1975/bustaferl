@@ -17,16 +17,20 @@ enum class DepartureSource : std::uint8_t {
   Hint,        // injected by slot_merger from a ScheduleHint (EFA timetable)
 };
 
+// Capacity of Departure::line_label: up to 5 glyphs (widest expected label,
+// e.g. "REX12") + NUL. Longer labels are abbreviated to "xx" upstream.
+constexpr int LINE_LABEL_CAP = 6;
+
 struct Departure {
   time_t when = 0; // unix seconds, absolute
   DepartureSource source = DepartureSource::Unknown;
   bool valid = false; // false → no departure for this slot
   // Optional per-slot line label, e.g. "S2", "S3", "REX1". Only the S-Bahn
-  // stream fills it; bus streams leave it empty and the renderer falls back to
-  // the static stream line. char[6] (not std::string) keeps Departure trivially
-  // copyable and RTC-RAM friendly — it rides along in the RLE-persisted frame.
-  // Holds up to 5 glyphs + NUL; longer labels are abbreviated to "xx" upstream.
-  char line_label[6] = "";
+  // stream fills it; bus streams leave it empty and the renderer falls back
+  // to the static stream line. A char array (not std::string) keeps Departure
+  // trivially copyable and RTC-RAM friendly — it rides along in the
+  // RLE-persisted frame.
+  char line_label[LINE_LABEL_CAP] = "";
 
   bool operator==(const Departure &o) const {
     return valid == o.valid && when == o.when && source == o.source &&
