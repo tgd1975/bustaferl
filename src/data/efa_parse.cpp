@@ -40,7 +40,7 @@ time_t parseEfaDateTime(JsonObjectConst dt) {
   const char *mi = dt["minute"] | (const char *)nullptr;
   if (!y || !mo || !d || !h || !mi)
     return 0;
-  struct tm tm{};
+  struct tm tm {};
   tm.tm_year = atoiSafe(y) - TM_YEAR_BASE;
   tm.tm_mon = atoiSafe(mo) - 1;
   tm.tm_mday = atoiSafe(d);

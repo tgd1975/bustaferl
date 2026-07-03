@@ -19,6 +19,9 @@
         clean format format-check lint tidy size secrets ci ci-heavy
 
 PIO        := pio
+# Overridable so CI can pin an exact major version (formatting output
+# differs across clang-format majors; see .github/workflows/ci.yml).
+CLANG_FORMAT ?= clang-format
 TMP        := .tmp
 RESULTS    := $(TMP)/test-results.json
 TRACE_DIR  := $(TMP)/traces
@@ -203,15 +206,19 @@ native-runtime-https-smoke:  ## live-call check gegen Wiener-Linien-Endpoints
 	    -o $(NR_DIR)/https_smoke
 	$(NR_DIR)/https_smoke
 
+# secrets.h is gitignored and user-owned (CI drops in the untracked
+# template) — formatting it is neither possible to enforce nor useful.
 format:                ## run clang-format in place
 	@find src test -type f \( -name '*.h' -o -name '*.cpp' \) \
 	  -not -path '*/fixtures/*' \
-	  -print0 | xargs -0 clang-format -i
+	  -not -name 'secrets.h' \
+	  -print0 | xargs -0 $(CLANG_FORMAT) -i
 
 format-check:          ## verify formatting without writing
 	@find src test -type f \( -name '*.h' -o -name '*.cpp' \) \
 	  -not -path '*/fixtures/*' \
-	  -print0 | xargs -0 clang-format --dry-run --Werror
+	  -not -name 'secrets.h' \
+	  -print0 | xargs -0 $(CLANG_FORMAT) --dry-run --Werror
 
 lint:                  ## run cppcheck
 	cppcheck --enable=warning,style,performance,portability \
@@ -224,11 +231,11 @@ lint:                  ## run cppcheck
 tidy:                  ## run clang-tidy on host-compilable src/ TUs
 	@# Generate compile_commands.json from the native env. Only the
 	@# platform-neutral TUs (data/, logic/, render/rle) land in it;
-	@# ESP32-only files (main.cpp, hal/Esp32*.cpp, render/layout.cpp,
-	@# render/error_overlay.cpp) are intentionally skipped — they pull
-	@# in Adafruit_GFX / WiFi etc. which clang-tidy would either
-	@# misanalyse or flood with library findings. They are still
-	@# covered by cppcheck (`make lint`) and the on-device test set.
+	@# ESP32-only files (main.cpp, hal/Esp32*.cpp, render/layout.cpp)
+	@# are intentionally skipped — they pull in Adafruit_GFX / WiFi
+	@# etc. which clang-tidy would either misanalyse or flood with
+	@# library findings. They are still covered by cppcheck
+	@# (`make lint`) and the on-device test set.
 	@$(PIO) run -e native -t compiledb >/dev/null
 	@# Rewrite -I paths into vendored libs to -isystem so clang-tidy
 	@# does not analyse third-party headers (would produce tens of

@@ -45,7 +45,7 @@ std::string formatSlot(const char *tag, const Departure &d) {
     std::snprintf(buf, sizeof(buf), "[api]   %s: --:--\n", tag);
     return std::string{buf};
   }
-  struct tm local{};
+  struct tm local {};
   localtime_r(&d.when, &local);
   std::snprintf(buf, sizeof(buf), "[api]   %s: %02d:%02d %s epoch=%lld\n", tag,
                 local.tm_hour, local.tm_min, sourceTag(d.source),

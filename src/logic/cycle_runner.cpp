@@ -62,14 +62,24 @@ bool refreshSchedule(CycleDeps &deps, ScheduleSnapshot &out) {
   return applyScheduleFetchResult(r, now, out);
 }
 
-void renderAndPush(CycleDeps &deps, const StreamSnapshot &snap,
-                   OverlayKind overlay, bool filter_dead_58b,
-                   bool oebb_auth_dead, PersistedMeta &meta,
-                   const ScheduleSnapshot &schedule) {
+// Shared fetch+merge result. Hands back the realtime snapshot, the merged view
+// for planSleep, the global overlay (None / Stale), and the two per-section
+// banner flags (58B filter dead, ÖBB auth dead).
+struct FetchCycleResult {
+  StreamSnapshot snap;
+  StreamSnapshot merged;
+  OverlayKind overlay = OverlayKind::None;
+  bool filter_dead_58b = false; // section-2 inline banner (58B filter dead)
+  bool oebb_auth_dead = false;  // section-3 inline banner (ÖBB auth dead)
+  bool fetched_ok = false;
+};
+
+void renderAndPush(CycleDeps &deps, const FetchCycleResult &fc,
+                   PersistedMeta &meta, const ScheduleSnapshot &schedule) {
   time_t now = deps.clock.now();
-  RenderInput in = composeRenderInput(snap, schedule, overlay, now);
-  in.filter_dead_58b = filter_dead_58b;
-  in.oebb_auth_dead = oebb_auth_dead;
+  RenderInput in = composeRenderInput(fc.snap, schedule, fc.overlay, now);
+  in.filter_dead_58b = fc.filter_dead_58b;
+  in.oebb_auth_dead = fc.oebb_auth_dead;
   deps.renderer.render(in, deps.curr);
 
   bool prev_valid = meta.framebuffer_valid;
@@ -108,18 +118,6 @@ SleepConfig makeSleepConfig(const CycleConfig &cfg) {
                      cfg.active_threshold_s, cfg.no_data_sleep_s,
                      cfg.api_failure_retry_s};
 }
-
-// Shared fetch+merge step. Hands back the realtime snapshot, the merged view
-// for planSleep, the global overlay (None / Stale), and the two per-section
-// banner flags (58B filter dead, ÖBB auth dead).
-struct FetchCycleResult {
-  StreamSnapshot snap;
-  StreamSnapshot merged;
-  OverlayKind overlay = OverlayKind::None;
-  bool filter_dead_58b = false; // section-2 inline banner (58B filter dead)
-  bool oebb_auth_dead = false;  // section-3 inline banner (ÖBB auth dead)
-  bool fetched_ok = false;
-};
 
 FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
                               const ScheduleSnapshot &schedule) {
@@ -169,6 +167,16 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
                  ? r.snap
                  : mergeSlots(r.snap, schedule, now);
   return r;
+}
+
+// Re-merge after a successful schedule refresh so planSleep sizes the next
+// sleep with the fresh hints (the stale case renders and plans without hints
+// on purpose — doFetchCycle already pinned merged = snap there).
+void remergeAfterRefresh(FetchCycleResult &fc, const ScheduleSnapshot &schedule,
+                         time_t now) {
+  if (fc.overlay != OverlayKind::Stale) {
+    fc.merged = mergeSlots(fc.snap, schedule, now);
+  }
 }
 
 } // namespace
@@ -288,8 +296,9 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
     CYCLE_LOG_LN("[warm] wifi down");
     if (isStale(meta.last_api_success, deps.clock.now(),
                 deps.cfg.stale_threshold_s)) {
-      renderAndPush(deps, StreamSnapshot{}, OverlayKind::Stale, false, false,
-                    meta, schedule);
+      FetchCycleResult stale_fc;
+      stale_fc.overlay = OverlayKind::Stale;
+      renderAndPush(deps, stale_fc, meta, schedule);
     }
     deps.sleep.deepSleep(deps.cfg.poll_interval_s);
     return;
@@ -310,6 +319,11 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
   if (needScheduleRefresh(schedule, now)) {
     if (refreshSchedule(deps, schedule)) {
       deps.store.saveSchedule(schedule);
+      // fc.merged was built from the old snapshot inside doFetchCycle, and
+      // planSleep below sizes tonight's deep sleep from it. Without this,
+      // refresh nights planned against day-old hints (rendering was
+      // unaffected — renderAndPush re-merges internally).
+      remergeAfterRefresh(fc, schedule, now);
     }
   }
 
@@ -322,8 +336,7 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
   if (nightly) {
     doNightlyClean(deps, meta, schedule, fc, now);
   } else if (fc.fetched_ok || fc.overlay != OverlayKind::None) {
-    renderAndPush(deps, fc.snap, fc.overlay, fc.filter_dead_58b,
-                  fc.oebb_auth_dead, meta, schedule);
+    renderAndPush(deps, fc, meta, schedule);
   } else {
     // Transient fetch failure (not yet stale): keep showing the last good
     // frame. Re-rendering with an empty snap would flicker every slot to

@@ -81,6 +81,10 @@ static bool fetchOebbStream(INetwork &net, const std::string &mgate_url,
   return true;
 }
 
+// 7 parameters: two endpoints + the two filter shapes (OGD table, single ÖBB
+// struct) + two outputs. They have no shared invariant — wrapping them into a
+// struct would only add a pass-through layer for every caller and test.
+// NOLINTNEXTLINE(readability-function-size)
 bool fetchSnapshot(INetwork &net, const std::string &endpoint_base,
                    const std::string &mgate_url,
                    const StreamFilter (&filters)[STREAM_COUNT],

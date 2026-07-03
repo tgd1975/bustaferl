@@ -140,8 +140,8 @@ void test_each_state_changes_framebuffer() {
                         std::memcmp(base->data(), oebb->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
       0, std::memcmp(stale->data(), failed->data(), Frame::bytes));
-  TEST_ASSERT_NOT_EQUAL(0,
-                        std::memcmp(failed->data(), boot->data(), Frame::bytes));
+  TEST_ASSERT_NOT_EQUAL(
+      0, std::memcmp(failed->data(), boot->data(), Frame::bytes));
   TEST_ASSERT_NOT_EQUAL(
       0, std::memcmp(dead58b->data(), oebb->data(), Frame::bytes));
 }

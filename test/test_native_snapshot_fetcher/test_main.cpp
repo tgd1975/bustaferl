@@ -41,8 +41,8 @@ public:
     }
     return false;
   }
-  bool httpPost(const std::string &url, const std::string &, const std::string &,
-                std::string &out) override {
+  bool httpPost(const std::string &url, const std::string &,
+                const std::string &, std::string &out) override {
     post_urls_seen.push_back(url);
     if (fail_all || oebb_fail)
       return false;
@@ -129,9 +129,8 @@ void test_fetchSnapshot_happy_two_ogd_batches_plus_oebb() {
 
   StreamSnapshot snap;
   FetchSummary sum;
-  bool ok =
-      fetchSnapshot(net, "http://x?z=1", "http://mgate", f, oebbFilter(), snap,
-                    sum);
+  bool ok = fetchSnapshot(net, "http://x?z=1", "http://mgate", f, oebbFilter(),
+                          snap, sum);
 
   TEST_ASSERT_TRUE(ok);
   TEST_ASSERT_TRUE(snap.api_ok);
@@ -163,7 +162,8 @@ void test_fetchSnapshot_url_uses_fetch_order_first_batch() {
 
   StreamSnapshot snap;
   FetchSummary sum;
-  fetchSnapshot(net, "http://x?z=1", "http://mgate", f, oebbFilter(), snap, sum);
+  fetchSnapshot(net, "http://x?z=1", "http://mgate", f, oebbFilter(), snap,
+                sum);
 
   TEST_ASSERT_TRUE(net.urls_seen.size() >= 1);
   const std::string &first = net.urls_seen[0];
@@ -180,8 +180,8 @@ void test_fetchSnapshot_all_batches_fail_marks_api_not_ok() {
 
   StreamSnapshot snap;
   FetchSummary sum;
-  bool ok =
-      fetchSnapshot(net, "http://x", "http://mgate", f, oebbFilter(), snap, sum);
+  bool ok = fetchSnapshot(net, "http://x", "http://mgate", f, oebbFilter(),
+                          snap, sum);
 
   TEST_ASSERT_FALSE(ok);
   TEST_ASSERT_FALSE(snap.api_ok);
@@ -201,9 +201,8 @@ void test_fetchSnapshot_oebb_failure_keeps_ogd_api_ok() {
 
   StreamSnapshot snap;
   FetchSummary sum;
-  bool ok =
-      fetchSnapshot(net, "http://x?z=1", "http://mgate", f, oebbFilter(), snap,
-                    sum);
+  bool ok = fetchSnapshot(net, "http://x?z=1", "http://mgate", f, oebbFilter(),
+                          snap, sum);
 
   TEST_ASSERT_TRUE(ok);
   TEST_ASSERT_TRUE(snap.api_ok);
@@ -226,9 +225,8 @@ void test_fetchSnapshot_ogd_partial_failure_keeps_api_ok() {
 
   StreamSnapshot snap;
   FetchSummary sum;
-  bool ok =
-      fetchSnapshot(net, "http://x?z=1", "http://mgate", f, oebbFilter(), snap,
-                    sum);
+  bool ok = fetchSnapshot(net, "http://x?z=1", "http://mgate", f, oebbFilter(),
+                          snap, sum);
 
   TEST_ASSERT_TRUE(ok);
   TEST_ASSERT_TRUE(snap.api_ok);

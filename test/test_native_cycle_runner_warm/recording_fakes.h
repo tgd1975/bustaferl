@@ -87,8 +87,8 @@ public:
   }
   // ÖBB S-Bahn POST. Defaults to an empty-but-OK HAFAS body so the cycle's
   // auth-health stays green; tests that care set a richer body.
-  bool httpPost(const std::string &url, const std::string &, const std::string &,
-                std::string &out) override {
+  bool httpPost(const std::string &url, const std::string &,
+                const std::string &, std::string &out) override {
     trace_.emplace_back("net.httpPost(" + truncate(url, 40) + ")");
     ++http_post_calls;
     if (!http_ok_)

@@ -25,7 +25,8 @@ RTC_DATA_ATTR uint8_t g_rle[RLE_CAP] = {0};
 RTC_DATA_ATTR uint32_t g_sched_magic = 0;
 RTC_DATA_ATTR ScheduleSnapshot g_sched{};
 
-constexpr uint32_t MAGIC = 0xB05AFE72; // bustaferl ;) — v2: +Departure.line_label
+constexpr uint32_t MAGIC =
+    0xB05AFE72; // bustaferl ;) — v2: +Departure.line_label
 // Bumped for v2: ScheduleSnapshot shrank from 5 to 4 streams (U1 → S-Bahn),
 // so a v1 layout would misalign. First boot after the update re-fetches; the
 // user sees one cycle with no hints.

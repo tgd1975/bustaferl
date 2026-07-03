@@ -11,10 +11,14 @@ namespace bustaferl {
 // StreamFilter table, there is exactly one ÖBB stream, so one struct (not a
 // STREAM_COUNT array) carries its parameters — no unused rows to drag around.
 struct OebbStreamFilter {
+  // Fallback journey count if the caller does not set OEBB_MAX_JNY from
+  // config.h (filter_builder always does).
+  static constexpr int DEFAULT_MAX_JNY = 6;
+
   std::string stb_eva;  // EVA id of the departure-board station (Atzgersdorf)
   std::string dir_eva;  // EVA id the journey must pass downstream (Wien Hbf)
   std::string products; // jnyFltrL PROD bitmask, e.g. "63"
-  int max_jny = 6;
+  int max_jny = DEFAULT_MAX_JNY;
 };
 
 // Builds the mgate.exe StationBoard POST body for `f`. Pure function — AID,

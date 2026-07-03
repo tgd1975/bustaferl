@@ -77,7 +77,8 @@ void test_sbahn_line_label_survives_merge_and_banner_flags_default_off() {
   TEST_ASSERT_TRUE(in.snapshot.stream[STREAM_SBAHN_HBF].slot[0].valid);
   TEST_ASSERT_EQUAL_STRING(
       "S2", in.snapshot.stream[STREAM_SBAHN_HBF].slot[0].line_label);
-  // Per-section banner flags default off and are set by the caller, not compose.
+  // Per-section banner flags default off and are set by the caller, not
+  // compose.
   TEST_ASSERT_FALSE(in.filter_dead_58b);
   TEST_ASSERT_FALSE(in.oebb_auth_dead);
 }

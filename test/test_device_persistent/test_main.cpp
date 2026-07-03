@@ -130,8 +130,7 @@ void test_save_schedule_round_trip() {
                           loaded.hint[STREAM_58A_ATZ].first_tomorrow[0]);
   TEST_ASSERT_EQUAL_INT64(1700020600,
                           loaded.hint[STREAM_58A_ATZ].first_tomorrow[1]);
-  TEST_ASSERT_EQUAL_INT64(1700008888,
-                          loaded.hint[STREAM_SBAHN_HBF].last_today);
+  TEST_ASSERT_EQUAL_INT64(1700008888, loaded.hint[STREAM_SBAHN_HBF].last_today);
   // Streams we did not touch must still come back zeroed.
   TEST_ASSERT_EQUAL_INT64(0, loaded.hint[STREAM_58B_ATZ].first_tomorrow[0]);
 }
