@@ -231,11 +231,11 @@ lint:                  ## run cppcheck
 tidy:                  ## run clang-tidy on host-compilable src/ TUs
 	@# Generate compile_commands.json from the native env. Only the
 	@# platform-neutral TUs (data/, logic/, render/rle) land in it;
-	@# ESP32-only files (main.cpp, hal/Esp32*.cpp, render/layout.cpp,
-	@# render/error_overlay.cpp) are intentionally skipped — they pull
-	@# in Adafruit_GFX / WiFi etc. which clang-tidy would either
-	@# misanalyse or flood with library findings. They are still
-	@# covered by cppcheck (`make lint`) and the on-device test set.
+	@# ESP32-only files (main.cpp, hal/Esp32*.cpp, render/layout.cpp)
+	@# are intentionally skipped — they pull in Adafruit_GFX / WiFi
+	@# etc. which clang-tidy would either misanalyse or flood with
+	@# library findings. They are still covered by cppcheck
+	@# (`make lint`) and the on-device test set.
 	@$(PIO) run -e native -t compiledb >/dev/null
 	@# Rewrite -I paths into vendored libs to -isystem so clang-tidy
 	@# does not analyse third-party headers (would produce tens of

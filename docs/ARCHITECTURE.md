@@ -42,8 +42,8 @@ src/
 │
 └── render/                   Layout und Rasterisierung
     ├── frame_buffer.h        Template FrameBuffer<W,H>, 1-bpp
-    ├── layout.{h,cpp}        Block-Layout, Adafruit GFX
-    ├── error_overlay.{h,cpp} Stale-/StartFailed-Frames
+    ├── layout.{h,cpp}        Block-Layout inkl. Overlays (Stale/StartFailed/
+    │                         Boot), Adafruit GFX
     └── rle.{h,cpp}           Lauflängenkompression für RTC-RAM
 ```
 

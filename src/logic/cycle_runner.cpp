@@ -310,6 +310,13 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
   if (needScheduleRefresh(schedule, now)) {
     if (refreshSchedule(deps, schedule)) {
       deps.store.saveSchedule(schedule);
+      // Re-merge with the fresh hints: fc.merged was built from the old
+      // snapshot inside doFetchCycle, and planSleep below sizes tonight's
+      // deep sleep from it. Without this, refresh nights planned against
+      // day-old hints (rendering was unaffected — renderAndPush re-merges).
+      if (fc.overlay != OverlayKind::Stale) {
+        fc.merged = mergeSlots(fc.snap, schedule, now);
+      }
     }
   }
 
