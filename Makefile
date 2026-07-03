@@ -19,6 +19,9 @@
         clean format format-check lint tidy size secrets ci ci-heavy
 
 PIO        := pio
+# Overridable so CI can pin an exact major version (formatting output
+# differs across clang-format majors; see .github/workflows/ci.yml).
+CLANG_FORMAT ?= clang-format
 TMP        := .tmp
 RESULTS    := $(TMP)/test-results.json
 TRACE_DIR  := $(TMP)/traces
@@ -203,15 +206,19 @@ native-runtime-https-smoke:  ## live-call check gegen Wiener-Linien-Endpoints
 	    -o $(NR_DIR)/https_smoke
 	$(NR_DIR)/https_smoke
 
+# secrets.h is gitignored and user-owned (CI drops in the untracked
+# template) — formatting it is neither possible to enforce nor useful.
 format:                ## run clang-format in place
 	@find src test -type f \( -name '*.h' -o -name '*.cpp' \) \
 	  -not -path '*/fixtures/*' \
-	  -print0 | xargs -0 clang-format -i
+	  -not -name 'secrets.h' \
+	  -print0 | xargs -0 $(CLANG_FORMAT) -i
 
 format-check:          ## verify formatting without writing
 	@find src test -type f \( -name '*.h' -o -name '*.cpp' \) \
 	  -not -path '*/fixtures/*' \
-	  -print0 | xargs -0 clang-format --dry-run --Werror
+	  -not -name 'secrets.h' \
+	  -print0 | xargs -0 $(CLANG_FORMAT) --dry-run --Werror
 
 lint:                  ## run cppcheck
 	cppcheck --enable=warning,style,performance,portability \

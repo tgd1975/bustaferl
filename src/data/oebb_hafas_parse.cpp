@@ -28,7 +28,7 @@ time_t parseHafasDateTime(const char *date, const char *time_s) {
     return 0;
   if (std::sscanf(time_s, "%2d%2d%2d", &h, &mi, &s) != 3)
     return 0;
-  struct tm tm{};
+  struct tm tm {};
   tm.tm_year = y - TM_YEAR_BASE;
   tm.tm_mon = mo - 1;
   tm.tm_mday = d;
@@ -135,12 +135,18 @@ bool parseOebbStationBoard(const std::string &json, StreamData &out_stream) {
     if (slot >= SLOTS_PER_STREAM)
       break;
     JsonObjectConst stbStop = jny["stbStop"];
+    // cppcheck-suppress [badBitmaskCheck, bitwiseOnBoolean] // ArduinoJson
+    // operator| (default value)
     if (stbStop["dCncl"] | false)
       continue; // cancelled — skip, line stays hidden
 
+    // cppcheck-suppress badBitmaskCheck // ArduinoJson operator| (default)
     const char *dDateR = stbStop["dDateR"] | static_cast<const char *>(nullptr);
+    // cppcheck-suppress badBitmaskCheck // ArduinoJson operator| (default)
     const char *dTimeR = stbStop["dTimeR"] | static_cast<const char *>(nullptr);
+    // cppcheck-suppress badBitmaskCheck // ArduinoJson operator| (default)
     const char *dDateS = stbStop["dDateS"] | static_cast<const char *>(nullptr);
+    // cppcheck-suppress badBitmaskCheck // ArduinoJson operator| (default)
     const char *dTimeS = stbStop["dTimeS"] | static_cast<const char *>(nullptr);
 
     time_t t = 0;
@@ -167,6 +173,7 @@ bool parseOebbStationBoard(const std::string &json, StreamData &out_stream) {
         prod_idx < static_cast<int>(prodL.size())) {
       JsonObjectConst prod = prodL[prod_idx];
       const char *name =
+          // cppcheck-suppress badBitmaskCheck // ArduinoJson operator|
           prod["name"] | (prod["nameS"] | static_cast<const char *>(nullptr));
       setLineLabel(dep.line_label, name);
     }

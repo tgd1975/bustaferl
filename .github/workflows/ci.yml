@@ -22,11 +22,14 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
       - name: Install PlatformIO
         run: pip install --upgrade platformio
+      # Pin the clang-format major: formatting output drifts between
+      # majors, so an unpinned install breaks format-check on runner
+      # image updates without any code change.
       - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
       - name: Install cppcheck
         run: sudo apt-get install -y cppcheck
       - name: Provide dummy secrets.h
         run: cp secrets.h.example src/secrets.h
       - name: CI (format-check + lint + test-native + build)
-        run: make ci
+        run: make ci CLANG_FORMAT=clang-format-18

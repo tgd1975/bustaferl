@@ -239,8 +239,9 @@ bool Esp32Network::httpPost(const std::string &url, const std::string &body,
   }
   http.setTimeout(8000);
   http.addHeader("Content-Type", content_type.c_str());
-  int code = http.POST(
-      reinterpret_cast<uint8_t *>(const_cast<char *>(body.data())), body.size());
+  int code =
+      http.POST(reinterpret_cast<uint8_t *>(const_cast<char *>(body.data())),
+                body.size());
   if (code < 200 || code >= 300) {
     Serial.printf("[net] HTTP %d (non-2xx, aborting)\n", code);
     http.end();

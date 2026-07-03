@@ -40,7 +40,7 @@ public:
 };
 
 time_t makeLocal(int year, int month, int day, int hour, int minute) {
-  struct tm tm{};
+  struct tm tm {};
   tm.tm_year = year - 1900;
   tm.tm_mon = month - 1;
   tm.tm_mday = day;

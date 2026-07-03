@@ -17,7 +17,7 @@ namespace {
 // arithmetic in needScheduleRefresh is TZ-stable as long as we compute
 // `now` and `midnight` the same way the implementation does.
 time_t makeLocal(int year, int mon, int mday, int hour, int min, int sec) {
-  struct tm t{};
+  struct tm t {};
   t.tm_year = year - 1900;
   t.tm_mon = mon - 1;
   t.tm_mday = mday;

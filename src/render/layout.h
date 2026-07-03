@@ -26,7 +26,7 @@ struct RenderInput {
   StreamSnapshot snapshot;
   OverlayKind overlay = OverlayKind::None;
   bool filter_dead_58b = false; // section 2 → "58B Filter ungueltig" banner
-  bool oebb_auth_dead = false;  // section 3 → "OEBB-API: Auth ungueltig" banner
+  bool oebb_auth_dead = false; // section 3 → "OEBB-API: Auth ungueltig" banner
 };
 
 // Renders the layout described in CONCEPT.md §3 into the framebuffer.
