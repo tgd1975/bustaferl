@@ -18,7 +18,9 @@ enum Stream : std::uint8_t {
   STREAM_COUNT = 4,
 };
 
-constexpr int SLOTS_PER_STREAM = 2;
+// Departures shown per stream. The S-Bahn row renders all three columns; the
+// bus rows render only slots 0-1 (a 3rd bus slot is parsed but not shown).
+constexpr int SLOTS_PER_STREAM = 3;
 
 struct StreamData {
   Departure slot[SLOTS_PER_STREAM];

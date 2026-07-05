@@ -46,6 +46,7 @@ StreamSnapshot buildNormalSnapshot() {
   sbahn.filter_matched = true;
   sbahn.slot[0] = mkDep(kMockNow + 7 * 60, DepartureSource::Realtime, "S2");
   sbahn.slot[1] = mkDep(kMockNow + 21 * 60, DepartureSource::Realtime, "S3");
+  sbahn.slot[2] = mkDep(kMockNow + 29 * 60, DepartureSource::Realtime, "S2");
 
   return s;
 }
@@ -83,6 +84,7 @@ StreamSnapshot buildNightSnapshot() {
   sbahn.filter_matched = true;
   sbahn.slot[0] = mkDep(kMockNowNight + 43 * 60, DepartureSource::Plan, "S2");
   sbahn.slot[1] = mkDep(kMockNowNight + 58 * 60, DepartureSource::Plan, "S3");
+  sbahn.slot[2] = mkDep(kMockNowNight + 73 * 60, DepartureSource::Plan, "S2");
 
   return s;
 }

@@ -4,6 +4,7 @@
 #include "StreamSnapshot.h"
 #include "config.h"
 
+#include <ctime>
 #include <string>
 
 namespace bustaferl {
@@ -32,7 +33,9 @@ struct OebbParseResult {
 };
 
 // Parses an mgate.exe StationBoard response and writes up to
-// SLOTS_PER_STREAM departures into `out_stream`. Source defaults to Realtime
+// SLOTS_PER_STREAM *future* departures (`when >= now`) into `out_stream` —
+// HAFAS lists the just-departing train first, so skipping past ones keeps the
+// stored slots genuinely upcoming. Source defaults to Realtime
 // when `dTimeR`/`dDateR` are present, else Plan. `line_label` is filled from
 // `prodL[…].nameS` with all whitespace stripped (e.g. "S 1" → "S1"). Strings
 // longer than Departure::LINE_LABEL_CAP-1 chars are abbreviated to "xx".
@@ -45,8 +48,8 @@ struct OebbParseResult {
 //     `out_stream`.
 //   - `auth_error_seen=true`     → err ∈ {"AID","AUTH"}; the State-Selector
 //     uses this to drive the Auth screen.
-bool parseOebbStationBoard(const std::string &json, StreamData &out_stream,
-                           OebbParseResult &result);
+bool parseOebbStationBoard(const std::string &json, time_t now,
+                           StreamData &out_stream, OebbParseResult &result);
 
 } // namespace bustaferl
 

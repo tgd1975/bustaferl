@@ -166,7 +166,7 @@ void test_fetchSnapshot_fills_oebb_stream(void) {
   PersistedMeta meta{};
   Serial.printf("[api] fetchSnapshot start, free heap = %u\n",
                 ESP.getFreeHeap());
-  bool ok = fetchSnapshot(g_net, inputs, snap, summary, meta);
+  bool ok = fetchSnapshot(g_net, inputs, g_clock.now(), snap, summary, meta);
   Serial.printf("[api] fetchSnapshot ok=%d batches=%d failed=%d auth_seen=%d "
                 "heap=%u\n",
                 ok, summary.total_batches, summary.failed_batches,

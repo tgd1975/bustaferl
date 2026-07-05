@@ -49,14 +49,14 @@ bool isAuthCode(int status) { return status == HTTP_401 || status == HTTP_403; }
 // the OGD batch loop (counts as one batch). The result struct's flags are
 // copied into the StreamData so snapshot_logger / filter_health see the
 // same values they get from the OGD path.
-void fetchOebbStream(INetwork &net, const std::string &mgate_url,
-                     const OebbStreamFilter &f, StreamSnapshot &out,
-                     FetchSummary &summary, PersistedMeta &meta) {
-  std::string body = buildOebbRequest(f);
+void fetchOebbStream(INetwork &net, const FetchInputs &inputs, time_t now,
+                     StreamSnapshot &out, FetchSummary &summary,
+                     PersistedMeta &meta) {
+  std::string body = buildOebbRequest(inputs.oebb_filter);
   std::string resp;
   FetchConfig fc;
   FetchOutcome fo = fetchPostWithRetry(
-      net, mgate_url, body, "application/json; charset=UTF-8", resp, fc);
+      net, inputs.mgate_url, body, "application/json; charset=UTF-8", resp, fc);
   ++summary.total_batches;
 
   if (!fo.ok) {
@@ -72,7 +72,7 @@ void fetchOebbStream(INetwork &net, const std::string &mgate_url,
 
   OebbParseResult pr;
   StreamData parsed;
-  if (!parseOebbStationBoard(resp, parsed, pr)) {
+  if (!parseOebbStationBoard(resp, now, parsed, pr)) {
     SNAP_LOG("[api] oebb parse failed\n");
     ++summary.failed_batches;
     return;
@@ -170,7 +170,7 @@ std::string apiUrlForBatch(const std::string &endpoint_base,
   return url;
 }
 
-bool fetchSnapshot(INetwork &net, const FetchInputs &inputs,
+bool fetchSnapshot(INetwork &net, const FetchInputs &inputs, time_t now,
                    StreamSnapshot &out, FetchSummary &summary,
                    PersistedMeta &meta) {
   using clock = std::chrono::steady_clock;
@@ -193,8 +193,7 @@ bool fetchSnapshot(INetwork &net, const FetchInputs &inputs,
   // exercise the OEBB path; skip.
   if (!inputs.mgate_url.empty()) {
     summary.free_heap_before_oebb = SNAP_FREE_HEAP();
-    fetchOebbStream(net, inputs.mgate_url, inputs.oebb_filter, out, summary,
-                    meta);
+    fetchOebbStream(net, inputs, now, out, summary, meta);
     summary.free_heap_after_oebb = SNAP_FREE_HEAP();
     const auto t2 = clock::now();
     summary.oebb_ms =

@@ -10,6 +10,7 @@
 #include "logic/snapshot_fetcher.h"
 
 #include <cstring>
+#include <ctime>
 #include <string>
 #include <unity.h>
 #include <vector>
@@ -153,6 +154,10 @@ void test_apiUrlForBatch_empty_count_returns_base() {
   TEST_ASSERT_EQUAL_STRING("http://x", url.c_str());
 }
 
+// These fetcher tests don't exercise the HAFAS past-skip; pass epoch 0 so the
+// parse keeps every fixture departure (all are future relative to 0).
+static const time_t kFetchNow = 0;
+
 void test_fetchSnapshot_two_endpoints_populate_all_four_streams() {
   // OGD-batch returns kOgdBody for every stopId query, HAFAS-POST returns
   // kHafasOk for fahrplan.oebb.at. After fetchSnapshot: 3 bus streams +
@@ -170,7 +175,8 @@ void test_fetchSnapshot_two_endpoints_populate_all_four_streams() {
   PersistedMeta meta;
   std::string ogd = "http://ogd?z=1";
   std::string mg = "http://mgate";
-  bool ok = fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, snap, sum, meta);
+  bool ok = fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, kFetchNow, snap,
+                          sum, meta);
 
   TEST_ASSERT_TRUE(ok);
   TEST_ASSERT_TRUE(snap.api_ok);
@@ -202,7 +208,7 @@ void test_fetchSnapshot_hafas_post_body_carries_filter() {
   std::string ogd = "http://ogd?z=1";
   std::string mg = "http://mgate";
   OebbStreamFilter oef = makeOebbFilter();
-  fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, snap, sum, meta);
+  fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, kFetchNow, snap, sum, meta);
 
   TEST_ASSERT_EQUAL_INT(1, static_cast<int>(net.posts_seen.size()));
   const std::string &body = net.posts_seen[0];
@@ -224,7 +230,7 @@ void test_fetchSnapshot_hafas_aid_error_sets_auth_flag() {
   std::string ogd = "http://ogd?z=1";
   std::string mg = "http://mgate";
   OebbStreamFilter oef = makeOebbFilter();
-  fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, snap, sum, meta);
+  fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, kFetchNow, snap, sum, meta);
 
   TEST_ASSERT_TRUE_MESSAGE(meta.auth_error_seen,
                            "HAFAS err=AID must flip auth_error_seen");
@@ -246,7 +252,7 @@ void test_fetchSnapshot_hafas_ok_clears_auth_flag() {
   std::string ogd = "http://ogd?z=1";
   std::string mg = "http://mgate";
   OebbStreamFilter oef = makeOebbFilter();
-  fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, snap, sum, meta);
+  fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, kFetchNow, snap, sum, meta);
 
   TEST_ASSERT_FALSE_MESSAGE(meta.auth_error_seen,
                             "fresh HAFAS err=OK must clear auth_error_seen");
@@ -272,12 +278,14 @@ void test_fetchSnapshot_ogd_401_streak_promotes_to_auth_flag() {
   std::string mg_empty;
   OebbStreamFilter oef = makeOebbFilter();
   // First call: 2 batches × 401 → streak = 2, flag still false.
-  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, snap, sum, meta);
+  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, kFetchNow, snap, sum,
+                meta);
   TEST_ASSERT_EQUAL_INT(2, meta.ogd_auth_streak);
   TEST_ASSERT_FALSE(meta.auth_error_seen);
 
   // Second call: first batch flips streak to 3, sets flag.
-  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, snap, sum, meta);
+  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, kFetchNow, snap, sum,
+                meta);
   TEST_ASSERT_TRUE(meta.auth_error_seen);
   TEST_ASSERT_GREATER_OR_EQUAL_INT(OGD_AUTH_STREAK_TRIPWIRE,
                                    meta.ogd_auth_streak);
@@ -296,7 +304,8 @@ void test_fetchSnapshot_ogd_2xx_resets_streak() {
   std::string ogd = "http://ogd?z=1";
   std::string mg_empty;
   OebbStreamFilter oef = makeOebbFilter();
-  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, snap, sum, meta);
+  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, kFetchNow, snap, sum,
+                meta);
   TEST_ASSERT_EQUAL_INT(0, meta.ogd_auth_streak);
 }
 
@@ -313,7 +322,8 @@ void test_fetchSnapshot_empty_mgate_url_skips_hafas_call() {
   std::string ogd = "http://ogd?z=1";
   std::string mg_empty;
   OebbStreamFilter oef = makeOebbFilter();
-  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, snap, sum, meta);
+  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, kFetchNow, snap, sum,
+                meta);
 
   TEST_ASSERT_EQUAL_INT(0, static_cast<int>(net.posts_seen.size()));
   // 2 OGD batches only.
@@ -336,7 +346,8 @@ void test_fetchSnapshot_all_ogd_fail_keeps_hafas_data() {
   std::string ogd = "http://ogd";
   std::string mg = "http://mgate";
   OebbStreamFilter oef = makeOebbFilter();
-  bool ok = fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, snap, sum, meta);
+  bool ok = fetchSnapshot(net, FetchInputs{ogd, mg, f, oef}, kFetchNow, snap,
+                          sum, meta);
   TEST_ASSERT_TRUE(ok);
   TEST_ASSERT_TRUE(snap.stream[STREAM_SBAHN_HBF].slot[0].valid);
   TEST_ASSERT_FALSE(snap.stream[STREAM_58A_ATZ].slot[0].valid);
@@ -363,7 +374,8 @@ void test_fetchSnapshot_reset_clears_previous_out_state() {
   std::string ogd = "http://x";
   std::string mg_empty;
   OebbStreamFilter oef = makeOebbFilter();
-  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, snap, sum, meta);
+  fetchSnapshot(net, FetchInputs{ogd, mg_empty, f, oef}, kFetchNow, snap, sum,
+                meta);
 
   TEST_ASSERT_FALSE(snap.api_ok);
   TEST_ASSERT_FALSE(snap.stream[STREAM_58A_ATZ].slot[0].valid);

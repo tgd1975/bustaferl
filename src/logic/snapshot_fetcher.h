@@ -8,6 +8,7 @@
 #include "../hal/IPersistentStore.h"
 
 #include <cstdint>
+#include <ctime>
 #include <string>
 
 namespace bustaferl {
@@ -76,8 +77,10 @@ std::string apiUrlForBatch(const std::string &endpoint_base,
 //     err=="OK" parse clears the flag.
 //
 // `inputs.oebb_filter` is the single S-Bahn filter built by buildOebbFilter().
+// `now` (wall-clock unix seconds) lets the HAFAS parse drop already-departed
+// journeys so the stored S-Bahn slots are all upcoming.
 // Returns true iff at least one batch (OGD *or* HAFAS) produced valid data.
-bool fetchSnapshot(INetwork &net, const FetchInputs &inputs,
+bool fetchSnapshot(INetwork &net, const FetchInputs &inputs, time_t now,
                    StreamSnapshot &out, FetchSummary &summary,
                    PersistedMeta &meta);
 

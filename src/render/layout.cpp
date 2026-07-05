@@ -345,11 +345,10 @@ void drawBoard(render::Canvas &canvas, const RenderInput &in) {
   drawSbahnSlot(canvas, LAYOUT_PAD_X, LAYOUT_SB_ROW_Y, sb.slot[0], stale);
   drawSbahnSlot(canvas, LAYOUT_PAD_X + SB_SLOT_WIDTH, LAYOUT_SB_ROW_Y,
                 sb.slot[1], stale);
-  // Slot 2 always renders as placeholder — StreamData carries 2 slots, the
-  // third column is reserved-for-future / always "--:--".
-  const Departure empty_slot{};
+  // Third column shows the next S-Bahn departure after the first two. Renders
+  // "--:--" on its own when the slot is empty (drawSbahnSlot handles invalid).
   drawSbahnSlot(canvas, LAYOUT_PAD_X + 2 * SB_SLOT_WIDTH, LAYOUT_SB_ROW_Y,
-                empty_slot, stale);
+                sb.slot[2], stale);
 
   drawNetworkPlan(canvas, LAYOUT_PAD_X, LAYOUT_NETWORK_Y,
                   FB_W - 2 * LAYOUT_PAD_X);

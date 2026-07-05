@@ -131,8 +131,8 @@ std::string buildOebbRequest(const OebbStreamFilter &f) {
 // res → jnyL → stbStop → fields); refactoring would hide the per-jny match
 // logic behind helpers that all need the same common[prodL] reference.
 // NOLINTNEXTLINE(readability-function-size,readability-function-cognitive-complexity)
-bool parseOebbStationBoard(const std::string &json, StreamData &out_stream,
-                           OebbParseResult &result) {
+bool parseOebbStationBoard(const std::string &json, time_t now,
+                           StreamData &out_stream, OebbParseResult &result) {
   out_stream = StreamData{};
   result = OebbParseResult{};
 
@@ -207,6 +207,13 @@ bool parseOebbStationBoard(const std::string &json, StreamData &out_stream,
       source = DepartureSource::Plan;
     }
     if (when == 0)
+      continue;
+
+    // HAFAS lists the just-departing train first; without this skip it would
+    // eat a slot and then get dropped by slot_merger (when < now), leaving the
+    // row a departure short. Keeping only future journeys means the up-to-
+    // SLOTS_PER_STREAM we store are all genuinely upcoming.
+    if (when < now)
       continue;
 
     // `jny.prodX` ist der Index in svcResL[0].res.common.prodL[]. Plan-

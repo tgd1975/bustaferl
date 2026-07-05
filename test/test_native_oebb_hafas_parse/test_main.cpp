@@ -21,6 +21,11 @@ static void setViennaTz() {
 void setUp() { setViennaTz(); }
 void tearDown() {}
 
+// Parse with no past-skip: every fixture departure is in 2026, so a now of
+// epoch 0 keeps them all and preserves the pre-past-skip behaviour these
+// label/epoch tests assert. The dedicated skip test below uses a real now.
+static const time_t kNoFilter = 0;
+
 // ---- buildOebbRequest --------------------------------------------------
 
 static OebbStreamFilter makeFilter() {
@@ -79,7 +84,7 @@ void test_buildRequest_omits_cfg_block() {
 void test_parse_sample1_two_slots_realtime_S2() {
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kSample1Json, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kSample1Json, kNoFilter, out, r));
   TEST_ASSERT_TRUE(r.endpoint_responded);
   TEST_ASSERT_TRUE(r.filter_matched);
   TEST_ASSERT_FALSE(r.auth_error_seen);
@@ -99,7 +104,7 @@ void test_parse_sample1_two_slots_realtime_S2() {
 void test_parse_sample2_line_labels_S1_S2() {
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kSample2Json, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kSample2Json, kNoFilter, out, r));
   TEST_ASSERT_TRUE(r.endpoint_responded);
   TEST_ASSERT_TRUE(r.filter_matched);
   // First: S1, second: S2.
@@ -110,7 +115,7 @@ void test_parse_sample2_line_labels_S1_S2() {
 void test_parse_sample3_line_labels_S2_S3() {
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kSample3Json, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kSample3Json, kNoFilter, out, r));
   TEST_ASSERT_TRUE(r.endpoint_responded);
   TEST_ASSERT_TRUE(r.filter_matched);
   TEST_ASSERT_EQUAL_STRING("S2", out.slot[0].line_label);
@@ -123,7 +128,7 @@ void test_parse_sample1_absolute_epoch_via_TZ() {
   // regressions (forgotten setenv("TZ", …), missing tzset(), etc.).
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kSample1Json, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kSample1Json, kNoFilter, out, r));
   TEST_ASSERT_EQUAL_INT64(1779193920, out.slot[0].when);
 }
 
@@ -163,7 +168,7 @@ void test_parse_cancelled_skipped() {
   })JSON";
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, kNoFilter, out, r));
   TEST_ASSERT_TRUE(r.endpoint_responded);
   TEST_ASSERT_TRUE(r.filter_matched);
   TEST_ASSERT_TRUE(out.slot[0].valid);
@@ -187,7 +192,7 @@ void test_parse_plan_only_falls_back_to_Plan_source() {
   })JSON";
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, kNoFilter, out, r));
   TEST_ASSERT_TRUE(out.slot[0].valid);
   TEST_ASSERT_EQUAL(DepartureSource::Plan, out.slot[0].source);
 }
@@ -197,7 +202,7 @@ void test_parse_err_AID_sets_auth_error_seen() {
   const char *kJson = R"JSON({ "err": "AID" })JSON";
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, kNoFilter, out, r));
   TEST_ASSERT_TRUE(r.auth_error_seen);
   TEST_ASSERT_FALSE(r.endpoint_responded);
   TEST_ASSERT_FALSE(r.filter_matched);
@@ -207,7 +212,7 @@ void test_parse_err_AUTH_sets_auth_error_seen() {
   const char *kJson = R"JSON({ "err": "AUTH" })JSON";
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, kNoFilter, out, r));
   TEST_ASSERT_TRUE(r.auth_error_seen);
   TEST_ASSERT_FALSE(r.endpoint_responded);
 }
@@ -217,7 +222,7 @@ void test_parse_err_FAIL_sets_endpoint_not_responded() {
   const char *kJson = R"JSON({ "err": "FAIL" })JSON";
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, kNoFilter, out, r));
   TEST_ASSERT_FALSE(r.auth_error_seen);
   TEST_ASSERT_FALSE(r.endpoint_responded);
   TEST_ASSERT_FALSE(r.filter_matched);
@@ -230,7 +235,7 @@ void test_parse_empty_jnyL_sets_filter_unmatched() {
   })JSON";
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, kNoFilter, out, r));
   TEST_ASSERT_TRUE(r.endpoint_responded);
   TEST_ASSERT_FALSE(r.filter_matched);
 }
@@ -252,7 +257,7 @@ void test_parse_long_line_label_abbreviates_xx() {
   })JSON";
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, kNoFilter, out, r));
   TEST_ASSERT_TRUE(out.slot[0].valid);
   TEST_ASSERT_EQUAL_STRING("xx", out.slot[0].line_label);
 }
@@ -274,15 +279,57 @@ void test_parse_REX_label_strips_to_REX1() {
   })JSON";
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, out, r));
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, kNoFilter, out, r));
   TEST_ASSERT_TRUE(out.slot[0].valid);
   TEST_ASSERT_EQUAL_STRING("REX1", out.slot[0].line_label);
+}
+
+void test_parse_skips_departed_journeys() {
+  // HAFAS lists the just-departed train first. With `now` past the 14:32 train,
+  // the parser must skip it and fill all three slots with the next departures
+  // (14:37 / 14:44 / 14:52), proving both the past-skip and the 3rd slot.
+  static const char *kJson = R"JSON({
+    "err": "OK",
+    "svcResL": [{
+      "res": {
+        "common": { "prodL": [
+          { "nameS": "S 1" }, { "nameS": "S 2" },
+          { "nameS": "S 3" }, { "nameS": "S 4" }
+        ] },
+        "jnyL": [
+          { "date": "20260519", "prodX": 0,
+            "stbStop": { "dTimeS": "143200", "dTimeR": "143200" } },
+          { "date": "20260519", "prodX": 1,
+            "stbStop": { "dTimeS": "143700", "dTimeR": "143700" } },
+          { "date": "20260519", "prodX": 2,
+            "stbStop": { "dTimeS": "144400", "dTimeR": "144400" } },
+          { "date": "20260519", "prodX": 3,
+            "stbStop": { "dTimeS": "145200", "dTimeR": "145200" } }
+        ]
+      }
+    }]
+  })JSON";
+  StreamData out;
+  OebbParseResult r;
+  // 2026-05-19 14:33:20 CEST — after the 14:32 train, before 14:37.
+  const time_t now = 1779194000;
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, now, out, r));
+  TEST_ASSERT_TRUE(r.filter_matched);
+  // 14:32 (1779193920) skipped → slot[0] is the 14:37 S2.
+  TEST_ASSERT_TRUE(out.slot[0].valid);
+  TEST_ASSERT_TRUE(out.slot[1].valid);
+  TEST_ASSERT_TRUE(out.slot[2].valid);
+  TEST_ASSERT_EQUAL_STRING("S2", out.slot[0].line_label);
+  TEST_ASSERT_EQUAL_STRING("S4", out.slot[2].line_label);
+  TEST_ASSERT_EQUAL_INT64(1779194220, out.slot[0].when); // 14:37, not 14:32
+  TEST_ASSERT_LESS_THAN(out.slot[1].when, out.slot[0].when);
+  TEST_ASSERT_LESS_THAN(out.slot[2].when, out.slot[1].when);
 }
 
 void test_parse_malformed_json_returns_false() {
   StreamData out;
   OebbParseResult r;
-  TEST_ASSERT_FALSE(parseOebbStationBoard("not json {{", out, r));
+  TEST_ASSERT_FALSE(parseOebbStationBoard("not json {{", kNoFilter, out, r));
 }
 
 int main(int, char **) {
@@ -303,6 +350,7 @@ int main(int, char **) {
   RUN_TEST(test_parse_empty_jnyL_sets_filter_unmatched);
   RUN_TEST(test_parse_long_line_label_abbreviates_xx);
   RUN_TEST(test_parse_REX_label_strips_to_REX1);
+  RUN_TEST(test_parse_skips_departed_journeys);
   RUN_TEST(test_parse_malformed_json_returns_false);
   return UNITY_END();
 }

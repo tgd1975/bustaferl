@@ -42,7 +42,8 @@ bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
   FetchSummary summary;
   FetchInputs inputs{deps.cfg.api_base, deps.cfg.mgate_url, filters,
                      oebb_filter};
-  bool ok = fetchSnapshot(deps.net, inputs, out, summary, meta);
+  bool ok =
+      fetchSnapshot(deps.net, inputs, deps.clock.now(), out, summary, meta);
   CYCLE_LOG_STR(
       formatSnapshotSummary(out, summary.total_batches, summary.failed_batches)
           .c_str());
