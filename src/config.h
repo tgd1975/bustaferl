@@ -106,15 +106,15 @@
 #define BTN_LONG_PRESS_MS 2000
 
 // Behaviour thresholds (seconds unless noted).
-#define STALE_THRESHOLD_S 180      // 3 min until stale state
-#define WAKE_BEFORE_BUS_S 900      // 15 min safety lead
-#define BOOT_MARGIN_S 30           // boot + wifi + api + render reserve
-#define POLL_INTERVAL_S 30         // API poll cadence while awake
-#define ACTIVE_THRESHOLD_S 120     // below this delta, stay awake
-#define NO_DATA_SLEEP_S 1800       // API ok, no departures (overnight)
-#define API_FAILURE_RETRY_S 60     // API/network failed → short retry instead
-#define PARTIAL_HARDCAP 80         // safety cap before forced light full
-#define LIGHT_FULL_INTERVAL_S 7200 // 2 h between scheduled light fulls
+#define STALE_THRESHOLD_S 180  // 3 min until stale state
+#define WAKE_BEFORE_BUS_S 900  // 15 min safety lead
+#define BOOT_MARGIN_S 30       // boot + wifi + api + render reserve
+#define POLL_INTERVAL_S 30     // API poll cadence while awake
+#define ACTIVE_THRESHOLD_S 120 // below this delta, stay awake
+#define NO_DATA_SLEEP_S 1800   // API ok, no departures (overnight)
+#define API_FAILURE_RETRY_S 60 // API/network failed → short retry instead
+#define PARTIAL_HARDCAP 15     // partials before a ghost-clearing light full
+#define LIGHT_FULL_INTERVAL_S 3600 // 1 h between scheduled light fulls
 #define NTP_INTERVAL_S 86400       // 24 h between NTP syncs
 #define COLD_BOOT_RETRY_S 60
 #define COLD_BOOT_MAX_RETRIES 5

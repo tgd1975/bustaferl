@@ -24,8 +24,12 @@ struct RefreshDecision {
 // Production panel geometry (GxEPD2 4.2" 400×300).
 constexpr int DEFAULT_FB_WIDTH = 400;
 constexpr int DEFAULT_FB_HEIGHT = 300;
-constexpr int DEFAULT_LIGHT_FULL_EVERY_S = 7200; // 2 h ghosting refresh
-constexpr uint16_t DEFAULT_PARTIAL_HARDCAP = 80;
+// Ghost-clearing light-full cadence. A light-full is a visible ~3 s black/white
+// flush, so this trades ghost accumulation against how often the whole panel
+// flashes: clear after 15 partials OR 1 h idle, whichever comes first. Lower
+// for less ghosting (more flashes), raise for fewer flashes (more ghosting).
+constexpr int DEFAULT_LIGHT_FULL_EVERY_S = 3600; // 1 h ghosting refresh
+constexpr uint16_t DEFAULT_PARTIAL_HARDCAP = 15;
 
 struct RefreshConfig {
   int width = DEFAULT_FB_WIDTH;
