@@ -6,6 +6,7 @@
 #include <Stream.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_wifi.h>
 
 namespace bustaferl {
 
@@ -179,6 +180,17 @@ void Esp32Network::addAp(const char *ssid, const char *password) {
 }
 
 bool Esp32Network::connect(unsigned timeout_ms) {
+  // Pin the regulatory domain to Austria/ETSI (2.4 GHz channels 1-13). The
+  // default world/US domain caps scanning at ch1-11, so an AP that has
+  // auto-hopped to ch12/13 is invisible to the radio (observed in the field:
+  // the home AP moved to ch12 and the board's scan went blank). MANUAL policy
+  // keeps our range fixed regardless of any beacon country IE. Must run after
+  // the driver is up (WiFi.mode) and before WiFiMulti's scan.
+  WiFi.mode(WIFI_STA);
+  const wifi_country_t at_country = {/*cc=*/"AT", /*schan=*/1, /*nchan=*/13,
+                                     /*max_tx_power=*/0,
+                                     /*policy=*/WIFI_COUNTRY_POLICY_MANUAL};
+  esp_wifi_set_country(&at_country);
   return wifi_.run(timeout_ms) == WL_CONNECTED;
 }
 
