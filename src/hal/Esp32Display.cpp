@@ -77,23 +77,12 @@ void Esp32Display::drawFull(const uint8_t *fb) {
 void Esp32Display::drawPartial(const uint8_t *fb, const Bbox &bbox) {
   if (bbox.empty())
     return;
+  // Single windowed partial update: white the bbox, blit its pixels, refresh.
+  // (An earlier attempt added black/white de-ghost passes here — extra
+  // full-buffer fillScreen loops around this one — which flashed the whole
+  // screen, so it was reverted. Ghost accumulation is handled by the periodic
+  // light-full in refresh_planner, not per update.)
   impl_->panel.setPartialWindow(bbox.x, bbox.y, bbox.w, bbox.h);
-
-  // Local de-ghost: drive the changed region black then white before drawing
-  // the new content. Partial refreshes reuse a differential waveform that
-  // leaves faint ghosts of the previous pixels; cycling the window through
-  // both extremes clears them without a full-screen flash — only the bbox
-  // (typically the changed digits) blinks. If a single cycle proves too gentle
-  // on this UC8176, bump to two.
-  impl_->panel.firstPage();
-  do {
-    impl_->panel.fillScreen(GxEPD_BLACK);
-  } while (impl_->panel.nextPage());
-  impl_->panel.firstPage();
-  do {
-    impl_->panel.fillScreen(GxEPD_WHITE);
-  } while (impl_->panel.nextPage());
-
   impl_->panel.firstPage();
   do {
     impl_->panel.fillScreen(GxEPD_WHITE);
