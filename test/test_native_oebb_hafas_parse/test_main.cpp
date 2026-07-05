@@ -326,6 +326,43 @@ void test_parse_skips_departed_journeys() {
   TEST_ASSERT_LESS_THAN(out.slot[2].when, out.slot[1].when);
 }
 
+void test_parse_dedups_same_minute() {
+  // HAFAS lists 14:37 twice (a realtime entry and a plan entry for the same
+  // minute). Without dedup the plan duplicate eats the 3rd slot and 14:44
+  // never lands; the merged view then collapses the pair and the row shows
+  // only two trains. The parser must skip the same-minute duplicate so the
+  // three slots are three distinct departures (14:32 / 14:37 / 14:44).
+  static const char *kJson = R"JSON({
+    "err": "OK",
+    "svcResL": [{
+      "res": {
+        "common": { "prodL": [
+          { "nameS": "S 1" }, { "nameS": "S 2" }, { "nameS": "S 3" }
+        ] },
+        "jnyL": [
+          { "date": "20260519", "prodX": 0,
+            "stbStop": { "dTimeS": "143200", "dTimeR": "143200" } },
+          { "date": "20260519", "prodX": 1,
+            "stbStop": { "dTimeS": "143700", "dTimeR": "143700" } },
+          { "date": "20260519", "prodX": 1,
+            "stbStop": { "dTimeS": "143700" } },
+          { "date": "20260519", "prodX": 2,
+            "stbStop": { "dTimeS": "144400", "dTimeR": "144400" } }
+        ]
+      }
+    }]
+  })JSON";
+  StreamData out;
+  OebbParseResult r;
+  TEST_ASSERT_TRUE(parseOebbStationBoard(kJson, kNoFilter, out, r));
+  TEST_ASSERT_TRUE(out.slot[0].valid);
+  TEST_ASSERT_TRUE(out.slot[1].valid);
+  TEST_ASSERT_TRUE(out.slot[2].valid);
+  // Third slot is 14:44 (S3), not the 14:37 duplicate.
+  TEST_ASSERT_EQUAL_STRING("S3", out.slot[2].line_label);
+  TEST_ASSERT_EQUAL_INT64(1779194640, out.slot[2].when); // 14:44
+}
+
 void test_parse_malformed_json_returns_false() {
   StreamData out;
   OebbParseResult r;
@@ -351,6 +388,7 @@ int main(int, char **) {
   RUN_TEST(test_parse_long_line_label_abbreviates_xx);
   RUN_TEST(test_parse_REX_label_strips_to_REX1);
   RUN_TEST(test_parse_skips_departed_journeys);
+  RUN_TEST(test_parse_dedups_same_minute);
   RUN_TEST(test_parse_malformed_json_returns_false);
   return UNITY_END();
 }

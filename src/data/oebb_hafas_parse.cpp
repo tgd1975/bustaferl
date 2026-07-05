@@ -216,6 +216,22 @@ bool parseOebbStationBoard(const std::string &json, time_t now,
     if (when < now)
       continue;
 
+    // Minute-bucket dedup: HAFAS can list the same departure twice (a plan
+    // entry alongside the realtime one, same HH:MM). slot_merger dedups the
+    // merged view, so a duplicate here would silently collapse and leave the
+    // row a departure short. Skip it so the kept slots are distinct minutes.
+    // Matches the dedup key in slot_merger (insertSorted).
+    const time_t when_min = when / SECONDS_PER_MINUTE;
+    bool dup = false;
+    for (int i = 0; i < matched; ++i) {
+      if (out_stream.slot[i].when / SECONDS_PER_MINUTE == when_min) {
+        dup = true;
+        break;
+      }
+    }
+    if (dup)
+      continue;
+
     // `jny.prodX` ist der Index in svcResL[0].res.common.prodL[]. Plan-
     // Anhang A schrieb fälschlich `prodL[0]`; das ist auf jny-Ebene ein
     // Objekt (`{ prodX, fLocX, tLocX, fIdx, tIdx }`), kein Index. Pre-Phase
