@@ -51,8 +51,10 @@ void test_filling_slot_changes_framebuffer() {
   FramePtr fb_filled = makeFrame();
   StreamSnapshot snap{};
   renderFrame(makeInput(DisplayState::Normal, snap), *fb_empty);
-  snap.stream[STREAM_58A_ATZ].slot[0] = {1704108660, DepartureSource::Realtime,
-                                         true};
+  Departure &dep = snap.stream[STREAM_58A_ATZ].slot[0];
+  dep.when = 1704108660;
+  dep.source = DepartureSource::Realtime;
+  dep.valid = true;
   renderFrame(makeInput(DisplayState::Normal, snap), *fb_filled);
   int diff = 0;
   for (size_t i = 0; i < Frame::bytes; ++i)

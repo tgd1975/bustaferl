@@ -10,11 +10,11 @@
 // auth-tripwire bookkeeping is on the critical path.
 
 #include "config.h"
-#include "data/PersistedMeta.h"
 #include "data/oebb_hafas_parse.h"
 #include "data/wienerlinien_parse.h"
 #include "hal/Esp32Clock.h"
 #include "hal/Esp32Network.h"
+#include "hal/IPersistentStore.h"
 #include "logic/filter_builder.h"
 #include "logic/sleep_planner.h"
 #include "logic/snapshot_fetcher.h"
