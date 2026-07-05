@@ -28,24 +28,24 @@ void test_drawBadge_sm_fills_22x14_paper_box() {
   TEST_ASSERT_FALSE(fb.getPixel(18 + 11, 200 + 14));
 }
 
-void test_drawBadge_md_fills_28x18() {
+void test_drawBadge_md_fills_34x18() {
   Frame fb;
   fb.clear(false);
   render::HostCanvas canvas(fb);
   int right = drawBadge(canvas, 18, 100, "58B", BadgeSize::Md);
-  TEST_ASSERT_EQUAL_INT(18 + 28, right);
+  TEST_ASSERT_EQUAL_INT(18 + 34, right);
   TEST_ASSERT_TRUE(fb.getPixel(18 + 1, 100 + 1));
-  TEST_ASSERT_FALSE(fb.getPixel(18 + 28, 100 + 9));
+  TEST_ASSERT_FALSE(fb.getPixel(18 + 34, 100 + 9));
 }
 
-void test_drawBadge_lg_fills_36x22() {
+void test_drawBadge_lg_fills_42x22() {
   Frame fb;
   fb.clear(false);
   render::HostCanvas canvas(fb);
   int right = drawBadge(canvas, 18, 32, "58A", BadgeSize::Lg);
-  TEST_ASSERT_EQUAL_INT(18 + 36, right);
+  TEST_ASSERT_EQUAL_INT(18 + 42, right);
   TEST_ASSERT_TRUE(fb.getPixel(18 + 1, 32 + 1));
-  TEST_ASSERT_FALSE(fb.getPixel(18 + 36, 32 + 11));
+  TEST_ASSERT_FALSE(fb.getPixel(18 + 42, 32 + 11));
 }
 
 void test_drawBadge_does_not_touch_unrelated_pixels() {
@@ -60,17 +60,17 @@ void test_drawBadge_does_not_touch_unrelated_pixels() {
 void test_badgeBounds_table_matches_design_handoff() {
   TEST_ASSERT_EQUAL_INT(22, badgeBounds(BadgeSize::Sm).w);
   TEST_ASSERT_EQUAL_INT(14, badgeBounds(BadgeSize::Sm).h);
-  TEST_ASSERT_EQUAL_INT(28, badgeBounds(BadgeSize::Md).w);
+  TEST_ASSERT_EQUAL_INT(34, badgeBounds(BadgeSize::Md).w);
   TEST_ASSERT_EQUAL_INT(18, badgeBounds(BadgeSize::Md).h);
-  TEST_ASSERT_EQUAL_INT(36, badgeBounds(BadgeSize::Lg).w);
+  TEST_ASSERT_EQUAL_INT(42, badgeBounds(BadgeSize::Lg).w);
   TEST_ASSERT_EQUAL_INT(22, badgeBounds(BadgeSize::Lg).h);
 }
 
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_drawBadge_sm_fills_22x14_paper_box);
-  RUN_TEST(test_drawBadge_md_fills_28x18);
-  RUN_TEST(test_drawBadge_lg_fills_36x22);
+  RUN_TEST(test_drawBadge_md_fills_34x18);
+  RUN_TEST(test_drawBadge_lg_fills_42x22);
   RUN_TEST(test_drawBadge_does_not_touch_unrelated_pixels);
   RUN_TEST(test_badgeBounds_table_matches_design_handoff);
   return UNITY_END();

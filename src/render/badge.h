@@ -12,8 +12,12 @@ namespace bustaferl {
 // per the design handoff (display.jsx line-height / padding numbers):
 //
 //   sm: 22 × 14 — Atzg S-Bahn row
-//   md: 28 × 18 — EG row
-//   lg: 36 × 22 — TG row
+//   md: 34 × 18 — EG row (58B)
+//   lg: 42 × 22 — TG row (58A)
+//
+// md/lg widths run wider than the design handoff — the 58A/58B boxes read
+// cramped around the label on the physical panel; the extra width lands on
+// the right of the (left-anchored) text (on-device review).
 enum class BadgeSize : std::uint8_t { Sm, Md, Lg };
 
 struct BadgeBounds {
@@ -29,11 +33,11 @@ constexpr int BADGE_SM_W = 22;
 constexpr int BADGE_SM_H = 14;
 constexpr int BADGE_SM_PAD = 3;
 constexpr int BADGE_SM_PAD_Y = 3;
-constexpr int BADGE_MD_W = 28;
+constexpr int BADGE_MD_W = 34;
 constexpr int BADGE_MD_H = 18;
 constexpr int BADGE_MD_PAD = 4;
 constexpr int BADGE_MD_PAD_Y = 4;
-constexpr int BADGE_LG_W = 36;
+constexpr int BADGE_LG_W = 42;
 constexpr int BADGE_LG_H = 22;
 constexpr int BADGE_LG_PAD = 5;
 constexpr int BADGE_LG_PAD_Y = 4;
