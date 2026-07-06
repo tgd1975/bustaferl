@@ -50,6 +50,12 @@ void RecordingRenderer::renderDeterministic(const RenderInput &in, Frame &fb) {
   // Pseudo-raster: tile the framebuffer into 20×20 px cells; cell (cx, cy) is
   // black iff the corresponding bit of the input hash is set. Trivially
   // deterministic, gives visually-distinguishable PGMs in the .tmp dump.
+  //
+  // Deliberately NOT the real renderFrame: linking layout.cpp into the
+  // hand-rolled native-runtime g++ recipe would drag in the whole
+  // ArduinoFake + Adafruit_GFX + U8g2 dependency graph that only PlatformIO
+  // manages. The soak's forensic channel for "what would the panel show" is
+  // the LoggingRenderer slot trace in run.log, not these PGMs.
   fb.clear(true);
   constexpr int CELL = 20;
   constexpr int COLS = Frame::width / CELL;

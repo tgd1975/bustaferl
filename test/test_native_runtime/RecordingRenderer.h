@@ -14,9 +14,10 @@ namespace bustaferl::native_runtime {
 // equals the count of effective display updates — a leak in the render path
 // shows up as PGM-count growing faster than expected.
 //
-// NOT a layout test: the raster pattern is a hash, not the production GFX
-// output (Adafruit-GFX is firmware-only). Real layout regressions stay in
-// test_device_render.
+// NOT a layout test: linking the real renderFrame would drag the
+// ArduinoFake + Adafruit_GFX + U8g2 graph into the hand-rolled g++ recipe.
+// The soak's "what would the panel show" channel is the LoggingRenderer
+// slot trace in run.log; pixel-exact layout stays with env:native tests.
 class RecordingRenderer : public IRenderer {
 public:
   explicit RecordingRenderer(std::string dump_dir);

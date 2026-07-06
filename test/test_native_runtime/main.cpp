@@ -11,9 +11,11 @@
 #include "../../src/render/layout.h"
 #include "DiskStore.h"
 #include "HttpsNet.h"
+#include "LoggingAdapters.h"
 #include "NoOpDisplay.h"
 #include "NoOpSleep.h"
 #include "RecordingRenderer.h"
+#include "RunLog.h"
 #include "WallClockClock.h"
 
 #include <atomic>
@@ -72,8 +74,13 @@ int main() {
   //   BUSTAFERL_PERSIST_PATH    — disk-store file path
   //   BUSTAFERL_FRESH_BOOT      — "1" → delete persist file at startup
   CycleConfig cfg{};
-  cfg.api_base = envOr("BUSTAFERL_API_BASE",
-                       "https://www.wienerlinien.at/ogd_realtime/monitor");
+  // Default matches WL_API_BASE in config.h — the batch fetcher appends
+  // "&stopId=…", so the base must already carry a query string. A bare
+  // ".../monitor" yields "...monitor&stopId=…" and every bus stream comes
+  // back endpoint_responded=false (S-Bahn unaffected — HAFAS is a POST).
+  cfg.api_base =
+      envOr("BUSTAFERL_API_BASE", "https://www.wienerlinien.at/ogd_realtime/"
+                                  "monitor?activateTrafficInfo=stoerunglang");
   cfg.efa_base =
       envOr("BUSTAFERL_EFA_BASE",
             "https://www.wienerlinien.at/ogd_routing/XSLT_DM_REQUEST");
@@ -90,14 +97,24 @@ int main() {
   if (fresh_boot)
     std::remove(persist_path.c_str());
 
+  // Every HAL interaction goes through the logging decorators into
+  // run.log — timestamped and flushed per line, so a freeze shows up as a
+  // gap after the last recorded action and the rendered slot values are on
+  // record for every cycle (the data/representation boundary).
+  RunLog log{envOr("BUSTAFERL_LOG_PATH", ".tmp/native-runtime/run.log")};
+
   WallClockClock clock;
   HttpsNet net;
   if (std::string{envOr("BUSTAFERL_INSECURE", "0")} == "1")
     net.setInsecure(true);
-  NoOpSleep sleep{time_scale};
+  NoOpSleep raw_sleep{time_scale};
   DiskStore store{persist_path};
-  NoOpDisplay display;
-  RecordingRenderer renderer{".tmp/native-runtime"};
+  NoOpDisplay raw_display;
+  RecordingRenderer raw_renderer{".tmp/native-runtime"};
+
+  LoggingSleep sleep{raw_sleep, log};
+  LoggingDisplay display{raw_display, log};
+  LoggingRenderer renderer{raw_renderer, log};
 
   Frame frame_new;
   Frame frame_prev;
@@ -107,7 +124,8 @@ int main() {
 
   PersistedMeta meta = store.loadMeta();
 
-  std::fprintf(stderr, "[runtime] cold-boot cycle\n");
+  log.line("[cycle] cold boot (time_scale=%.2f max_cycles=%u)", time_scale,
+           max_cycles);
   runColdCycle(deps, meta);
 
   unsigned warm_cycles = 0;
@@ -115,16 +133,17 @@ int main() {
     if (max_cycles > 0 && warm_cycles >= max_cycles)
       break;
     ++warm_cycles;
-    std::fprintf(stderr, "[runtime] warm cycle %u\n", warm_cycles);
     meta = store.loadMeta();
+    log.line("[cycle] warm %u (partials=%u fb_valid=%d dumps=%u)", warm_cycles,
+             meta.partial_count, meta.framebuffer_valid,
+             raw_renderer.dump_count());
     runWarmCycle(deps, meta);
   }
 
-  std::fprintf(stderr,
-               "[runtime] done — warm_cycles=%u render=%u dump=%u "
-               "panel(full=%u/partial=%u/light=%u/deep=%u)\n",
-               warm_cycles, renderer.render_count(), renderer.dump_count(),
-               display.draw_full, display.draw_partial, display.light_full,
-               display.deep_clean);
+  log.line("[cycle] done — warm_cycles=%u render=%u dump=%u "
+           "panel(full=%u/partial=%u/light=%u/deep=%u)",
+           warm_cycles, raw_renderer.render_count(), raw_renderer.dump_count(),
+           raw_display.draw_full, raw_display.draw_partial,
+           raw_display.light_full, raw_display.deep_clean);
   return 0;
 }

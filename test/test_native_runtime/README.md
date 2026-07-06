@@ -16,10 +16,13 @@ gegen die echten Wiener-Linien-Endpoints fährt. Refactor-Plan §9.
 
 ## Was es **nicht** testet
 
-- Adafruit-GFX-Layout — `RecordingRenderer` baut nur ein Pseudo-Raster.
-  Display-Bugs bleiben Sache von `test_device_render`.
-- e-Paper-Refresh-Artefakte (kein Panel im Host-Pfad).
+- e-Paper-Refresh-Artefakte (kein Panel im Host-Pfad; Waveform/Ghosting
+  bleibt Sache des Geräts).
 - GPIO/Button-Verhalten — wird durch Schritt 9 nicht gefahren.
+
+Seit dem HostCanvas-Parity-Commit (`b47ca14`) rendert `RecordingRenderer`
+das **echte Produktions-Layout** — die PGM-Dumps zeigen exakt, was das
+Panel angezeigt hätte.
 
 ## Ausführen
 
@@ -44,9 +47,15 @@ den Pre-Commit-Hook).
 | `BUSTAFERL_MAX_CYCLES`    | `0` (∞)                                                   | Stop nach N Warm-Cycles                         |
 | `BUSTAFERL_PERSIST_PATH`  | `.tmp/native-runtime/persist.bin`                         | DiskStore-File                                  |
 | `BUSTAFERL_FRESH_BOOT`    | `1`                                                       | Persist-File beim Start löschen (= Cold-Boot)   |
+| `BUSTAFERL_LOG_PATH`      | `.tmp/native-runtime/run.log`                             | Timestamped Run-Log (append, flush pro Zeile)   |
 
 ## Output
 
+- `.tmp/native-runtime/run.log` — timestamped Trace jedes Cycles: gerenderte
+  Slots (HH:MM + Quelle RT/PLAN/HINT pro Stream), Panel-Calls
+  (partial/lightFull/deepClean inkl. Bbox), geplante Sleeps. Ein Freeze
+  zeigt sich als Zeitlücke nach der letzten Zeile; ein falscher Slot-Wert
+  steht mit Kontext im Log.
 - `.tmp/native-runtime/frame-NNNNNN.pgm` — P5-PGM, einer pro
   Display-Update. Anzahl = Anzahl der echten Frame-Wechsel; identische
   Frames werden dedupliziert.
