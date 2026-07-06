@@ -7,9 +7,11 @@
 // Tests also assert frame distinctness (no two states collapse to the
 // same bytes) and that each frame is non-trivial (≥ N paper pixels).
 
+#include "config.h"
 #include "data/StreamSnapshot.h"
 #include "logic/render_input.h" // for RenderInput shape via layout.h
 #include "render/layout.h"
+#include "render/rle.h"
 
 #include <cstdio>
 #include <cstring>
@@ -219,6 +221,32 @@ void test_stale_differs_from_normal_with_same_data() {
       "Normal and Stale rendered identical bytes despite Stale-marker");
 }
 
+void test_every_state_fits_persistence_cap() {
+  // Regression guard for the full-refresh storm: if a rendered frame's
+  // row-delta RLE exceeds RLE_HARDCAP_BYTES, Esp32PersistentStore rejects
+  // the save, prev_valid goes false, and every warm cycle degrades to a
+  // light-full (whole-panel flash). Any layout change that pushes a state
+  // over the cap must fail here, not on the device.
+  constexpr DisplayState all[] = {
+      DisplayState::Boot,  DisplayState::Normal, DisplayState::Stale,
+      DisplayState::Night, DisplayState::Quiet,  DisplayState::Offline,
+      DisplayState::Auth,
+  };
+  uint8_t enc[RLE_HARDCAP_BYTES];
+  for (DisplayState s : all) {
+    RenderInput in = makeBoardInput(s);
+    Frame fb;
+    renderFrame(in, fb);
+    size_t n = rleEncodeDelta(fb.data(), Frame::bytes, EPD_WIDTH / 8, enc,
+                              sizeof(enc));
+    char msg[96];
+    std::snprintf(msg, sizeof(msg),
+                  "state %d frame does not fit RLE_HARDCAP_BYTES (%d)",
+                  static_cast<int>(s), RLE_HARDCAP_BYTES);
+    TEST_ASSERT_TRUE_MESSAGE(n > 0, msg);
+  }
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_dump_state_boot);
@@ -230,5 +258,6 @@ int main(int, char **) {
   RUN_TEST(test_dump_state_auth);
   RUN_TEST(test_fullscreen_states_each_produce_distinct_frames);
   RUN_TEST(test_stale_differs_from_normal_with_same_data);
+  RUN_TEST(test_every_state_fits_persistence_cap);
   return UNITY_END();
 }

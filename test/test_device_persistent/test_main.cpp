@@ -101,9 +101,15 @@ void test_save_framebuffer_round_trip_white() {
 
 void test_save_framebuffer_round_trip_random_pattern() {
   auto fb = std::make_unique<uint8_t[]>(FB_BYTES);
+  // Row-coherent pattern (delta-RLE-friendly, like real rendered frames):
+  // horizontally varied bytes, identical rows within 10-row bands. The row
+  // deltas are zero inside a band and a single constant-XOR run at each
+  // band boundary.
+  constexpr size_t kStride = EPD_WIDTH / 8;
   for (size_t i = 0; i < FB_BYTES; ++i) {
-    // run-friendly pattern: 8-byte plateaus, change every 8 bytes
-    fb[i] = static_cast<uint8_t>((i / 8) & 0xFF);
+    const size_t x = i % kStride;
+    const size_t band = (i / kStride) / 10;
+    fb[i] = static_cast<uint8_t>((x * 73) ^ (band * 31));
   }
   TEST_ASSERT_TRUE(g_store.saveFramebuffer(fb.get(), FB_BYTES));
   auto out = std::make_unique<uint8_t[]>(FB_BYTES);
@@ -140,11 +146,19 @@ void test_save_schedule_round_trip() {
 }
 
 void test_save_framebuffer_overflow_clears_valid() {
-  // Build a worst-case input that won't fit into RLE_HARDCAP_BYTES: alternate
-  // 0xAA/0x55 every byte → zero compression → encoded size = 2 * FB_BYTES.
+  // Build a worst-case input that won't fit into RLE_HARDCAP_BYTES: xorshift
+  // noise has no horizontal runs and no row-to-row coherence, so both the
+  // plain and the row-delta stream stay incompressible (≈ 2 * FB_BYTES).
+  // (The previous 0xAA/0x55 alternation defeated plain RLE but has identical
+  // rows — under delta encoding it collapses to near-nothing.)
   auto fb = std::make_unique<uint8_t[]>(FB_BYTES);
-  for (size_t i = 0; i < FB_BYTES; ++i)
-    fb[i] = (i & 1) ? 0xAA : 0x55;
+  uint32_t rng = 0x12345678u;
+  for (size_t i = 0; i < FB_BYTES; ++i) {
+    rng ^= rng << 13;
+    rng ^= rng >> 17;
+    rng ^= rng << 5;
+    fb[i] = static_cast<uint8_t>(rng);
+  }
   bool ok = g_store.saveFramebuffer(fb.get(), FB_BYTES);
   PersistedMeta m = g_store.loadMeta();
   Serial.printf("[engine] overflow save returned=%d fb_valid_after=%d\n", ok,
