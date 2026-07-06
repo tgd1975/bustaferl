@@ -29,7 +29,9 @@ const std::uint8_t *fontFor(FontRole role) {
   case FontRole::Badge_md:
     return u8g2_font_helvB10_tr;
   case FontRole::Badge_lg:
-    return u8g2_font_helvB14_tr;
+    // Keep in lockstep with canvas_adafruit.cpp: logisoso has identical
+    // digit and cap heights — helvB14 rendered 'A' taller than '58'.
+    return u8g2_font_logisoso16_tr;
   case FontRole::Fullscreen_Glyph_90:
     return u8g2_font_helvB24_tr;
   case FontRole::Fullscreen_Title:

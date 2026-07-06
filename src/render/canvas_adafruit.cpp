@@ -30,7 +30,11 @@ const std::uint8_t *fontFor(FontRole role) {
   case FontRole::Badge_md:
     return u8g2_font_helvB10_tr;
   case FontRole::Badge_lg:
-    return u8g2_font_helvB14_tr;
+    // logisoso has identical digit and cap heights — helvB14 renders 'A'
+    // visibly taller than '58' (Adobe BDF conversion quirk at 14 pt), which
+    // read as two font sizes inside one badge. Also matches the logisoso
+    // family the departure times use.
+    return u8g2_font_logisoso16_tr;
   case FontRole::Fullscreen_Glyph_90:
     return u8g2_font_helvB24_tr;
   case FontRole::Fullscreen_Title:
