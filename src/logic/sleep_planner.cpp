@@ -6,6 +6,18 @@ namespace bustaferl {
 
 SleepDecision planSleep(const StreamSnapshot &snap, time_t now,
                         const SleepConfig &cfg) {
+  // Failed fetch → short retry, unconditionally. On a transient WiFi/API
+  // blip the merged view still carries schedule HINTS (mergeSlots fills
+  // empty realtime slots from the EFA timetable), so a valid slot may point
+  // hours ahead — planning the wake against it put the device into a
+  // multi-hour deep sleep after a single failed cycle ("display froze").
+  // Never commit to a long sleep based on a cycle that couldn't reach the
+  // API; retry shortly instead and let a successful fetch plan the real one.
+  if (!snap.api_ok) {
+    return SleepDecision{Mode::DeepSleep,
+                         static_cast<unsigned>(cfg.api_failure_retry_s)};
+  }
+
   time_t t_ref = 0;
   bool have = false;
   for (const auto &stream : snap.stream) {
@@ -20,13 +32,9 @@ SleepDecision planSleep(const StreamSnapshot &snap, time_t now,
   }
 
   if (!have) {
-    // Differentiate "API responded with no buses" (overnight, sleep long)
-    // from "API/network failed" (short retry — do not back off for half an
-    // hour just because the upstream blipped).
-    unsigned secs = snap.api_ok
-                        ? static_cast<unsigned>(cfg.no_data_sleep_s)
-                        : static_cast<unsigned>(cfg.api_failure_retry_s);
-    return SleepDecision{Mode::DeepSleep, secs};
+    // API responded but no departures anywhere (overnight): sleep long.
+    return SleepDecision{Mode::DeepSleep,
+                         static_cast<unsigned>(cfg.no_data_sleep_s)};
   }
 
   long wake_at =

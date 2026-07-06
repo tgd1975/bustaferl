@@ -60,6 +60,7 @@ void test_api_failure_uses_short_retry() {
 
 void test_uses_minimum_across_streams() {
   StreamSnapshot snap;
+  snap.api_ok = true;
   snap.stream[STREAM_58A_ATZ].slot[0] = {5000, DepartureSource::Realtime, true};
   snap.stream[STREAM_58A_HIETZING].slot[0] = {3000, DepartureSource::Realtime,
                                               true};
@@ -67,6 +68,21 @@ void test_uses_minimum_across_streams() {
   auto d = planSleep(snap, 0, cfg);
   // earliest = 2500 → wake_at = 2500 - 930 = 1570
   TEST_ASSERT_EQUAL_UINT(1570, d.seconds);
+}
+
+void test_api_failure_with_hint_slots_still_short_retries() {
+  // Regression for the "display froze for hours" bug: a failed fetch leaves
+  // an empty realtime snapshot, but mergeSlots fills slots from schedule
+  // HINTS — e.g. tonight's last bus hours ahead. planSleep must NOT plan the
+  // wake against that hint (multi-hour deep sleep off one WiFi blip); a
+  // failed cycle always retries on the short api_failure cadence.
+  StreamSnapshot snap; // api_ok = false: fetch failed
+  snap.stream[STREAM_58A_ATZ].slot[0] = {/*now+5h*/ 18000,
+                                         DepartureSource::Hint, true};
+  auto d = planSleep(snap, 0, cfg);
+  TEST_ASSERT_EQUAL(static_cast<int>(Mode::DeepSleep),
+                    static_cast<int>(d.mode));
+  TEST_ASSERT_EQUAL_UINT(60, d.seconds);
 }
 
 void test_nightly_never_cleaned_is_due() {
@@ -104,6 +120,7 @@ int main(int, char **) {
   RUN_TEST(test_api_ok_no_departures_uses_no_data_sleep);
   RUN_TEST(test_api_failure_uses_short_retry);
   RUN_TEST(test_uses_minimum_across_streams);
+  RUN_TEST(test_api_failure_with_hint_slots_still_short_retries);
   RUN_TEST(test_nightly_never_cleaned_is_due);
   RUN_TEST(test_nightly_just_cleaned_is_not_due);
   RUN_TEST(test_nightly_at_threshold_is_due);
