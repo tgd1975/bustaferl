@@ -219,13 +219,19 @@ public:
     ++calls;
     last_state = in.state;
     // Touch the framebuffer so a downstream refresh_planner-style diff against
-    // the previous frame yields a non-empty change region.
+    // the previous frame yields a non-empty change region. With `freeze` set
+    // the same frame is produced on every call — models "board content
+    // unchanged across cycles" for the None-skip / update-stamp semantics.
+    // Advance BEFORE drawing so clearing `freeze` already changes this call's
+    // frame, not the next one's.
+    if (!freeze)
+      ++seq_;
     fb.clear(true);
     fb.setPixel(seq_ % Frame::width, (seq_ / Frame::width) % Frame::height,
                 false);
-    ++seq_;
   }
   int calls = 0;
+  bool freeze = false;
   DisplayState last_state = DisplayState::Normal;
 
 private:

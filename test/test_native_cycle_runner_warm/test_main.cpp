@@ -187,6 +187,43 @@ void test_warm_fetch_fail_stale_renders_stale_overlay() {
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
 }
 
+void test_update_stamp_tracks_applied_updates_not_wall_time() {
+  // Semantics of the "upd HH:MM" stamp: it must show the time of the last
+  // ACTUALLY applied panel update — never advance just because minutes pass.
+  WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true);
+  fx.renderer.freeze = true; // identical board content on every render
+  CycleDeps deps = fx.deps();
+
+  // Cycle 1: no previous framebuffer → a refresh is applied → stamp = now.
+  runWarmCycle(deps, fx.meta);
+  const time_t t1 = fx.meta.last_display_update;
+  TEST_ASSERT_EQUAL_INT64(kSyncedNow, t1);
+  const int draws_after_c1 = fx.display.draw_partial_calls +
+                             fx.display.light_full_calls +
+                             fx.display.deep_clean_calls;
+  TEST_ASSERT_GREATER_THAN(0, draws_after_c1);
+
+  // Cycle 2, five minutes later, identical content: nothing may reach the
+  // panel and the stamp must NOT tick to the new time.
+  fx.clock.advance(300);
+  runWarmCycle(deps, fx.meta);
+  TEST_ASSERT_EQUAL_INT64(t1, fx.meta.last_display_update);
+  const int draws_after_c2 = fx.display.draw_partial_calls +
+                             fx.display.light_full_calls +
+                             fx.display.deep_clean_calls;
+  TEST_ASSERT_EQUAL(draws_after_c1, draws_after_c2);
+
+  // Cycle 3, content changes: a refresh is applied and the stamp follows.
+  fx.renderer.freeze = false;
+  fx.clock.advance(300);
+  runWarmCycle(deps, fx.meta);
+  TEST_ASSERT_EQUAL_INT64(kSyncedNow + 600, fx.meta.last_display_update);
+  const int draws_after_c3 = fx.display.draw_partial_calls +
+                             fx.display.light_full_calls +
+                             fx.display.deep_clean_calls;
+  TEST_ASSERT_GREATER_THAN(draws_after_c2, draws_after_c3);
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_warm_happy_renders_and_saves_before_sleep);
@@ -195,5 +232,6 @@ int main(int, char **) {
   RUN_TEST(test_warm_unsynced_clock_forces_ntp_then_continues);
   RUN_TEST(test_warm_fetch_fail_prestale_keeps_last_frame);
   RUN_TEST(test_warm_fetch_fail_stale_renders_stale_overlay);
+  RUN_TEST(test_update_stamp_tracks_applied_updates_not_wall_time);
   return UNITY_END();
 }
