@@ -31,7 +31,8 @@ RTC_DATA_ATTR ScheduleSnapshot g_sched{};
 // user sees one cycle with no hints + a light-full instead of a partial.
 // .73: framebuffer switched from plain RLE to row-delta RLE — decoding an
 // old plain-RLE slot with the delta decoder would produce a scrambled frame.
-constexpr uint32_t MAGIC = 0xB05AFE73; // bustaferl v2, delta-RLE fb
+// .74: PersistedMeta gained last_display_update (update-stamp debug aid).
+constexpr uint32_t MAGIC = 0xB05AFE74; // bustaferl v2, delta-RLE + stamp
 
 // Framebuffer row width in bytes; encode and decode must agree on it.
 constexpr size_t FB_STRIDE = EPD_WIDTH / 8;

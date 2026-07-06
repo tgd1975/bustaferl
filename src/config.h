@@ -87,6 +87,16 @@
 // Display version string (foot line on the Boot screen).
 #define DISPLAY_VERSION_STR "v2.0 · UC8176 · 400×300"
 
+// Debug aid: small "upd HH:MM" stamp bottom-right showing when the panel
+// content last actually changed. 0 = off. The stamp only updates together
+// with a real refresh — an unchanged frame stays untouched (no extra panel
+// updates just to tick the stamp). Overridable so the native-runtime soak
+// binary (whose renderer is a pseudo-raster without the render/ layer) can
+// compile it out via -DUPDATE_STAMP_ENABLED=0.
+#ifndef UPDATE_STAMP_ENABLED
+#define UPDATE_STAMP_ENABLED 1
+#endif
+
 // EFA schedule endpoint. Caller appends &name_dm=<DIVA>&itdDate*=...
 #define WL_EFA_DM_BASE                                                         \
   "https://www.wienerlinien.at/ogd_routing/"                                   \

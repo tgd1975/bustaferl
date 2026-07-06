@@ -33,6 +33,11 @@ struct PersistedMeta {
   time_t last_success_at = 0;
   bool auth_error_seen = false;
   uint8_t ogd_auth_streak = 0;
+
+  // Epoch of the last refresh actually pushed to the panel (partial,
+  // light-full, or deep clean). Drives the UPDATE_STAMP_ENABLED debug stamp
+  // bottom-right; 0 = never / stamp absent.
+  time_t last_display_update = 0;
 };
 
 class IPersistentStore {

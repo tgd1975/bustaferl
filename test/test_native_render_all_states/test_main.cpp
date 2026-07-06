@@ -247,6 +247,56 @@ void test_every_state_fits_persistence_cap() {
   }
 }
 
+void test_update_stamp_draws_bottom_right_only() {
+  Frame plain;
+  Frame stamped;
+  RenderInput in = makeBoardInput(DisplayState::Normal);
+  renderFrame(in, plain);
+  renderFrame(in, stamped);
+  drawUpdateStamp(stamped, 1700000000); // 14:53 UTC / 15:53 CET
+
+  // Diff must exist, and only in the bottom strip (stamp region).
+  const int stride = FB_W / 8;
+  bool any_diff = false;
+  for (int y = 0; y < FB_H; ++y) {
+    bool row_diff = std::memcmp(plain.data() + y * stride,
+                                stamped.data() + y * stride, stride) != 0;
+    if (row_diff) {
+      any_diff = true;
+      TEST_ASSERT_GREATER_THAN_MESSAGE(
+          FB_H - 12, y, "stamp touched pixels outside the bottom strip");
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(any_diff, "stamp drew nothing");
+}
+
+void test_update_stamp_overwrite_is_clean() {
+  // Stamping T2 over a frame already stamped with T1 must equal stamping T2
+  // on a fresh frame — no residue from the previous digits.
+  Frame once;
+  Frame twice;
+  RenderInput in = makeBoardInput(DisplayState::Normal);
+  renderFrame(in, once);
+  drawUpdateStamp(once, 1700000000 + 3600);
+  renderFrame(in, twice);
+  drawUpdateStamp(twice, 1700000000);
+  drawUpdateStamp(twice, 1700000000 + 3600);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(
+      0, std::memcmp(once.data(), twice.data(), Frame::bytes),
+      "re-stamp left residue of the previous stamp");
+}
+
+void test_update_stamp_zero_is_noop() {
+  Frame plain;
+  Frame stamped;
+  RenderInput in = makeBoardInput(DisplayState::Normal);
+  renderFrame(in, plain);
+  renderFrame(in, stamped);
+  drawUpdateStamp(stamped, 0);
+  TEST_ASSERT_EQUAL_INT(
+      0, std::memcmp(plain.data(), stamped.data(), Frame::bytes));
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_dump_state_boot);
@@ -259,5 +309,8 @@ int main(int, char **) {
   RUN_TEST(test_fullscreen_states_each_produce_distinct_frames);
   RUN_TEST(test_stale_differs_from_normal_with_same_data);
   RUN_TEST(test_every_state_fits_persistence_cap);
+  RUN_TEST(test_update_stamp_draws_bottom_right_only);
+  RUN_TEST(test_update_stamp_overwrite_is_clean);
+  RUN_TEST(test_update_stamp_zero_is_noop);
   return UNITY_END();
 }

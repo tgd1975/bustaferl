@@ -71,6 +71,13 @@ void renderAndPush(CycleDeps &deps, DisplayState state,
   RenderInput in = composeRenderInput(state, snap, schedule, meta, now);
   deps.renderer.render(in, deps.curr);
 
+#if UPDATE_STAMP_ENABLED
+  // Reproduce the persisted frame's stamp before diffing: an unchanged
+  // board then compares byte-identical and the None-skip keeps working —
+  // the stamp alone never causes a panel update.
+  drawUpdateStamp(deps.curr, meta.last_display_update);
+#endif
+
   bool prev_valid = meta.framebuffer_valid;
   if (prev_valid) {
     prev_valid = deps.store.loadFramebuffer(deps.prev.data(), Frame::bytes) ==
@@ -81,6 +88,17 @@ void renderAndPush(CycleDeps &deps, DisplayState state,
   RefreshDecision d =
       planRefresh(deps.prev.data(), deps.curr.data(), prev_valid, now,
                   meta.last_light_full, meta.partial_count, rc);
+
+#if UPDATE_STAMP_ENABLED
+  if (d.kind != RefreshKind::None) {
+    // A refresh will actually reach the panel — restamp with the current
+    // time and re-plan so the partial bbox covers the stamp region too.
+    drawUpdateStamp(deps.curr, now);
+    meta.last_display_update = now;
+    d = planRefresh(deps.prev.data(), deps.curr.data(), prev_valid, now,
+                    meta.last_light_full, meta.partial_count, rc);
+  }
+#endif
 
   applyDisplayDecision(deps.display, d, deps.curr.data(), meta, now);
 
@@ -262,6 +280,10 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
   DisplayState state = selectDisplayState(snap, schedule, meta, sig);
   RenderInput in = composeRenderInput(state, snap, schedule, meta, now);
   deps.renderer.render(in, deps.curr);
+#if UPDATE_STAMP_ENABLED
+  drawUpdateStamp(deps.curr, now);
+  meta.last_display_update = now;
+#endif
   deps.display.deepClean(deps.curr.data());
   meta.last_deep_clean = now;
   meta.last_light_full = meta.last_deep_clean;
@@ -304,6 +326,10 @@ void doNightlyClean(CycleDeps &deps, PersistedMeta &meta,
                     const FetchCycleResult &fc, time_t now) {
   RenderInput in = composeRenderInput(fc.state, fc.snap, schedule, meta, now);
   deps.renderer.render(in, deps.curr);
+#if UPDATE_STAMP_ENABLED
+  drawUpdateStamp(deps.curr, now);
+  meta.last_display_update = now;
+#endif
   deps.display.deepClean(deps.curr.data());
   meta.last_deep_clean = now;
   meta.last_light_full = now;

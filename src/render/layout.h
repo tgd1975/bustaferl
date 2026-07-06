@@ -57,6 +57,13 @@ struct RenderInput {
 // Both targets exercise the same render/* code.
 void renderFrame(const RenderInput &in, Frame &fb);
 
+// Debug stamp (UPDATE_STAMP_ENABLED): overdraws a small "upd HH:MM" bottom-
+// right of an already-rendered frame — the time the panel content last
+// actually changed. Clears its own background, so overwriting an older stamp
+// is safe. t == 0 draws nothing. Called by cycle_runner after the refresh
+// decision, never from renderFrame (mockups and baselines stay stamp-free).
+void drawUpdateStamp(Frame &fb, std::time_t t);
+
 } // namespace bustaferl
 
 #endif

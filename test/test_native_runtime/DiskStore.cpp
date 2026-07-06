@@ -15,7 +15,8 @@ namespace {
 // .72: row-delta RLE + cap aligned to the device (was a stale 4096 while the
 // device uses RLE_HARDCAP_BYTES) — host runs must hit the same persistence
 // limits the ESP32 does, or a cap overflow class of bug hides on host.
-constexpr std::uint32_t MAGIC = 0xB05AFE72;
+// .73: PersistedMeta gained last_display_update (update-stamp debug aid).
+constexpr std::uint32_t MAGIC = 0xB05AFE73;
 constexpr std::uint32_t SCHED_MAGIC = 0x5CEDB052;
 constexpr size_t RLE_CAP = RLE_HARDCAP_BYTES;
 constexpr size_t FB_STRIDE = EPD_WIDTH / 8;

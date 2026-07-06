@@ -59,7 +59,11 @@ NR_SRC := \
   src/logic/stale_policy.cpp \
   src/render/rle.cpp
 
+# UPDATE_STAMP_ENABLED=0: the soak binary's renderer is a pseudo-raster and
+# does not link the render/ layer that draws the stamp; the stamp path is
+# covered by the env:native cycle-runner tests instead.
 NR_CXXFLAGS := -std=gnu++17 -Wall -Wextra -O2 -g -DNATIVE_BUILD \
+               -DUPDATE_STAMP_ENABLED=0 \
                -I src -isystem .pio/libdeps/native/ArduinoJson/src
 NR_LDLIBS := -lcurl
 
