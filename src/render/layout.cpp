@@ -27,7 +27,7 @@ namespace {
 // container padding. No separator lines — the bars are the section
 // dividers.
 constexpr int LAYOUT_PAD_X = 8;
-constexpr int LAYOUT_TG_HEADER_Y = 6;
+constexpr int LAYOUT_TG_BAR_Y = 0;
 constexpr int LAYOUT_TG_ROW0_Y = 22;
 constexpr int LAYOUT_TG_ROW1_Y = 54;
 
@@ -121,17 +121,10 @@ void formatHHMM(std::time_t t, char *out, std::size_t cap) {
   std::snprintf(out, cap, "%02d:%02d", local.tm_hour, local.tm_min);
 }
 
-// TG-style header: plain caps text, no background, no underline. Sits
-// inside the TG content block at LAYOUT_PAD_X.
-void drawTgHeader(render::Canvas &canvas, int x, int y, const char *text) {
-  canvas.setRoleFont(FontRole::Section_Header_TG);
-  canvas.setTextColor(1);
-  canvas.setCursor(x, y);
-  canvas.print(text);
-}
-
-// Inverted full-width header bar (paper fill, ink text). Used by EG, SB and
-// the optional notice banner. Spans edge-to-edge with no container padding.
+// Inverted full-width header bar (paper fill, ink text). Used by all three
+// section headers (TG since the symmetry pass — it was plain caps on ink
+// before) and the optional notice banner. Spans edge-to-edge with no
+// container padding.
 void drawHeaderBar(render::Canvas &canvas, int y, const char *text) {
   canvas.fillRect(0, y, FB_W, HEADER_BAR_H, 1);
   canvas.setRoleFont(FontRole::Section_Header_EG_Atzg);
@@ -321,7 +314,7 @@ void drawSbahnSlot(render::Canvas &canvas, int x, int y, const Departure &d,
 void drawBoard(render::Canvas &canvas, const RenderInput &in) {
   const bool stale = (in.state == DisplayState::Stale);
 
-  drawTgHeader(canvas, LAYOUT_PAD_X, LAYOUT_TG_HEADER_Y, "TULLNERTALGASSE");
+  drawHeaderBar(canvas, LAYOUT_TG_BAR_Y, "TULLNERTALGASSE");
   const StreamData &s58a_atz = in.snapshot.stream[STREAM_58A_ATZ];
   drawSlot(canvas,
            SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW0_Y, "58A",
@@ -384,6 +377,35 @@ void renderFrame(const RenderInput &in, Frame &fb) {
     drawBoard(canvas, in);
     return;
   }
+}
+
+void drawUpdateStamp(Frame &fb, std::time_t t) {
+  if (t == 0)
+    return;
+
+#ifndef NATIVE_BUILD
+  render::AdafruitGfxCanvas canvas(fb.data(), FB_W, FB_H);
+#else
+  render::HostCanvas canvas(fb);
+#endif
+
+  struct tm local;
+  localtime_r(&t, &local);
+  char buf[16];
+  std::snprintf(buf, sizeof(buf), "upd %02d:%02d", local.tm_hour, local.tm_min);
+
+  canvas.setRoleFont(FontRole::Network_Label);
+  const int w = canvas.textWidth(buf);
+  constexpr int STAMP_H = 8; // 5x7 glyphs + 1px breathing room
+  constexpr int STAMP_PAD = 2;
+  const int x = FB_W - w - STAMP_PAD;
+  const int y = FB_H - STAMP_H;
+  // Clear the region to ink first so overwriting an older stamp leaves no
+  // residue pixels behind narrower digits.
+  canvas.fillRect(x - STAMP_PAD, y - 1, w + 2 * STAMP_PAD, STAMP_H + 1, 0);
+  canvas.setTextColor(1);
+  canvas.setCursor(x, y);
+  canvas.print(buf);
 }
 
 } // namespace bustaferl

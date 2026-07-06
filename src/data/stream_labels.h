@@ -23,12 +23,12 @@ inline const char *streamLabel(int idx) {
   }
 }
 
-// Renderer-side direction label, max 8 characters (TG/EG row layout
-// constraint, see docs/design_handoff_display/README.md). Static on purpose:
-// the OGD `towards` string is too long and shifts occasionally
-// ("Bhf. Atzgersdorf S (üb. Atzgersdorfer Str.)") — the display column needs
-// a stable short form. The S-Bahn stream returns "" because the S-Bahn
-// header carries the direction.
+// Renderer-side direction label. Static on purpose: the OGD `towards`
+// string is too long and shifts occasionally ("Bhf. Atzgersdorf S (üb.
+// Atzgersdorfer Str.)") — the display column needs a stable short form.
+// "Atzgersdorf" fits unabbreviated: the label column ends well before the
+// right-aligned time grid (verified against the host render). The S-Bahn
+// stream returns "" because the S-Bahn header carries the direction.
 inline const char *display_dir(int idx) {
   // Both Atzgersdorf-bound bus streams share the same display label;
   // Hietzing is its own. S-Bahn returns empty because the header carries
@@ -38,7 +38,7 @@ inline const char *display_dir(int idx) {
     return "Hietzing";
   }
   if (idx == STREAM_58A_ATZ || idx == STREAM_58B_ATZ) {
-    return "Atzgers.";
+    return "Atzgersdorf";
   }
   return "";
 }
