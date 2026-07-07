@@ -72,18 +72,26 @@ bool refreshSchedule(CycleDeps &deps, ScheduleSnapshot &out) {
   return applyScheduleFetchResult(r, now, out);
 }
 
+// `force_stamp` (button-triggered cycle): stamp `now` before the diff so the
+// changed stamp region alone forces at least a partial update. This gives the
+// user visible feedback ("upd HH:MM" advances) on every press, even when the
+// departure data is byte-identical to what's already on the glass.
 void renderAndPush(CycleDeps &deps, DisplayState state,
                    const StreamSnapshot &snap, PersistedMeta &meta,
-                   const ScheduleSnapshot &schedule) {
+                   const ScheduleSnapshot &schedule, bool force_stamp = false) {
   time_t now = deps.clock.now();
   RenderInput in = composeRenderInput(state, snap, schedule, meta, now);
   deps.renderer.render(in, deps.curr);
 
 #if UPDATE_STAMP_ENABLED
-  // Reproduce the persisted frame's stamp before diffing: an unchanged
-  // board then compares byte-identical and the None-skip keeps working —
-  // the stamp alone never causes a panel update.
-  drawUpdateStamp(deps.curr, meta.last_display_update);
+  // Normally reproduce the persisted frame's stamp before diffing: an unchanged
+  // board then compares byte-identical and the None-skip keeps working — the
+  // stamp alone never causes a panel update. When forced (button press), stamp
+  // `now` instead so the diff is non-empty and a refresh reaches the panel.
+  drawUpdateStamp(deps.curr, force_stamp ? now : meta.last_display_update);
+  if (force_stamp) {
+    meta.last_display_update = now;
+  }
 #endif
 
   bool prev_valid = meta.framebuffer_valid;
@@ -98,9 +106,10 @@ void renderAndPush(CycleDeps &deps, DisplayState state,
                   meta.last_light_full, meta.partial_count, rc, deps.deep_wake);
 
 #if UPDATE_STAMP_ENABLED
-  if (d.kind != RefreshKind::None) {
+  if (!force_stamp && d.kind != RefreshKind::None) {
     // A refresh will actually reach the panel — restamp with the current
     // time and re-plan so the partial bbox covers the stamp region too.
+    // (The forced path already stamped `now` above, before diffing.)
     drawUpdateStamp(deps.curr, now);
     meta.last_display_update = now;
     d = planRefresh(deps.prev.data(), deps.curr.data(), prev_valid, now,
@@ -434,7 +443,8 @@ void doNightlyClean(CycleDeps &deps, PersistedMeta &meta,
 // both stay under the readability-function-size thresholds.
 static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
                             const ScheduleSnapshot &schedule,
-                            FetchCycleResult &fc, time_t now) {
+                            FetchCycleResult &fc, time_t now,
+                            bool force_stamp) {
   SleepConfig sc = makeSleepConfig(deps.cfg);
   SleepDecision pre = planSleep(fc.merged, now, sc);
   bool nightly = pre.mode == Mode::DeepSleep &&
@@ -443,8 +453,11 @@ static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
 
   if (nightly) {
     doNightlyClean(deps, meta, schedule, fc, now);
-  } else if (fc.fetched_ok || fc.state != DisplayState::Normal) {
-    renderAndPush(deps, fc.state, fc.snap, meta, schedule);
+  } else if (fc.fetched_ok || fc.state != DisplayState::Normal || force_stamp) {
+    // force_stamp (button press) pushes even on a transient pre-stale failure:
+    // the user pressed the button, so give visible feedback (stamp advances)
+    // rather than silently keeping the last frame.
+    renderAndPush(deps, fc.state, fc.snap, meta, schedule, force_stamp);
   } else {
     // Transient fetch failure (not yet stale): keep showing the last good
     // frame. Re-rendering with an empty snap would flicker every slot to
@@ -467,7 +480,7 @@ static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
   doSleepOrLoop(deps, pre, meta, now);
 }
 
-void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
+void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, bool force_stamp) {
   CYCLE_LOG_LN("[warm] cycle start");
   ScheduleSnapshot schedule = deps.store.loadSchedule();
   if (!deps.net.connect(deps.cfg.wifi_connect_ms)) {
@@ -483,7 +496,7 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
     sig.last_success = meta.last_success_at;
     DisplayState s = selectDisplayState(StreamSnapshot{}, schedule, meta, sig);
     if (s == DisplayState::Stale || s == DisplayState::Offline) {
-      renderAndPush(deps, s, StreamSnapshot{}, meta, schedule);
+      renderAndPush(deps, s, StreamSnapshot{}, meta, schedule, force_stamp);
     }
     deps.sleep.deepSleep(deps.cfg.poll_interval_s);
     return;
@@ -507,7 +520,7 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
     }
   }
 
-  finishWarmCycle(deps, meta, schedule, fc, now);
+  finishWarmCycle(deps, meta, schedule, fc, now, force_stamp);
 }
 
 void runBwReset(CycleDeps &deps, PersistedMeta &meta) {
@@ -541,14 +554,17 @@ void runButtonWake(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
   } else {
     CYCLE_LOG_LN("[btn] short — proceed with update");
   }
-  runWarmCycle(deps, meta);
+  // Always button-triggered here → force the update stamp so the press gives
+  // visible feedback even when the departure data is unchanged.
+  runWarmCycle(deps, meta, /*force_stamp=*/true);
 }
 
 void pollButtonAndRunWarm(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
   constexpr std::uint32_t SETTLE_MS = 5;
   btn.init();
   btn.sleepMs(SETTLE_MS);
-  if (btn.isPressed()) {
+  bool pressed = btn.isPressed();
+  if (pressed) {
     CYCLE_LOG_LN("[btn] press detected");
     ButtonPress p = classifyHeld(btn, deps.cfg.btn_long_press_ms);
     if (p == ButtonPress::Long) {
@@ -557,7 +573,9 @@ void pollButtonAndRunWarm(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
       CYCLE_LOG_LN("[btn] short — proceed with update");
     }
   }
-  runWarmCycle(deps, meta);
+  // Force the stamp only when this wake was actually a button press (not the
+  // routine poll-timer wake), so idle polls still no-op on unchanged data.
+  runWarmCycle(deps, meta, /*force_stamp=*/pressed);
 }
 
 } // namespace bustaferl

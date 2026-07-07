@@ -327,6 +327,34 @@ void test_update_stamp_tracks_applied_updates_not_wall_time() {
   TEST_ASSERT_GREATER_THAN(draws_after_c2, draws_after_c3);
 }
 
+void test_force_stamp_advances_stamp_on_unchanged_data() {
+  // Button press (force_stamp=true): even with byte-identical board content,
+  // the "upd HH:MM" stamp must advance and a refresh must reach the panel, so
+  // the press gives visible feedback. This is the boot-button "nothing happens
+  // on unchanged data" fix.
+  WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true);
+  fx.renderer.freeze = true; // identical board content on every render
+  CycleDeps deps = fx.deps();
+
+  // Cycle 1: no previous framebuffer → a refresh is applied → stamp = now.
+  runWarmCycle(deps, fx.meta);
+  const time_t t1 = fx.meta.last_display_update;
+  TEST_ASSERT_EQUAL_INT64(kSyncedNow, t1);
+  const int draws_after_c1 = fx.display.draw_partial_calls +
+                             fx.display.light_full_calls +
+                             fx.display.deep_clean_calls;
+
+  // Cycle 2, five minutes later, identical content, forced (button press):
+  // the stamp MUST tick to the new time and a draw MUST reach the panel.
+  fx.clock.advance(300);
+  runWarmCycle(deps, fx.meta, /*force_stamp=*/true);
+  TEST_ASSERT_EQUAL_INT64(kSyncedNow + 300, fx.meta.last_display_update);
+  const int draws_after_c2 = fx.display.draw_partial_calls +
+                             fx.display.light_full_calls +
+                             fx.display.deep_clean_calls;
+  TEST_ASSERT_GREATER_THAN(draws_after_c1, draws_after_c2);
+}
+
 // --- Deep-wake panel-RAM guard -------------------------------------------
 //
 // Field bug: after a timer (deep-sleep) wake, a small content change produced a
@@ -390,6 +418,7 @@ int main(int, char **) {
   RUN_TEST(test_warm_clock_lands_on_wake_target_does_not_resync);
   RUN_TEST(test_warm_first_boot_no_wake_reference_does_not_resync);
   RUN_TEST(test_update_stamp_tracks_applied_updates_not_wall_time);
+  RUN_TEST(test_force_stamp_advances_stamp_on_unchanged_data);
   RUN_TEST(test_deep_wake_promotes_small_change_to_light_full);
   RUN_TEST(test_active_phase_small_change_stays_partial);
   return UNITY_END();
