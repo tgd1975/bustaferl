@@ -106,7 +106,11 @@ bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,
 void runColdCycle(CycleDeps &deps, PersistedMeta &meta);
 
 // Warm-cycle path: fetch + render + plan sleep. The bread-and-butter cycle.
-void runWarmCycle(CycleDeps &deps, PersistedMeta &meta);
+// `force_stamp` (button-triggered cycle) advances the "upd HH:MM" stamp and
+// pushes a refresh even when the departure data is unchanged, so a boot-button
+// press always gives visible feedback.
+void runWarmCycle(CycleDeps &deps, PersistedMeta &meta,
+                  bool force_stamp = false);
 
 // Button-wake entry: classify long-vs-short press; long press triggers
 // B/W reset, then either path runs runWarmCycle.

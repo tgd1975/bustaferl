@@ -113,7 +113,7 @@
 // press triggers an update cycle (wakes from deep sleep if applicable);
 // hold past BTN_LONG_PRESS_MS triggers a B/W panel reset + redraw.
 #define BTN_BOOT_PIN 0
-#define BTN_LONG_PRESS_MS 2000
+#define BTN_LONG_PRESS_MS 3000
 
 // Behaviour thresholds (seconds unless noted).
 #define STALE_THRESHOLD_S 180  // 3 min until stale state
