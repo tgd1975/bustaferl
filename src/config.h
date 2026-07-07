@@ -131,6 +131,15 @@
 
 #define FILTER_HEALTH_DEAD_AFTER 3 // consecutive misses → dead
 
+// Rescue fetch: when a cycle rendered with an incomplete snapshot (some API
+// batch failed), keep re-fetching after the display update and push one extra
+// refresh as soon as the data is complete — but only inside this window after
+// the update, so panel refreshes never land back-to-back.
+#define RESCUE_WINDOW_START_S 20
+#define RESCUE_WINDOW_END_S 40
+#define RESCUE_RETRY_PAUSE_S 5
+#define RESCUE_MAX_ATTEMPTS 3
+
 // Nightly deep-clean trigger thresholds. When the next planned sleep is at
 // least LONG_SLEEP_FOR_NIGHTLY_CLEAN_S and the last deep clean is older than
 // NIGHTLY_DEEP_CLEAN_INTERVAL_S, the cycle promotes the upcoming partial to

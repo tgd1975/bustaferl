@@ -53,6 +53,10 @@ CycleConfig makeCycleConfig() {
   c.long_sleep_for_nightly_clean_s = LONG_SLEEP_FOR_NIGHTLY_CLEAN_S;
   c.nightly_deep_clean_interval_s = NIGHTLY_DEEP_CLEAN_INTERVAL_S;
   c.btn_long_press_ms = BTN_LONG_PRESS_MS;
+  c.rescue_window_start_s = RESCUE_WINDOW_START_S;
+  c.rescue_window_end_s = RESCUE_WINDOW_END_S;
+  c.rescue_retry_pause_s = RESCUE_RETRY_PAUSE_S;
+  c.rescue_max_attempts = RESCUE_MAX_ATTEMPTS;
   return c;
 }
 

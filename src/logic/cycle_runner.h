@@ -10,6 +10,7 @@
 #include "../hal/ISleep.h"
 #include "../render/layout.h"
 #include "boot_sequencer.h" // DEFAULT_WIFI_TIMEOUT_MS, DEFAULT_COLD_BOOT_MAX_RETRIES
+#include "rescue_policy.h" // DEFAULT_RESCUE_WINDOW_*_S, …
 #include "sleep_planner.h" // DEFAULT_WAKE_BEFORE_BUS_S, …
 
 #include <string>
@@ -64,6 +65,13 @@ struct CycleConfig {
       DEFAULT_LONG_SLEEP_FOR_NIGHTLY_CLEAN_S;
   int nightly_deep_clean_interval_s = DEFAULT_NIGHTLY_DEEP_CLEAN_INTERVAL_S;
   unsigned btn_long_press_ms = DEFAULT_BTN_LONG_PRESS_MS;
+  // Rescue fetch (logic/rescue_policy.h): when a cycle rendered with an
+  // incomplete snapshot, re-fetch inside this window after the display update
+  // and push one extra update as soon as the data is complete.
+  int rescue_window_start_s = DEFAULT_RESCUE_WINDOW_START_S;
+  int rescue_window_end_s = DEFAULT_RESCUE_WINDOW_END_S;
+  int rescue_retry_pause_s = DEFAULT_RESCUE_RETRY_PAUSE_S;
+  int rescue_max_attempts = DEFAULT_RESCUE_MAX_ATTEMPTS;
 };
 
 // Bundle of HAL handles + framebuffers + config the cycle functions consume.

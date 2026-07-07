@@ -9,6 +9,7 @@
 #include "logic/filter_health.h"
 #include "logic/refresh_planner.h"
 #include "logic/render_input.h"
+#include "logic/rescue_policy.h"
 #include "logic/schedule_fetcher.h"
 #include "logic/schedule_refresh.h"
 #include "logic/sleep_planner.h"
@@ -35,11 +36,10 @@ namespace bustaferl {
 namespace {
 
 bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
-                         PersistedMeta &meta) {
+                         FetchSummary &summary, PersistedMeta &meta) {
   StreamFilter filters[STREAM_COUNT];
   buildStreamFilters(filters);
   OebbStreamFilter oebb_filter = buildOebbFilter();
-  FetchSummary summary;
   FetchInputs inputs{deps.cfg.api_base, deps.cfg.mgate_url, filters,
                      oebb_filter};
   bool ok =
@@ -48,6 +48,14 @@ bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
       formatSnapshotSummary(out, summary.total_batches, summary.failed_batches)
           .c_str());
   return ok;
+}
+
+// Convenience overload for callers that don't need the batch summary (the
+// cold path renders once and deep-cleans regardless of completeness).
+bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
+                         PersistedMeta &meta) {
+  FetchSummary summary;
+  return fetchSnapshotAndLog(deps, out, summary, meta);
 }
 
 // One EFA pass per distinct DIVA. Returns true if at least one call yielded
@@ -139,14 +147,22 @@ SleepConfig makeSleepConfig(const CycleConfig &cfg) {
 struct FetchCycleResult {
   StreamSnapshot snap;
   StreamSnapshot merged;
+  FetchSummary summary;
   DisplayState state = DisplayState::Normal;
   bool fetched_ok = false;
 };
 
+// Complete ⇔ every batch (OGD + ÖBB) came back parsable. `fetched_ok` alone
+// is weaker — it is true as soon as one batch survives, which is exactly the
+// "some rows show --:-- although the line is running" case the rescue targets.
+bool fetchComplete(const FetchSummary &s) {
+  return s.total_batches > 0 && s.failed_batches == 0;
+}
+
 FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
                               const ScheduleSnapshot &schedule) {
   FetchCycleResult r;
-  r.fetched_ok = fetchSnapshotAndLog(deps, r.snap, meta);
+  r.fetched_ok = fetchSnapshotAndLog(deps, r.snap, r.summary, meta);
   time_t now = deps.clock.now();
 
   FilterHealth fh(deps.cfg.filter_health_dead_after);
@@ -201,6 +217,51 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
                  ? r.snap
                  : mergeSlots(r.snap, schedule, now);
   return r;
+}
+
+// Incomplete-snapshot rescue: the cycle already rendered what it had; keep
+// re-fetching inside the [window_start, window_end] window after that display
+// update and push one extra refresh as soon as a complete snapshot arrives.
+// The window's lower bound keeps two panel updates from landing back-to-back.
+// The button is never polled here — a press during a rescue merely ends the
+// pacing lightSleep early; the running update finishes, it is not interrupted.
+// Returns true iff a complete snapshot was fetched and pushed (fc replaced).
+bool runRescueFetch(CycleDeps &deps, PersistedMeta &meta,
+                    const ScheduleSnapshot &schedule, FetchCycleResult &fc,
+                    time_t anchored_at) {
+  RescueConfig rc;
+  rc.window_start_s = deps.cfg.rescue_window_start_s;
+  rc.window_end_s = deps.cfg.rescue_window_end_s;
+  rc.retry_pause_s = deps.cfg.rescue_retry_pause_s;
+
+  int attempts = 0;
+  // Wait iterations are bounded too, so a clock that does not advance (host
+  // fakes, RTC anomaly) cannot spin this loop forever.
+  int waits = 0;
+  while (attempts < deps.cfg.rescue_max_attempts &&
+         waits <= deps.cfg.rescue_max_attempts) {
+    unsigned wait_s = 0;
+    RescueStep step = nextRescueStep(deps.clock.now(), anchored_at, rc, wait_s);
+    if (step == RescueStep::Stop)
+      return false;
+    if (step == RescueStep::Wait) {
+      ++waits;
+      deps.sleep.lightSleep(wait_s);
+      continue;
+    }
+    ++attempts;
+    CYCLE_LOG("[rescue] attempt %d/%d\n", attempts,
+              deps.cfg.rescue_max_attempts);
+    FetchCycleResult retry = doFetchCycle(deps, meta, schedule);
+    if (retry.fetched_ok && fetchComplete(retry.summary)) {
+      CYCLE_LOG_LN("[rescue] complete snapshot — pushing extra refresh");
+      fc = retry;
+      renderAndPush(deps, fc.state, fc.snap, meta, schedule);
+      return true;
+    }
+    deps.sleep.lightSleep(static_cast<unsigned>(rc.retry_pause_s));
+  }
+  return false;
 }
 
 } // namespace
@@ -369,6 +430,43 @@ void doNightlyClean(CycleDeps &deps, PersistedMeta &meta,
   meta.framebuffer_valid = true;
 }
 
+// Render/rescue/sleep tail of the warm cycle. Split out of runWarmCycle so
+// both stay under the readability-function-size thresholds.
+static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
+                            const ScheduleSnapshot &schedule,
+                            FetchCycleResult &fc, time_t now) {
+  SleepConfig sc = makeSleepConfig(deps.cfg);
+  SleepDecision pre = planSleep(fc.merged, now, sc);
+  bool nightly = pre.mode == Mode::DeepSleep &&
+                 shouldPromoteToNightlyClean(pre.seconds, now,
+                                             meta.last_deep_clean, deps.cfg);
+
+  if (nightly) {
+    doNightlyClean(deps, meta, schedule, fc, now);
+  } else if (fc.fetched_ok || fc.state != DisplayState::Normal) {
+    renderAndPush(deps, fc.state, fc.snap, meta, schedule);
+  } else {
+    // Transient fetch failure (not yet stale): keep showing the last good
+    // frame. Re-rendering with an empty snap would flicker every slot to
+    // "--:--" for one cycle and back.
+    CYCLE_LOG_LN("[warm] fetch failed pre-stale — keeping last frame");
+  }
+
+  // Rescue: the snapshot was incomplete → keep trying after the update and
+  // push one extra refresh once complete. Skipped on the nightly clean (the
+  // panel just deep-cleaned into a long sleep; the next cycle re-fetches).
+  if (!nightly && !fetchComplete(fc.summary)) {
+    if (runRescueFetch(deps, meta, schedule, fc, deps.clock.now())) {
+      // The sleep plan from the partial snapshot may be wrong in both
+      // directions; recompute it from the rescued (complete) merge.
+      now = deps.clock.now();
+      pre = planSleep(fc.merged, now, sc);
+    }
+  }
+
+  doSleepOrLoop(deps, pre, meta, now);
+}
+
 void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
   CYCLE_LOG_LN("[warm] cycle start");
   ScheduleSnapshot schedule = deps.store.loadSchedule();
@@ -409,24 +507,7 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
     }
   }
 
-  SleepConfig sc = makeSleepConfig(deps.cfg);
-  SleepDecision pre = planSleep(fc.merged, now, sc);
-  bool nightly = pre.mode == Mode::DeepSleep &&
-                 shouldPromoteToNightlyClean(pre.seconds, now,
-                                             meta.last_deep_clean, deps.cfg);
-
-  if (nightly) {
-    doNightlyClean(deps, meta, schedule, fc, now);
-  } else if (fc.fetched_ok || fc.state != DisplayState::Normal) {
-    renderAndPush(deps, fc.state, fc.snap, meta, schedule);
-  } else {
-    // Transient fetch failure (not yet stale): keep showing the last good
-    // frame. Re-rendering with an empty snap would flicker every slot to
-    // "--:--" for one cycle and back.
-    CYCLE_LOG_LN("[warm] fetch failed pre-stale — keeping last frame");
-  }
-
-  doSleepOrLoop(deps, pre, meta, now);
+  finishWarmCycle(deps, meta, schedule, fc, now);
 }
 
 void runBwReset(CycleDeps &deps, PersistedMeta &meta) {
