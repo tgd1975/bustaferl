@@ -134,6 +134,13 @@ mockview-8:            ## flash geometry probe (border, diagonals, font samples)
 test:                  test-native            ## alias: fast host tests
 
 test-native:                                  ## all test_native_* (~5 s)
+	@# The native render TUs include Adafruit_GFX.h / U8g2 headers via the
+	@# -isystem paths into .pio/libdeps/esp32dev (see env:native comments in
+	@# platformio.ini). On a cold checkout those don't exist yet and every
+	@# render-dependent test env dies with "Adafruit_GFX.h: No such file".
+	@# Materialise them once; no-op when already present.
+	@test -d ".pio/libdeps/esp32dev/Adafruit GFX Library" \
+	  || $(PIO) pkg install -e esp32dev
 	ASAN_OPTIONS=detect_leaks=0 $(PIO) test -e native
 
 test-device:                                  ## all test_device_*, skip if no device
