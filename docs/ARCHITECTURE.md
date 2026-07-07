@@ -195,6 +195,10 @@ S-Bahn-Block `OEBB-API: Auth ungueltig`; die Bus-Zeilen laufen weiter.
 | `LIGHT_FULL_INTERVAL_S`    | logic/refresh_planner         | Light Full alle 2 h                 |
 | `NTP_INTERVAL_S`           | logic/cycle_runner            | NTP-Resync täglich                  |
 | `FILTER_HEALTH_DEAD_AFTER` | logic/filter_health           | Misses bis „Filter ungültig"        |
+| `RESCUE_WINDOW_START_S`    | logic/rescue_policy           | frühester Extra-Refresh nach Update |
+| `RESCUE_WINDOW_END_S`      | logic/rescue_policy           | spätester Rescue-Versuch            |
+| `RESCUE_RETRY_PAUSE_S`     | logic/rescue_policy           | Pause zwischen Rescue-Fetches       |
+| `RESCUE_MAX_ATTEMPTS`      | logic/cycle_runner            | Rescue-Fetches pro Cycle            |
 | `OEBB_HAFAS_AID` / `_CLIENT_JSON` | data/oebb_hafas_parse  | ÖBB-HAFAS-Auth (pre-flash verifizieren) |
 | `OEBB_JNYFLTR_PRODUCTS`    | data/oebb_hafas_parse         | Produktfilter S-Bahn+Regio+REX      |
 | `RLE_HARDCAP_BYTES`        | hal/Esp32PersistentStore      | maximaler RLE-Buffer im RTC-RAM     |

@@ -8,11 +8,16 @@
 namespace bustaferl {
 
 constexpr int DEFAULT_FETCH_BACKOFF_MS_BASE = 500;
+constexpr int DEFAULT_FETCH_MAX_ATTEMPTS = 5;
 
 struct FetchConfig {
-  int max_attempts = 3;
+  // 5 attempts per batch: the OGD monitor drops individual calls often enough
+  // that 3 attempts still left too many cycles without live data. Worst case
+  // per batch is ~5 s of backoff — acceptable, the rescue window (see
+  // logic/rescue_policy.h) covers what still slips through.
+  int max_attempts = DEFAULT_FETCH_MAX_ATTEMPTS;
   // Linear backoff: sleep `backoff_ms_base * attempt` between attempts.
-  // 500ms base → 500, 1000ms waits before the 2nd and 3rd attempts.
+  // 500ms base → 500, 1000, 1500, 2000ms waits before attempts 2..5.
   int backoff_ms_base = DEFAULT_FETCH_BACKOFF_MS_BASE;
 };
 

@@ -117,6 +117,14 @@ Bei erfolgreichem API-Call nach Stale: automatischer Rückwechsel.
 
 Poll-Intervall: **30 s**. Damit hat man bei Stale-Schwelle 180 s mindestens 5 Versuche, bevor die Anzeige umschlägt. Ein Wachzustand entsteht entweder im Vorlauf zur frühsten Abfahrt (siehe §6) oder als Übergangsmodus zwischen Polls — d. h. zwischen zwei Polls darf das Gerät kurz schlafen (Light Sleep, kein Deep Sleep mit Reboot), um Strom zu sparen, aber der Stale-Timer läuft weiter.
 
+### Rescue-Fetch bei unvollständigen Daten
+
+Jeder Fetch besteht aus mehreren API-Batches (OGD-Bus + ÖBB-S-Bahn); pro Batch bis zu 5 HTTP-Versuche mit linearem Backoff. Scheitert trotzdem ein Batch, rendert der Cycle sofort, was er hat (Teildaten sind besser als Warten) — und versucht danach weiter, die fehlenden Daten zu holen: im Fenster **20–40 s nach dem Display-Update** bis zu `RESCUE_MAX_ATTEMPTS` erneute Komplett-Fetches. Sobald ein Fetch *vollständig* ist (alle Batches ok), gibt es genau einen Extra-Refresh, und die Sleep-Planung wird mit den frischen Daten neu gerechnet. Die Untergrenze des Fensters verhindert Panel-Updates im Sekundenabstand; nach der Obergrenze übernimmt der nächste reguläre Poll. Der Boot-Button wird währenddessen nicht abgefragt — ein Druck weckt höchstens die Pacing-Pause früher, ein laufendes Update wird nie unterbrochen.
+
+### Manueller Refresh (Boot-Button)
+
+Kurzer Druck auf den Boot-Button (GPIO 0) stößt jederzeit einen Update-Zyklus an — aus dem Deep Sleep (EXT0-Wake), aus dem Light Sleep (GPIO-Wake) und im Wachzustand. Der Zyklus ist derselbe wie der reguläre: Fetch (inkl. Rescue-Fenster), Render, Sleep-Planung; er darf beliebig lange dauern. Ein Druck, während bereits ein Update läuft, unterbricht nichts — die Firmware ist single-threaded, der Druck wirkt erst nach Abschluss des laufenden Zyklus. Langer Druck (≥ 2 s) macht zusätzlich einen B/W-Panel-Reset vor dem Update (§ Bedienung in docs/HANDBUCH.md).
+
 ## 5. Refresh-Strategie
 
 Diff-basiert: jeden Wake-Zyklus neues Bild rendern, mit aktuell angezeigtem vergleichen. Identisch → nichts tun.

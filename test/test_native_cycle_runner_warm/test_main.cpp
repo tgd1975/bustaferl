@@ -162,6 +162,46 @@ void test_warm_fetch_fail_prestale_keeps_last_frame() {
   TEST_ASSERT_EQUAL(1, fx.store.save_meta_calls);
 }
 
+void test_warm_partial_fetch_rescued_within_window() {
+  // OGD GETs succeed, the ÖBB POST fails → partial snapshot rendered first.
+  // While the rescue paces via lightSleep, the hook advances the clock and
+  // heals the POST — the rescue must fetch a complete snapshot no earlier
+  // than the window start and push exactly one extra refresh.
+  WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true);
+  fx.net.setPostOk(false);
+  fx.sleep.on_light_sleep = [&fx](unsigned s) {
+    fx.clock.advance(static_cast<time_t>(s));
+    fx.net.setPostOk(true);
+  };
+  CycleDeps deps = fx.deps();
+  runWarmCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(2, fx.renderer.calls);
+  // Rescue paced at least once (the wait into the window) before refetching.
+  TEST_ASSERT_GREATER_OR_EQUAL(1, fx.sleep.light_sleep_calls);
+  assertOrdered(fx.trace,
+                {"renderer.render", "sleep.lightSleep", "net.httpPost",
+                 "renderer.render", "store.saveMeta"});
+  TEST_ASSERT_EQUAL(1, fx.store.save_meta_calls);
+}
+
+void test_warm_partial_fetch_rescue_gives_up_after_window() {
+  // ÖBB POST keeps failing; the clock advances during the pacing sleeps, so
+  // the rescue runs its attempts and stops at the window end — one render
+  // only, then the normal sleep.
+  WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true);
+  fx.net.setPostOk(false);
+  fx.sleep.on_light_sleep = [&fx](unsigned s) {
+    fx.clock.advance(static_cast<time_t>(s));
+  };
+  CycleDeps deps = fx.deps();
+  runWarmCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(1, fx.renderer.calls);
+  TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
+  TEST_ASSERT_EQUAL(1, fx.store.save_meta_calls);
+}
+
 void test_warm_fetch_fail_stale_renders_stale_overlay() {
   WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/false, /*synced=*/true);
   // Stale: last api success well past threshold.
@@ -181,6 +221,8 @@ int main(int, char **) {
   RUN_TEST(test_warm_wifi_down_stale_renders_stale_overlay);
   RUN_TEST(test_warm_unsynced_clock_forces_ntp_then_continues);
   RUN_TEST(test_warm_fetch_fail_prestale_keeps_last_frame);
+  RUN_TEST(test_warm_partial_fetch_rescued_within_window);
+  RUN_TEST(test_warm_partial_fetch_rescue_gives_up_after_window);
   RUN_TEST(test_warm_fetch_fail_stale_renders_stale_overlay);
   return UNITY_END();
 }
