@@ -276,31 +276,28 @@ lint:                  ## run cppcheck
 	  -q src/
 
 tidy:                  ## run clang-tidy on host-compilable src/ TUs
-	@# Make sure the native env's vendored libs are on disk first. Without
-	@# this, a cold checkout (fresh CI runner) has no .pio/libdeps, and
-	@# clang-tidy fails hard with "Adafruit_GFX.h file not found" on the
-	@# render TUs that transitively include it via layout.h/canvas.h.
-	@$(PIO) pkg install -e native >/dev/null
-	@# Generate compile_commands.json from the native env. Only the
-	@# platform-neutral TUs (data/, logic/, render/rle) land in it;
-	@# ESP32-only files (main.cpp, hal/Esp32*.cpp, render/layout.cpp,
-	@# render/error_overlay.cpp) are intentionally skipped — they pull
-	@# in Adafruit_GFX / WiFi etc. which clang-tidy would either
-	@# misanalyse or flood with library findings. They are still
-	@# covered by cppcheck (`make lint`) and the on-device test set.
+	@# Generate compile_commands.json from the native env.
 	@$(PIO) run -e native -t compiledb >/dev/null
 	@# Rewrite -I paths into vendored libs to -isystem so clang-tidy
 	@# does not analyse third-party headers (would produce tens of
 	@# thousands of findings inside ArduinoJson etc.).
 	@sed -i -E 's@-I(\.pio/libdeps/[^ ]+)@-isystem \1@g' compile_commands.json
-	@# Tidy exactly the TUs the database knows about. Skip anything
-	@# whose source file lives under .pio/libdeps — those are vendor
-	@# TUs (ArduinoFake, Adafruit_GFX, U8g2_for_Adafruit_GFX) that get
-	@# compiled into the native build via library.json srcDir tricks
-	@# and would flood the report with non-actionable findings.
+	@# Tidy only the platform-neutral business logic (data/ + logic/).
+	@# Skipped, matching the intent below:
+	@#   * .pio/ vendor TUs (ArduinoFake, Adafruit_GFX, U8g2) — pulled into
+	@#     the native build via library.json srcDir tricks; would flood the
+	@#     report with non-actionable third-party findings.
+	@#   * src/render/ TUs — they transitively include Adafruit_GFX.h /
+	@#     U8g2 via layout.h/canvas.h. On a cold CI runner without a warm
+	@#     ~/.platformio package cache, clang-tidy can't resolve those
+	@#     headers and errors out ("Adafruit_GFX.h file not found"). These
+	@#     files are covered by cppcheck (`make lint`) and the on-device
+	@#     render tests, so tidy skips them for a deterministic, env-
+	@#     independent result.
 	@python3 -c "import json; \
 	  print('\n'.join(e['file'] for e in json.load(open('compile_commands.json')) \
-	    if not e['file'].startswith('.pio/')))" \
+	    if not e['file'].startswith('.pio/') \
+	    and 'src/render/' not in e['file']))" \
 	  | xargs clang-tidy -p . --quiet
 
 # --- Housekeeping ---
