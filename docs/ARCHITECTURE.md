@@ -77,81 +77,188 @@ src/
 - HAL-Implementierungen werden über Konstruktor-Injection an die Logik
   übergeben → Logik mit Mocks testbar
 
-## Dataflow (warm cycle)
+## Dataflow (Warm Cycle)
 
-```text
-              ┌─────────┐
-              │WiFi up  │
-              └────┬────┘
-                   │
-              ┌────▼────┐
-              │httpGet  │  (INetwork)
-              └────┬────┘
-                   │ JSON body
-              ┌────▼────────┐
-              │parseMonitor │  (data/wienerlinien_parse)
-              └────┬────────┘
-                   │ StreamSnapshot
-        ┌──────────┼──────────┐
-        ▼          ▼          ▼
-   stale_policy filter_health  ──┐
-        │          │              │
-        └────┬─────┘              │
-             │ overlay decision   │
-             ▼                    │
-        ┌─────────┐               │
-        │ render  │  (Frame)      │
-        └────┬────┘               │
-             │                    │
-        ┌────▼─────────┐          │
-        │refresh_planner│         │
-        └────┬──────────┘         │
-             │ kind + bbox        │
-        ┌────▼────┐               │
-        │IDisplay │               │
-        └─────────┘               │
-                                  ▼
-                          ┌──────────────┐
-                          │sleep_planner │
-                          └──────┬───────┘
-                                 │ mode + seconds
-                          ┌──────▼──┐
-                          │ ISleep  │
-                          └─────────┘
+### Happy Case — Überblick
+
+Ein Timer-Wakeup aus dem Deep Sleep, ein erfolgreicher Fetch, ein
+Partial-Update, zurück in den Schlaf. Das ist der Zyklus, den das Gerät
+tagsüber alle 30 s bis n Minuten fährt.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant SL as Deep Sleep
+    participant CR as cycle_runner
+    participant NET as WiFi + APIs
+    participant LG as Logik
+    participant RD as Renderer
+    participant EP as e-Paper
+    participant ST as RTC-Store
+
+    SL->>CR: Timer-Wakeup → runWarmCycle()
+    CR->>NET: WiFi verbinden (a-net2)
+    CR->>NET: Echtzeit holen (WL OGD + ÖBB HAFAS)
+    NET-->>CR: StreamSnapshot (4 Streams, je 3 Slots)
+    CR->>LG: DisplayState wählen + Slots mit EFA-Hints mergen
+    LG-->>CR: Normal + merged Snapshot
+    CR->>RD: renderFrame(RenderInput)
+    RD-->>CR: Frame (400×300, 1 bpp)
+    CR->>ST: voriges Frame laden
+    CR->>LG: planRefresh (Byte-Diff) → Partial + Bbox
+    CR->>EP: drawPartial(bbox) — nur die geänderten Ziffern
+    CR->>ST: Frame (Delta-RLE) + Meta sichern
+    CR->>LG: planSleep (nächster Bus − 15 min Vorlauf)
+    CR->>SL: deepSleep(n s)
 ```
 
-## Zustandsmaschine
+### Happy Case — Detail
 
-```text
-                  ┌──────────────┐
-       power-on   │  Cold Boot   │
-       ─────────► │ §8 Sequencer │
-                  └──────┬───────┘
-                         │ Ok
-                         ▼
-                  ┌──────────────┐
-                  │ First Render │
-                  │ + Deep Clean │
-                  └──────┬───────┘
-                         │
-            ┌────────────┴────────────┐
-            ▼                         ▼
-   ┌────────────────┐         ┌──────────────┐
-   │  Deep Sleep    │◄────────┤  Warm Cycle  │
-   │ (timer wakeup) │         │ (poll + draw)│
-   └────────┬───────┘         └──────┬───────┘
-            │                        │
-            └────────────┬───────────┘
-                         │
-                  delta < 2 min?
-                         │ yes
-                         ▼
-                  ┌──────────────┐
-                  │   Active     │
-                  │ (poll 30 s)  │
-                  └──────┬───────┘
-                         │
-                         └─► back to Warm Cycle
+Gleicher Zyklus, aufgelöst auf die realen Komponenten. Nummerierung folgt
+`runWarmCycle()` in [cycle_runner.cpp](../src/logic/cycle_runner.cpp).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant M as main / Esp32Sleep
+    participant CR as cycle_runner
+    participant ST as Esp32PersistentStore
+    participant NET as Esp32Network
+    participant CLK as Esp32Clock
+    participant SF as snapshot_fetcher
+    participant SCH as schedule_fetcher
+    participant SEL as render_input
+    participant MRG as slot_merger
+    participant SP as sleep_planner
+    participant LY as layout
+    participant RP as refresh_planner
+    participant DA as display_apply
+    participant EP as Esp32Display
+
+    M->>CR: wakeupCause()==Timer → runWarmCycle(meta)
+    CR->>ST: loadSchedule() — EFA-Hints aus RTC
+    CR->>NET: connect(15 s)
+    NET-->>CR: WL_CONNECTED (Regulatory AT, ch 1–13)
+    CR->>CLK: isSynced()? (NTP-Refresh nur alle 24 h)
+
+    rect rgba(127,127,127,0.12)
+        note over CR,SF: doFetchCycle — Datenschicht
+        CR->>SF: fetchSnapshot(filters, oebb_filter)
+        SF->>NET: GET OGD-Monitor Batch 1 (2 stopIds)
+        SF->>NET: GET OGD-Monitor Batch 2
+        note right of SF: wienerlinien_parse → Bus-Slots (RT/PLAN)
+        SF->>NET: POST mgate.exe (HAFAS)
+        note right of SF: oebb_hafas_parse → 3 S-Bahn-Slots,<br/>Minuten-Dedup, line_label S2/S3
+        SF-->>CR: snap (api_ok=1) + FetchSummary
+        CR->>CR: meta.last_success_at = now
+        CR->>SEL: selectDisplayState(snap, meta, signals)
+        SEL-->>CR: Normal
+        CR->>MRG: mergeSlots(snap, schedule, now)
+        note right of MRG: Vergangene raus, Hints füllen Lücken,<br/>Minuten-Duplikate raus (RT gewinnt)
+        MRG-->>CR: merged
+    end
+
+    opt Schedule-Refresh fällig (needScheduleRefresh)
+        CR->>SCH: fetchSchedule() — EFA XSLT_DM_REQUEST je DIVA
+        SCH-->>CR: ScheduleHints (next_today / first_tomorrow)
+        CR->>ST: saveSchedule()
+    end
+
+    CR->>SP: planSleep(merged, now)
+    SP-->>CR: DeepSleep(n) oder Active
+
+    rect rgba(127,127,127,0.12)
+        note over CR,EP: renderAndPush — Darstellungsschicht
+        CR->>SEL: composeRenderInput(state, snap, schedule)
+        CR->>LY: renderFrame(in, curr)
+        CR->>LY: drawUpdateStamp(curr, meta.last_display_update)
+        note right of LY: alter Stempel → unverändertes Board<br/>bleibt byte-identisch (None-Skip)
+        CR->>ST: loadFramebuffer(prev) — Delta-RLE decode
+        CR->>RP: planRefresh(prev, curr, partial_count, last_light_full)
+        RP-->>CR: Partial + Bbox (oder LightFull nach 15 Partials / 1 h)
+        CR->>LY: drawUpdateStamp(curr, now) + planRefresh erneut
+        note right of LY: Stempel tickt nur mit echtem Update mit
+        CR->>DA: applyDisplayDecision(d)
+        DA->>EP: drawPartial(fb, bbox)
+        DA-->>CR: partial_count++
+        CR->>ST: saveFramebuffer(curr) — Delta-RLE ≤ 7168 B
+    end
+
+    CR->>ST: saveMeta(meta)
+    CR->>M: deepSleep(n s) bzw. lightSleep(30 s) wenn Active
+```
+
+## Zustandsmaschine — Sonderfälle
+
+Der Gerätelebenszyklus mit allen Fehler- und Randpfaden. Jede Kante, die
+in `DeepSleep` mündet, trägt die Schlafdauer — genau diese Kanten
+entscheiden, ob das Gerät "eingefroren" wirkt (siehe Coma-Fix in
+[sleep_planner.cpp](../src/logic/sleep_planner.cpp): ein fehlgeschlagener
+Fetch darf nie einen langen Schlaf planen).
+
+```mermaid
+stateDiagram-v2
+    [*] --> ColdBoot: Power-on / MAGIC-Bump
+
+    state ColdBoot {
+        [*] --> BootSequenz: WiFi + NTP
+        BootSequenz --> FirstRender: Ok
+        FirstRender --> [*]: DeepClean + Stempel
+    }
+
+    ColdBoot --> DeepSleep: Ok → planSleep
+    ColdBoot --> RetrySleep60: RetryLater (WiFi/NTP down, Versuch unter 5)
+    RetrySleep60 --> ColdBoot: Timer-Wakeup
+    ColdBoot --> GiveUp: 5 Versuche erschöpft
+    GiveUp --> DeepSleep: Offline-Screen + langer Schlaf
+
+    DeepSleep --> WarmCycle: Timer-Wakeup
+    DeepSleep --> ButtonWake: BOOT-Taste
+    ButtonWake --> WarmCycle: kurzer Druck → Update-Zyklus
+    ButtonWake --> BwReset: langer Druck (ab 2 s) → DeepClean + Redraw
+
+    state WarmCycle {
+        [*] --> WifiCheck
+        WifiCheck --> ClockCheck: verbunden
+        ClockCheck --> Fetch: synced (sonst NTP-Retry 60 s)
+        Fetch --> RenderPush: api_ok — Normal/Night/Quiet
+        Fetch --> KeepFrame: Fetch-Fehler, unter 10 min alt (pre-stale)
+        Fetch --> RenderPush: Fetch-Fehler, über 10 min → Stale
+        WifiCheck --> StaleOffline: WiFi down + Schwelle gerissen
+        StaleOffline --> [*]
+        KeepFrame --> [*]
+        RenderPush --> [*]
+    }
+
+    WarmCycle --> DeepSleep: Fetch-Fehler → 60 s Retry (Coma-Fix)
+    WarmCycle --> DeepSleep: keine Abfahrten (api_ok) → 30 min
+    WarmCycle --> DeepSleep: nächster Bus fern → bis 15 min davor
+    WarmCycle --> Active: nächster Bus unter 2 min
+    Active --> WarmCycle: lightSleep 30 s, dann neu pollen
+    WarmCycle --> NightlyClean: langer Schlaf geplant + 20 h ohne DeepClean
+    NightlyClean --> DeepSleep: DeepClean statt Partial
+```
+
+Auf dem Panel entscheidet pro Zyklus der State-Selector, **welcher der
+sieben Screens** gezeigt wird — eine Prioritätskette, kein Automat
+(`selectDisplayState` in
+[render_input.cpp](../src/logic/render_input.cpp), erste zutreffende
+Bedingung gewinnt):
+
+```mermaid
+flowchart TD
+    A{"auth_error_seen?"} -->|ja| AUTH["Auth — §9-Screen"]
+    A -->|nein| B{"erster Render überhaupt?"}
+    B -->|ja| BOOT["Boot — lädt Fahrplan…"]
+    B -->|nein| C{"WiFi down + Erfolg über 5 min her?"}
+    C -->|ja| OFF["Offline — Kein Empfang"]
+    C -->|nein| D{"letzter Erfolg über 10 min her?"}
+    D -->|ja| STALE["Stale — alle Slots maskiert"]
+    D -->|nein| E{"alle Abfahrten über 20 min entfernt?"}
+    E -->|ja| QUIET["Quiet — Keine Abfahrten"]
+    E -->|nein| F{"01:00 bis 05:00 + erste Abfahrt fern?"}
+    F -->|ja| NIGHT["Night — Nachtbetrieb"]
+    F -->|nein| NORM["Normal — volles Board"]
 ```
 
 ## Wichtige Design-Entscheidungen
