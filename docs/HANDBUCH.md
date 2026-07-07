@@ -30,7 +30,11 @@ kleiner **Netzplan** mit „you are here"-Marker am Bahnhof Atzgersdorf.
 | Tullnertalgasse       | 58A → Atzgersdorf              | nächste 2 Abfahrten |
 | Tullnertalgasse       | 58A → Hietzing                 | nächste 2 Abfahrten |
 | Endemanngasse         | 58B → Atzgersdorf              | nächste 2 Abfahrten |
-| Bhf. Atzgersdorf      | S-Bahn → Wien Hbf (S2/S3/S4/REX) | nächste 2 Abfahrten |
+| Bhf. Atzgersdorf      | S-Bahn → Wien Hbf (S2/S3/S4/REX) | nächste 3 Abfahrten |
+
+Die S-Bahn-Spalte zeigt **drei** Abfahrten (die Bus-Spalten zwei), weil der
+Wegfall der zweiten Richtung dort den Platz freigibt und die Stammstrecke
+dicht genug getaktet ist, dass ein dritter Slot Mehrwert hat.
 
 Pro Slot wird **eine absolute Uhrzeit** im Format `HH:MM` gezeigt. Keine
 Minutenangabe „in X Minuten", keine aktuelle Uhrzeit, keine
@@ -61,11 +65,10 @@ und der betroffene Slot zeigt `--:--`.
 
 ## 3. Die sieben Display-States
 
-In v2 ersetzt ein zentraler **State-Selector** die alten v1-Banner. Der
-Selector wählt anhand von Datenlage, Uhrzeit, NTP-Sync und letzter
-erfolgreicher Antwort einen von sieben Zuständen — sechs davon zeigen ein
-charakteristisches Bild, das bewusst nicht mit dem Hauptlayout verwechselt
-werden kann.
+Ein zentraler **State-Selector** wählt anhand von Datenlage, Uhrzeit,
+NTP-Sync und letzter erfolgreicher Antwort einen von sieben Zuständen —
+sechs davon zeigen ein charakteristisches Bild, das bewusst nicht mit dem
+Hauptlayout verwechselt werden kann.
 
 ### Normal
 
@@ -78,7 +81,7 @@ Standardansicht.
 
 ![Veraltet](design_handoff_display/screen-2-veraltet.png)
 
-Letzte erfolgreiche Antwort älter als `STALE_THRESHOLD_S` (~5 min). Alle
+Letzte erfolgreiche Antwort älter als `STALE_THRESHOLD_V2_S` (10 min). Alle
 Slots zeigen `??:??`, das Layout bleibt aber gleich — du weißt, **welche**
 Spalten betroffen sind, vertraust nur den Zeiten nicht mehr.
 
@@ -120,9 +123,11 @@ stilles Versagen.
 
 ![Boot](design_handoff_display/screen-7-boot.png)
 
-Kurzer Splash zwischen Power-on und erstem Render. Zeigt nur den
-Firmware-Hash und einen drehenden Punkt. Verschwindet, sobald der erste
-Cycle Daten gerendert hat.
+Kurzer Splash zwischen Power-on und erstem Render. Zeigt einen
+gepunkteten Kreis, den Schriftzug „BUSTAFERL", die Zeile „lädt
+Fahrplan..." und unten die Firmware-Version (`DISPLAY_VERSION_STR`, z. B.
+`v2.0 · UC8176 · 400×300`). Verschwindet, sobald der erste Cycle Daten
+gerendert hat.
 
 ## 4. Plan-Marker im Detail
 
@@ -158,10 +163,17 @@ Strom zu sparen. Was wann passiert:
 | Wachzustand | OGD-Batch + HAFAS-Call (4 Streams) | alle **30 s** |
 | Datenänderung gegenüber letztem Bild | Partial Refresh (~0,5 s, kein Blinken) | bei jeder Änderung |
 | Kein Unterschied | Display wird **nicht** angefasst | (statisch) |
-| Anti-Ghosting | Light Full Refresh (1× S/W-Flash + Bild) | alle **2 h** |
+| Unvollständiger Fetch | Rescue-Fetch: Nachhol-Versuch + genau ein Extra-Refresh | im Fenster **20–40 s** nach dem Update |
+| Anti-Ghosting | Light Full Refresh (1× S/W-Flash + Bild) | alle **1 h** oder nach 15 Partials |
 | Tiefster nächtlicher Schlaf | Deep Clean (3× S/W-Flash + Bild) | **1×/Nacht** |
 | Uhren-Sync | NTP-Sync | **1×/24 h**, gemeinsam mit Deep Clean |
 | Plan-Hints | EFA-Fetch für „Bus in der Früh" | **1×/Nacht** + Cold Boot |
+
+**Rescue-Fetch**: Fiel bei einem Poll ein einzelner API-Batch weg (eine
+Spalte zeigt `--:--`, obwohl dort etwas fährt), holt das Gerät die Daten im
+Fenster 20–40 s nach dem Display-Update nach und schiebt genau einen
+zusätzlichen Refresh nach, sobald ein vollständiger Snapshot ankommt. Die
+Untergrenze von 20 s hält zwei Panel-Updates auseinander.
 
 ### Was wird beim Refresh aktualisiert?
 
@@ -184,15 +196,18 @@ wake_at = t_ref − 15 min − 30 s Boot-Margin
 - Wake-Punkt liegt in der Vergangenheit → **sofort wach**, regulärer 30-s-Poll
 
 Während des Tiefschlafs bleibt der letzte Render auf dem Display
-sichtbar — e-Paper hält das Bild ohne Strom.
+sichtbar — e-Paper hält das Bild ohne Strom. Der erste Render nach einem
+Aufwachen aus dem Tiefschlaf ist immer ein voller Refresh (nicht Partial):
+der schnelle Panel-Zwischenspeicher überlebt den Tiefschlaf nicht, ein
+Partial würde weiße Ränder und Artefakte hinterlassen.
 
 ## 7. Wenn etwas wirklich klemmt
 
 | Symptom | Erste Maßnahme |
 |---------|----------------|
 | Display bleibt komplett leer | Verkabelung BUSY/RST prüfen, BS-Jumper auf 0 |
-| Ghosting wird sichtbar | warten — Light Full nach max. 2 h, Deep Clean nachts |
-| Uhr läuft falsch | NTP-Server erreichbar? `TZ_INFO` in `config.h` korrekt? |
+| Ghosting wird sichtbar | warten — Light Full nach max. 1 h, Deep Clean nachts |
+| Uhr läuft falsch | NTP-Server erreichbar? `TZ_INFO` in `config.h` korrekt? (Ein Wake mit unplausibel weit gesprungener Uhr erzwingt automatisch einen NTP-Resync.) |
 | Display zeigt **Auth** | HAFAS-`AID` in `config.h` rotiert — siehe USER.md („AID erneuern") |
 | Display zeigt **Offline** trotz WiFi | Endpunkte schweigen — ÖBB- oder Wiener-Linien-Ausfall, abwarten |
 | Sonderzeichen werden falsch dargestellt | Bitmap-Fonts sind 7-bit-ASCII; deutsche Umlaute sind im Layout absichtlich vermieden |

@@ -23,7 +23,7 @@ src/
 │   ├── ScheduleHint.h
 │   ├── wienerlinien_parse.{h,cpp}   OGD-JSON → bus-StreamData
 │   ├── efa_parse.{h,cpp}            EFA-DM-Response → ScheduleHint
-│   └── oebb_hafas_parse.{h,cpp}     mgate.exe-Antwort → S-Bahn-StreamData (v2)
+│   └── oebb_hafas_parse.{h,cpp}     mgate.exe-Antwort → S-Bahn-StreamData
 │
 ├── logic/                    plattformneutral, reine Funktionen + kleine Klassen
 │   ├── stale_policy.{h,cpp}         §4
@@ -31,9 +31,10 @@ src/
 │   ├── refresh_planner.{h,cpp}      §5
 │   ├── filter_health.{h,cpp}        §9
 │   ├── boot_sequencer.{h,cpp}       §8
-│   ├── filter_builder.{h,cpp}       Default-Filter-Set + `buildOebbFilter` (v2)
+│   ├── filter_builder.{h,cpp}       Default-Filter-Set + `buildOebbFilter`
 │   ├── api_fetcher.{h,cpp}          Retry-Wrapper um `httpGet` / `httpPost`
-│   ├── snapshot_fetcher.{h,cpp}     pro Cycle: OGD-Batch + HAFAS-Call (v2)
+│   ├── rescue_policy.{h,cpp}        Rescue-Fetch-Fenster (§6): Nachhol-Logik
+│   ├── snapshot_fetcher.{h,cpp}     pro Cycle: OGD-Batch + HAFAS-Call
 │   ├── snapshot_logger.{h,cpp}      einheitliches `[snapshot]`-Log-Format
 │   ├── schedule_fetcher.{h,cpp}     EFA-Endpoint → `ScheduleHint`
 │   ├── schedule_refresh.{h,cpp}     entscheidet, ob EFA neu geladen wird
@@ -45,12 +46,12 @@ src/
 │
 └── render/                   Layout und Rasterisierung
     ├── frame_buffer.h        Template FrameBuffer<W,H>, 1-bpp
-    ├── canvas.{h,cpp}        Abstrakter Canvas + HostCanvas / AdafruitGfxCanvas (v2)
-    ├── bitmap_fonts.{h,cpp}  Embedded VT323-Glyphen für die sieben Display-States (v2)
-    ├── badge.{h,cpp}         Header-Badges (sm/md/lg) (v2)
-    ├── plan_marker.{h,cpp}   5×5-Plan-Marker `□` (v2)
-    ├── network_plan.{h,cpp}  Diamond/Big/Dot-Marker + Atzg-Linie (v2)
-    ├── display_state.{h,cpp} Fullscreen-Renderer für Boot/Offline/Auth/Quiet (v2)
+    ├── canvas.{h,cpp}        Abstrakter Canvas + HostCanvas / AdafruitGfxCanvas
+    ├── bitmap_fonts.{h,cpp}  U8g2-Font-Roles für die sieben Display-States
+    ├── badge.{h,cpp}         Header-Badges (sm/md/lg)
+    ├── plan_marker.{h,cpp}   5×5-Plan-Marker `□`
+    ├── network_plan.{h,cpp}  Diamond/Big/Dot-Marker + Atzg-Linie
+    ├── display_state.{h,cpp} Fullscreen-Renderer für Boot/Offline/Auth/Quiet
     ├── layout.{h,cpp}        Spalten-Layout für Normal/Stale/Night + `renderFrame`
     └── rle.{h,cpp}           Lauflängenkompression für RTC-RAM
 ```
@@ -139,7 +140,8 @@ sequenceDiagram
     CR->>ST: loadSchedule() — EFA-Hints aus RTC
     CR->>NET: connect(15 s)
     NET-->>CR: WL_CONNECTED (Regulatory AT, ch 1–13)
-    CR->>CLK: isSynced()? (NTP-Refresh nur alle 24 h)
+    CR->>CLK: isSynced()? + Drift-Guard (now ≤ expected_wake_at + 30 min?)
+    note right of CR: unplausibel weit gesprungene Uhr → NTP-Resync erzwungen
 
     rect rgba(127,127,127,0.12)
         note over CR,SF: doFetchCycle — Datenschicht
@@ -184,6 +186,13 @@ sequenceDiagram
         CR->>ST: saveFramebuffer(curr) — Delta-RLE ≤ 7168 B
     end
 
+    opt Snapshot unvollständig (≥1 Batch fehlte) — runRescueFetch
+        note over CR,NET: Fenster 20–40 s nach dem Update, max 3 Versuche
+        CR->>NET: erneuter Fetch (bis vollständig)
+        CR->>EP: genau ein Extra-Refresh bei erstem vollständigen Snapshot
+        CR->>SP: planSleep neu aus dem gerettetem Merge
+    end
+
     CR->>ST: saveMeta(meta)
     CR->>M: deepSleep(n s) bzw. lightSleep(30 s) wenn Active
 ```
@@ -220,10 +229,12 @@ stateDiagram-v2
     state WarmCycle {
         [*] --> WifiCheck
         WifiCheck --> ClockCheck: verbunden
-        ClockCheck --> Fetch: synced (sonst NTP-Retry 60 s)
+        ClockCheck --> Fetch: synced + Uhr plausibel (sonst NTP-Resync)
         Fetch --> RenderPush: api_ok — Normal/Night/Quiet
         Fetch --> KeepFrame: Fetch-Fehler, unter 10 min alt (pre-stale)
         Fetch --> RenderPush: Fetch-Fehler, über 10 min → Stale
+        RenderPush --> Rescue: Snapshot unvollständig
+        Rescue --> [*]: 1 Extra-Refresh im 20–40 s-Fenster, dann Schlaf
         WifiCheck --> StaleOffline: WiFi down + Schwelle gerissen
         StaleOffline --> [*]
         KeepFrame --> [*]
@@ -269,26 +280,44 @@ e-Paper-Partials sind schnell und flickerfrei, kosten aber „Ghosting".
 Wir behalten das letzte Bild im RTC-RAM (RLE-komprimiert, ~1–3 kB),
 vergleichen byteweise, refreshen nur die Differenz-Bbox auf 8-Pixel-Grenzen.
 
-### Light Full primär zeitgesteuert
+### Light Full gegen Ghosting
 
-Partial-Counter als reines Sicherheitsnetz: nach 2 h sowieso Light Full,
-egal wie viele Partials. Vermeidet, dass bei statischen Anzeigen das
-Ghosting unkontrolliert wächst.
+Ein Light Full Refresh (1× S/W-Flash + Bild) läuft, sobald der letzte
+mindestens `LIGHT_FULL_INTERVAL_S` (1 h) her ist **oder** seither
+`PARTIAL_HARDCAP` (15) Partials liefen — je nachdem, was zuerst eintritt.
+Beides zusammen hält das Ghosting bei statischen wie bei sich häufig
+ändernden Anzeigen in Schach.
 
 ### Cold-Boot-Erkennung via Wakeup-Cause
 
 `esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED` → frischer
 Boot (Power-on oder Brown-out). Sonst → Wake aus Sleep, RTC-Daten gültig.
 
+### Deep-Wake erzwingt Full Refresh
+
+Ein Wake aus Deep Sleep verliert den schnellen Partial-RAM des Panels. Der
+erste Render danach wird deshalb auf einen Full Refresh promotet
+(`deep_wake` → `planRefresh(panel_ram_untrusted)`), sonst zeigen sich weiße
+Ränder und Garbage. Nur der allererste Render pro Wake ist betroffen.
+
+### Drift-Guard gegen korrupte RTC-Uhr
+
+`isSynced()` erzwingt nur eine untere Zeitschranke (> 2023). Weckt das Gerät
+mit einer `now()`, die mehr als `MAX_WAKE_OVERSHOOT_S` (30 min) über dem beim
+Einschlafen gespeicherten `expected_wake_at` liegt, gilt die Uhr als korrupt
+und ein NTP-Resync läuft vor dem Rendern — sonst würden Plan-Hints gegen eine
+um Stunden versetzte Uhr gerendert (Feld-Symptom „58B-Coma").
+
 ### Stale-Verhalten ist binär
 
 Bewusste Vereinfachung: entweder vertrauenswürdige Echtzeit oder klar
 sichtbares „kaputt". Keine grauen Zwischenzustände mit Zeitstempeln.
 
-### Sieben Display-States statt Overlay-Bannern (v2)
+### Sieben Display-States
 
-Die alten v1-Banner (`VERALTET`, `Filter ungueltig`, `Start fehlgeschlagen`)
-sind durch ein `DisplayState`-Enum mit sieben Werten ersetzt:
+Ein zentrales `DisplayState`-Enum mit sieben Werten steuert das Fullscreen-
+Bild statt einzelner Overlay-Banner (`VERALTET`, `Filter ungueltig`,
+`Start fehlgeschlagen`):
 
 ```text
                     SelectorSignals
@@ -318,32 +347,40 @@ Departure mit passendem `towards` liefert, blendet das Bustaferl
 
 ## Wo welche Konstante wirkt
 
-| Konstante                  | Modul                         | Effekt                              |
-|----------------------------|-------------------------------|-------------------------------------|
-| `STALE_THRESHOLD_S`        | logic/stale_policy            | Sekunden bis Banner „veraltet"      |
-| `OFFLINE_THRESHOLD_S`      | logic/render_input            | Wechsel `Normal` → `Offline` (v2)   |
-| `QUIET_HORIZON_S`          | logic/render_input            | Schwelle für `Quiet`-State (v2)     |
-| `WAKE_BEFORE_BUS_S`        | logic/sleep_planner           | Vorlauf vor frühster Abfahrt        |
-| `BOOT_MARGIN_S`            | logic/sleep_planner           | Boot+WiFi+API-Reserve               |
-| `POLL_INTERVAL_S`          | logic/cycle_runner            | Poll-Cadence im Wach-Zustand        |
-| `ACTIVE_THRESHOLD_S`       | logic/sleep_planner           | Schwelle DeepSleep vs. Active       |
-| `NO_DATA_SLEEP_S`          | logic/sleep_planner           | Sleep wenn API leer                 |
-| `PARTIAL_HARDCAP`          | logic/refresh_planner         | erzwungenes Light Full bei Cap      |
-| `LIGHT_FULL_INTERVAL_S`    | logic/refresh_planner         | Light Full alle 2 h                 |
-| `NTP_INTERVAL_S`           | logic/cycle_runner            | NTP-Resync täglich                  |
-| `FILTER_HEALTH_DEAD_AFTER` | logic/filter_health           | Misses bis „Filter ungültig"        |
-| `OGD_AUTH_STREAK_TRIPWIRE` | logic/snapshot_fetcher        | 3× OGD-401 → `auth_error_seen` (v2) |
-| `OEBB_EXTID_ATZG/_WIENHBF` | data/oebb_hafas_parse + cfg   | HAFAS-`stbLoc`/`dirLoc` (v2)        |
-| `OEBB_HAFAS_AID`           | config.h → mgate.exe-Body     | HAFAS-Auth-Token (rotiert) (v2)     |
-| `RLE_HARDCAP_BYTES`        | hal/Esp32PersistentStore      | maximaler RLE-Buffer im RTC-RAM     |
+| Konstante                  | Wert | Modul                         | Effekt                              |
+|----------------------------|------|-------------------------------|-------------------------------------|
+| `STALE_THRESHOLD_V2_S`     | 600  | logic/render_input            | letzter Erfolg älter → `Stale`-Screen (`??:??`) |
+| `OFFLINE_THRESHOLD_S`      | 300  | logic/render_input            | WiFi down + Schwelle → `Offline`    |
+| `QUIET_HORIZON_S`          | 1200 | logic/render_input            | alle Abfahrten weiter → `Quiet`     |
+| `NIGHT_FIRST_DEP_MIN_AHEAD_S` | 1800 | logic/render_input         | erste Abfahrt weiter (Nachtfenster) → `Night` |
+| `WAKE_BEFORE_BUS_S`        | 900  | logic/sleep_planner           | Vorlauf vor frühster Abfahrt        |
+| `BOOT_MARGIN_S`            | 30   | logic/sleep_planner           | Boot+WiFi+API-Reserve               |
+| `POLL_INTERVAL_S`          | 30   | logic/cycle_runner            | Poll-Cadence im Wach-Zustand        |
+| `ACTIVE_THRESHOLD_S`       | 120  | logic/sleep_planner           | Schwelle DeepSleep vs. Active       |
+| `NO_DATA_SLEEP_S`          | 1800 | logic/sleep_planner           | Sleep wenn API leer (aber `api_ok`) |
+| `API_FAILURE_RETRY_S`      | 60   | logic/sleep_planner           | Kurz-Retry nach fehlgeschlagenem Fetch (Coma-Fix) |
+| `PARTIAL_HARDCAP`          | 15   | logic/refresh_planner         | erzwungenes Light Full nach N Partials |
+| `LIGHT_FULL_INTERVAL_S`    | 3600 | logic/refresh_planner         | Light Full spätestens alle 1 h      |
+| `RESCUE_WINDOW_START/END_S` | 20/40 | logic/rescue_policy          | Nachhol-Fenster nach unvollständigem Fetch |
+| `RESCUE_MAX_ATTEMPTS`      | 3    | logic/rescue_policy           | max. Komplett-Fetches im Rescue-Fenster |
+| `NTP_INTERVAL_S`           | 86400 | logic/cycle_runner           | NTP-Resync täglich                  |
+| `MAX_WAKE_OVERSHOOT_S`     | 1800 | logic/cycle_runner            | Wake über `expected_wake_at` hinaus → Drift-Guard erzwingt NTP |
+| `FILTER_HEALTH_DEAD_AFTER` | 3    | logic/filter_health           | Misses bis „Filter ungültig"        |
+| `OGD_AUTH_STREAK_TRIPWIRE` | 3    | logic/snapshot_fetcher        | 3× OGD-401 → `auth_error_seen`      |
+| `OEBB_EXTID_ATZG/_WIENHBF` | —    | data/oebb_hafas_parse + cfg   | HAFAS-`stbLoc`/`dirLoc`             |
+| `OEBB_HAFAS_AID`           | —    | config.h → mgate.exe-Body     | HAFAS-Auth-Token (rotiert)          |
+| `RLE_HARDCAP_BYTES`        | 7168 | hal/Esp32PersistentStore      | maximaler RLE-Buffer im RTC-RAM     |
 
 ## Speicher-Layout (ESP32)
 
-- **Flash:** Firmware (~600 kB) + Arduino + GxEPD2 + ArduinoJson + embedded
-  Bitmap-Fonts (~20–80 kB für die VT323-Glyphen aus `render/bitmap_fonts`)
+- **Flash:** Firmware gesamt ~1,08 MB (~83 % der 1,31-MB-App-Partition):
+  eigener Code + Arduino + GxEPD2 + ArduinoJson + U8g2-Font-Daten (7
+  Font-Roles aus `render/bitmap_fonts`) + Custom-Glyphen
 - **DRAM:** zwei Framebuffer à 15 kB (`g_frame_new`, `g_frame_prev`) + Stack + Heap
-- **RTC slow memory (8 kB):** `PersistedMeta` (inkl. `Departure::line_label`
-  pro Slot, +48 B v2) + RLE-Framebuffer (Budget 3 kB, Hardcap 7 kB)
+- **RTC slow memory (8 kB):** `PersistedMeta` + `StreamSnapshot` (inkl.
+  `Departure::line_label` pro Slot) + `ScheduleHint` + RLE-Framebuffer
+  (Budget ~3 kB, Hardcap `RLE_HARDCAP_BYTES` = 7168 B) — Bilanz in
+  [rtc-memory-budget.md](rtc-memory-budget.md)
 - **RTC fast memory:** ungenutzt
 
 ## Host-Engine (`test/test_native_runtime/`)

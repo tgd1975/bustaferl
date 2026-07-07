@@ -20,7 +20,7 @@ Es gibt sieben Display-Zustände, die der State-Selector aus Datenlage,
 NTP-Sync, Uhrzeit und letzter erfolgreicher Abfrage ableitet:
 
 - **Normal** — frische Daten, alle Slots aktuell.
-- **Veraltet** — Daten älter als ~5 min; alle Slots zeigen `??:??`.
+- **Veraltet** — Daten älter als 10 min; alle Slots zeigen `??:??`.
 - **Nachtbetrieb** — außerhalb der Service-Zeit, leere Slots werden
   als Plan-Hinweise auf den Morgen aufgefüllt.
 - **Keine Abfahrten** — Service-Zeit, aber kein Stream liefert eine

@@ -143,11 +143,13 @@ Long-term-Coverage:
 | Evening-Dry-Up live | `longterm-horizon-evening` |
 | Live-Übergänge + Refresh-Budget | `longterm-day-full` |
 
-**Migration-Phase-2-Hinweis**: ein Versuch, `render/layout` und
-`render/error_overlay` auf `env:native` umzuziehen, ist gescheitert —
-`Adafruit_GFX.h` includet hart `Arduino.h`/`Print.h`/`WProgram.h`, die
-auf `platform = native` nicht existieren. Render-Tests bleiben deshalb
-on-device.
+**Render-Tests laufen host-seitig**: Der Layout-Code rendert über den
+abstrakten `Canvas` — auf dem Gerät via `AdafruitGfxCanvas`, auf `env:native`
+via `HostCanvas` (Pixel-Parität seit Commit `b47ca14`). Die `test_native_*`
+Render-Buckets (`badge`, `plan_marker`, `network_plan`, `render_all_states`
+…) prüfen die Geometrie deshalb ohne Hardware; `docs/screenshots/host/` ist
+die autoritative Referenz. Ein Geräte-Test ist nur noch für Wake-Cycle und
+Power nötig, nicht fürs Rendering.
 
 ## Test-Pair-Konvention (host ↔ host-äquivalent + device-Integration)
 
@@ -155,13 +157,13 @@ on-device.
 | --- | --- |
 | `test_native_rle` | `test_device_persistent` |
 | `test_native_wienerlinien_parse` | `test_device_fetch` |
-| `test_native_oebb_hafas_parse` | `test_device_fetch` (HAFAS-Pfad, v2) |
+| `test_native_oebb_hafas_parse` | `test_device_fetch` (HAFAS-Pfad) |
 | `test_native_efa_parse` | `test_device_schedule` |
 | `test_native_snapshot_fetcher` (OGD + HAFAS + Auth-Tripwire) | `test_device_fetch` |
 | `test_native_runtime_diskstore` | `test_device_persistent` |
 | `test_native_runtime_renderer` | `test_device_render` |
-| `test_native_render_all_states` (PGM-Dump aller 7 States, v2) | `test_device_render` |
-| `test_native_badge` / `_plan_marker` / `_network_plan` (v2) | (visuell in `test_device_render`) |
+| `test_native_render_all_states` (PGM-Dump aller 7 States) | `test_device_render` |
+| `test_native_badge` / `_plan_marker` / `_network_plan` | (visuell in `test_device_render`) |
 | `test_native_cycle_runner_*` (cold/warm/helpers/invariants) | `test_device_fetch` + `test_device_sleep` |
 
 Konvention: jeder device-Test, der eine host-Variante hat, erwähnt

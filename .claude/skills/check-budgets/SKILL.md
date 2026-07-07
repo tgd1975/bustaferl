@@ -1,6 +1,6 @@
 ---
 name: check-budgets
-description: Verify the project's hard memory + storage budgets — definite-leak-free under valgrind, peak host-heap below the v2 ceiling, ESP32 flash + RAM headroom non-negative, and (informational) RTC-Slow-Memory budget from Anhang B. Use when the user asks to "check budgets", "verify no leaks", "measure peak heap", "is the firmware too big", or as the §9 Heap-Profiling gate before tagging v2.0.0. Do NOT invoke as a side-effect of an unrelated build/test failure — it costs ~5–10 minutes wall-clock.
+description: Verify the project's hard memory + storage budgets — definite-leak-free under valgrind, peak host-heap below the v2 ceiling, ESP32 flash + RAM headroom non-negative, and (informational) RTC-Slow-Memory budget. Use when the user asks to "check budgets", "verify no leaks", "measure peak heap", "is the firmware too big", or as the §9 Heap-Profiling gate before tagging v2.0.0. Do NOT invoke as a side-effect of an unrelated build/test failure — it costs ~5–10 minutes wall-clock.
 ---
 
 # check-budgets
@@ -36,12 +36,12 @@ out of room before it ever ships:
    sanity check (V10 risk: U8g2 PROGMEM growth).
 
 4. **RTC-Slow-Memory** — informational only. Reads
-   [docs/v2-rollout/v2-sbahn-migration-plan.md](../../../docs/v2-rollout/v2-sbahn-migration-plan.md)
-   §Anhang B and prints the current accounting. There is no runtime
+   [docs/rtc-memory-budget.md](../../../docs/rtc-memory-budget.md)
+   and prints the current accounting. There is no runtime
    measurement — RTC budget is computed by reading struct sizes and
-   adding them up. Drift between code and Anhang B is human-tracked.
-   This step exists so the user is reminded to update Anhang B when
-   `Departure` / `PersistedMeta` change.
+   adding them up. Drift between code and the budget table is
+   human-tracked. This step exists so the user is reminded to update
+   the table when `Departure` / `PersistedMeta` change.
 
 ## When to use
 
@@ -119,11 +119,11 @@ skipping a check.
    Below soft is PASS. Surface the absolute numbers + percentage
    for both rows.
 
-4. **RTC-Slow-Memory recap** — read the "RTC-Slow-Memory Bilanz"
-   section from [docs/v2-rollout/v2-sbahn-migration-plan.md](../../../docs/v2-rollout/v2-sbahn-migration-plan.md)
-   Anhang B and print the current ~7.3 KB / 8 KB headline. This
-   step is purely informational — there is no automated drift check
-   between code and Anhang B. Remind the user to update Anhang B if
+4. **RTC-Slow-Memory recap** — read
+   [docs/rtc-memory-budget.md](../../../docs/rtc-memory-budget.md)
+   and print the current ~7.3 KB / 8 KB headline. This step is
+   purely informational — there is no automated drift check between
+   code and the budget table. Remind the user to update it if
    `Departure` or `PersistedMeta` layouts changed since the last
    update.
 
@@ -140,8 +140,8 @@ skipping a check.
                                               .tmp/native-runtime/massif-v2.txt
    3. ESP32 flash ..................... WARN  91.2 % (1195 KB / 1310 KB) — soft warning at 90 %
    3. ESP32 dynamic RAM ............... PASS  64.1 % (210 KB / 327 KB)
-   4. RTC-Slow-Memory (info) .......... ~7.3 KB / 8 KB used, ~864 B reserve
-                                              docs/v2-rollout/v2-sbahn-migration-plan.md#anhang-b
+   4. RTC-Slow-Memory (info) .......... ~7.3 KB / 8 KB used, ~800 B reserve
+                                              docs/rtc-memory-budget.md
 
    Overall: 1 warning, 0 failures. Safe to ship.
    ```

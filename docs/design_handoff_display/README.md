@@ -1,10 +1,9 @@
 # Handoff: bustaferl Display Layout (V2)
 
-> **Status (2026-05): umgesetzt in v2.0.** Dieses Bundle ist die
-> autoritative Referenz für das e-Paper-Layout. Die Pixel-Parität
-> zwischen Host-Renderer und Gerät ist über `test_native_render_all_states`
-> abgesichert. Der Rollout ist in [../v2-rollout/v2-sbahn-migration-plan.md](../v2-rollout/v2-sbahn-migration-plan.md)
-> Schritt für Schritt protokolliert.
+> **Status: umgesetzt in v2.0.** Dieses Bundle ist die autoritative
+> Referenz für das e-Paper-Layout. Die Pixel-Parität zwischen
+> Host-Renderer und Gerät ist über `test_native_render_all_states`
+> abgesichert.
 
 ## Overview
 

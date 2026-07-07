@@ -61,14 +61,15 @@ curl -s "https://www.wienerlinien.at/ogd_realtime/monitor?rbl=$DEINE_RBL" \
 Trage die exakten Strings (Präfix reicht) in `src/config.h` ein:
 
 ```c
-#define TOWARDS_58A_ATZ       "Atzgersdorf"
+#define TOWARDS_58A_ATZ       "Bhf. Atzgersdorf"
 #define TOWARDS_58A_HIETZING  "Hietzing"
-#define FILTER_TOWARDS_58B    "Atzgersdorf"
+#define FILTER_TOWARDS_58B    "Bhf. Atzgersdorf"
 ```
 
-Achtung: die Wiener Linien hängen manchmal Suffixe an (z. B. `Hietzing S+U`).
-Prefix-Match heißt: `"Hietzing"` matcht auch `"Hietzing S+U"`. Du brauchst
-also nur den eindeutigen Anfang.
+Achtung: die Wiener Linien hängen manchmal Suffixe an (z. B. `Hietzing S+U`
+oder `Bhf. Atzgersdorf S (üb. Atzgersdorfer Str.)`). Prefix-Match heißt:
+`"Hietzing"` matcht auch `"Hietzing S+U"`. Du brauchst also nur den
+eindeutigen Anfang — die Werte oben sind die aktuell ausgelieferten Präfixe.
 
 ### 4. HAFAS-Werte für die S-Bahn-Spalte
 
@@ -104,7 +105,7 @@ Pro Slot:
 | `HH:MM`     | nächste Abfahrt aus Echtzeit                           |
 | `□ HH:MM`   | nächste Abfahrt aus **Plan**-Daten (siehe HANDBUCH §4) |
 | `--:--`     | Stream antwortet, hat aber keine Abfahrt im Horizont   |
-| `??:??`     | Veraltet — letzte Echtzeit-Antwort über `STALE_THRESHOLD_S` alt |
+| `??:??`     | Veraltet — letzte Echtzeit-Antwort über `STALE_THRESHOLD_V2_S` (10 min) alt |
 
 Das Display nimmt einen von **sieben Zuständen** an. Vollständige
 Erklärung mit Screenshots in [HANDBUCH §3](HANDBUCH.md#3-die-sieben-display-states).
@@ -116,7 +117,7 @@ Die abstrakten Glyphen sind ähnlich genug, dass eine Tabelle hilft:
 | Anzeige          | Wo es auftaucht        | Was es heißt                                                                 |
 |------------------|------------------------|------------------------------------------------------------------------------|
 | `--:--`          | Slot innerhalb des Boards | Stream lebt, hat aber nichts zu sagen (Lücke / Wendezeit)                |
-| `??:??`          | Slot innerhalb des Boards | Letzte erfolgreiche Antwort ist älter als `STALE_THRESHOLD_S`            |
+| `??:??`          | Slot innerhalb des Boards | Letzte erfolgreiche Antwort ist älter als `STALE_THRESHOLD_V2_S` (10 min) |
 | `—` (groß)       | Fullscreen `Quiet`     | Service-Zeit, aber **kein** Stream hat eine Fahrt im Horizont                |
 | `!` (groß)       | Fullscreen `Offline`   | Keine Verbindung / Endpunkte schweigen länger als `OFFLINE_THRESHOLD_S`      |
 | `§9`             | Fullscreen `Auth`      | HAFAS- oder OGD-Auth-Drift: Firmware-Update nötig                            |
@@ -179,7 +180,7 @@ Empfohlen:
 
 ### Display friert ein / Ghosting wird sichtbar
 
-- Light Full Refresh alle 2 h sollte das auffangen
+- Light Full Refresh alle 1 h (oder nach 15 Partials) sollte das auffangen
 - Falls nicht: einmal kurz vom Strom trennen → Cold Boot mit Deep Clean
 - Nach 24 h sollte der nächtliche Deep Clean alle Reste entfernen
 
