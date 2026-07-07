@@ -23,7 +23,22 @@ jobs:
       - name: Install PlatformIO
         run: pip install --upgrade platformio
       - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y clang-format
+        # Pin to clang-format 21 to match the developers' local toolchain.
+        # ubuntu-latest's default `clang-format` is an older major whose
+        # brace-init spacing rule ("struct tm x {}" vs "x{}") disagrees with
+        # v21, which made format-check fail on files that `make format` had
+        # already formatted correctly locally. Try the versioned apt package
+        # first; fall back to the official LLVM apt source if the runner image
+        # doesn't carry clang-format-21 yet. Symlink to `clang-format` so
+        # `make format-check` picks it up.
+        run: |
+          sudo apt-get update
+          if ! sudo apt-get install -y clang-format-21; then
+            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+            sudo apt-get install -y clang-format-21
+          fi
+          sudo ln -sf "$(command -v clang-format-21)" /usr/local/bin/clang-format
+          clang-format --version
       - name: Install cppcheck
         run: sudo apt-get install -y cppcheck
       - name: Provide dummy secrets.h
