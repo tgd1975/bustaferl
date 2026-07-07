@@ -22,23 +22,24 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
       - name: Install PlatformIO
         run: pip install --upgrade platformio
-      - name: Install clang-format
-        # Pin to clang-format 21 to match the developers' local toolchain.
-        # ubuntu-latest's default `clang-format` is an older major whose
-        # brace-init spacing rule ("struct tm x {}" vs "x{}") disagrees with
-        # v21, which made format-check fail on files that `make format` had
-        # already formatted correctly locally. Try the versioned apt package
-        # first; fall back to the official LLVM apt source if the runner image
-        # doesn't carry clang-format-21 yet. Symlink to `clang-format` so
-        # `make format-check` picks it up.
+      - name: Install clang-format + clang-tidy (pinned to 21)
+        # Pin the whole LLVM toolchain to 21 so CI matches the developers'
+        # local clang-format/clang-tidy. Two skews motivated this:
+        #   * clang-format 21 changed struct-brace-init spacing
+        #     ("struct tm x {}" -> "x{}"); older CI binaries failed
+        #     format-check on files `make format` had already fixed.
+        #   * make ci also runs `tidy`; it must use a matching clang-tidy 21
+        #     with the vendored-lib include paths (see the tidy target).
+        # Install via the official LLVM apt source (versioned packages aren't
+        # on ubuntu-latest yet), then symlink the unversioned names so the
+        # Makefile targets pick them up.
         run: |
-          sudo apt-get update
-          if ! sudo apt-get install -y clang-format-21; then
-            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
-            sudo apt-get install -y clang-format-21
-          fi
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+          sudo apt-get install -y clang-format-21 clang-tidy-21
           sudo ln -sf "$(command -v clang-format-21)" /usr/local/bin/clang-format
+          sudo ln -sf "$(command -v clang-tidy-21)" /usr/local/bin/clang-tidy
           clang-format --version
+          clang-tidy --version
       - name: Install cppcheck
         run: sudo apt-get install -y cppcheck
       - name: Provide dummy secrets.h
