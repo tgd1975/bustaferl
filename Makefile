@@ -276,6 +276,11 @@ lint:                  ## run cppcheck
 	  -q src/
 
 tidy:                  ## run clang-tidy on host-compilable src/ TUs
+	@# Make sure the native env's vendored libs are on disk first. Without
+	@# this, a cold checkout (fresh CI runner) has no .pio/libdeps, and
+	@# clang-tidy fails hard with "Adafruit_GFX.h file not found" on the
+	@# render TUs that transitively include it via layout.h/canvas.h.
+	@$(PIO) pkg install -e native >/dev/null
 	@# Generate compile_commands.json from the native env. Only the
 	@# platform-neutral TUs (data/, logic/, render/rle) land in it;
 	@# ESP32-only files (main.cpp, hal/Esp32*.cpp, render/layout.cpp,
