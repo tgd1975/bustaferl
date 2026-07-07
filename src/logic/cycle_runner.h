@@ -26,6 +26,14 @@ constexpr unsigned DEFAULT_COLD_BOOT_GIVEUP_SLEEP_S = 300;
 constexpr unsigned DEFAULT_POLL_INTERVAL_S = 30;
 constexpr int DEFAULT_STALE_THRESHOLD_S = 180;
 constexpr int DEFAULT_NTP_INTERVAL_S = 86400;
+// Drift guard: how far past the persisted expected-wake epoch now() may read
+// before we distrust the wall clock. A healthy RTC lands at ~expected_wake_at
+// (plus wake latency + this cycle's work); a corrupt one (the "58B coma":
+// clock came back hours ahead but still > 2023, so the lower-bound isSynced()
+// check misses it) overshoots by far more and triggers a forced re-sync.
+// 30 min comfortably covers real wake jitter without masking an hours-off
+// clock.
+constexpr int DEFAULT_MAX_WAKE_OVERSHOOT_S = 1800;
 constexpr uint8_t DEFAULT_FILTER_HEALTH_DEAD_AFTER = 3;
 constexpr unsigned DEFAULT_LONG_SLEEP_FOR_NIGHTLY_CLEAN_S = 4U * 3600U;
 constexpr int DEFAULT_NIGHTLY_DEEP_CLEAN_INTERVAL_S = 20 * 3600;
@@ -45,6 +53,7 @@ struct CycleConfig {
   unsigned poll_interval_s = DEFAULT_POLL_INTERVAL_S;
   int stale_threshold_s = DEFAULT_STALE_THRESHOLD_S;
   int ntp_interval_s = DEFAULT_NTP_INTERVAL_S;
+  int max_wake_overshoot_s = DEFAULT_MAX_WAKE_OVERSHOOT_S;
   uint8_t filter_health_dead_after = DEFAULT_FILTER_HEALTH_DEAD_AFTER;
   int wake_before_bus_s = DEFAULT_WAKE_BEFORE_BUS_S;
   int boot_margin_s = DEFAULT_BOOT_MARGIN_S;

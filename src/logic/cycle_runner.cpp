@@ -107,7 +107,14 @@ void renderAndPush(CycleDeps &deps, DisplayState state,
 }
 
 void doSleepOrLoop(CycleDeps &deps, const SleepDecision &sd,
-                   const PersistedMeta &meta) {
+                   PersistedMeta &meta, time_t now) {
+  const unsigned sleep_s =
+      sd.mode == Mode::DeepSleep ? sd.seconds : deps.cfg.poll_interval_s;
+  // Stamp the wake target for the next cycle's drift guard. Only meaningful
+  // with a real wall clock; on an unsynced now() it would poison the guard,
+  // so leave it 0 (guard abstains) in that case.
+  meta.expected_wake_at =
+      now >= MIN_PLAUSIBLE_EPOCH ? now + static_cast<time_t>(sleep_s) : 0;
   deps.store.saveMeta(meta);
   if (sd.mode == Mode::DeepSleep) {
     CYCLE_LOG("[sleep] deep sleep for %u s (next bus far away or no data)\n",
@@ -296,19 +303,42 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
   // a slot, the next bus is the hint's time — sleep until then, not until
   // the conservative "no data" interval.
   SleepDecision sd = planSleep(in.snapshot, now, sc);
-  doSleepOrLoop(deps, sd, meta);
+  doSleepOrLoop(deps, sd, meta, now);
+}
+
+// True when the wall clock reads implausibly far past the epoch this device
+// asked to wake at. isSynced() only enforces a LOWER bound (> 2023), so a
+// corrupt RTC that woke up hours ahead — but still past 2023 — passes it.
+// This is the field-observed "58B coma": schedule-hint departures rendered
+// against a now() that was hours off, showing wrong times. The previous cycle
+// persisted expected_wake_at = now + planned_sleep; a healthy clock lands at
+// ~that value, so anything past it by more than max_wake_overshoot_s is a
+// corrupt clock. Needs a trustworthy reference: expected_wake_at == 0 means we
+// have never slept with a known wall clock (first boot), so we abstain and let
+// the lower-bound / periodic paths run.
+bool clockDriftedAhead(IClock &clock, const PersistedMeta &meta,
+                       const CycleConfig &cfg) {
+  if (meta.expected_wake_at < MIN_PLAUSIBLE_EPOCH)
+    return false;
+  return clock.now() > meta.expected_wake_at + cfg.max_wake_overshoot_s;
 }
 
 // ESP32 deep sleep loses the system clock — now() returns seconds since
 // boot, not Unix epoch. Without this guard, the periodic NTP check below
 // (a signed subtraction) underflows to a huge negative and never fires,
 // leaving planSleep to compute a 50-year deep sleep against a bogus now.
+// The second guard (clockDriftedAhead) catches the opposite corruption: a
+// clock that came back plausible-looking but hours off. Both resolve the
+// same way — force an NTP re-sync, and only proceed on the corrected clock.
 // Returns true if the clock is synced (or has just been re-synced); false
 // after deep-sleeping for a retry.
 bool ensureClockSynced(CycleDeps &deps, PersistedMeta &meta) {
-  if (deps.clock.isSynced())
+  const bool unsynced = !deps.clock.isSynced();
+  const bool drifted = clockDriftedAhead(deps.clock, meta, deps.cfg);
+  if (!unsynced && !drifted)
     return true;
-  CYCLE_LOG("[warm] clock unsynced (now=%lld), forcing NTP\n",
+  CYCLE_LOG("[warm] clock %s (now=%lld), forcing NTP\n",
+            unsynced ? "unsynced" : "drifted-ahead",
             static_cast<long long>(deps.clock.now()));
   if (deps.clock.ntpSync()) {
     meta.last_ntp_sync = deps.clock.now();
@@ -395,7 +425,7 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta) {
     CYCLE_LOG_LN("[warm] fetch failed pre-stale — keeping last frame");
   }
 
-  doSleepOrLoop(deps, pre, meta);
+  doSleepOrLoop(deps, pre, meta, now);
 }
 
 void runBwReset(CycleDeps &deps, PersistedMeta &meta) {

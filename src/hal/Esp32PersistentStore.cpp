@@ -32,7 +32,10 @@ RTC_DATA_ATTR ScheduleSnapshot g_sched{};
 // .73: framebuffer switched from plain RLE to row-delta RLE — decoding an
 // old plain-RLE slot with the delta decoder would produce a scrambled frame.
 // .74: PersistedMeta gained last_display_update (update-stamp debug aid).
-constexpr uint32_t MAGIC = 0xB05AFE74; // bustaferl v2, delta-RLE + stamp
+// .75: PersistedMeta gained expected_wake_at (clock-drift guard reference).
+//      Appended field — an un-bumped magic would read RTC bytes past the old
+//      struct as a garbage wake target and mis-fire the guard.
+constexpr uint32_t MAGIC = 0xB05AFE75; // bustaferl v2, delta-RLE + stamp
 
 // Framebuffer row width in bytes; encode and decode must agree on it.
 constexpr size_t FB_STRIDE = EPD_WIDTH / 8;

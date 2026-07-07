@@ -82,6 +82,51 @@ struct WarmFixture {
   }
 };
 
+// Same as WarmFixture but with a HeuristicClock whose isSynced() is derived
+// from now() (real-hardware behaviour). Used for the clock-drift ("58B coma")
+// scenarios where the wall clock has jumped forward but still reads > 2023.
+struct HeuristicWarmFixture {
+  std::vector<std::string> trace;
+  HeuristicClock clock;
+  RecordingNet net;
+  RecordingSleep sleep;
+  RecordingStore store;
+  RecordingDisplay display;
+  RecordingRenderer renderer;
+  Frame curr;
+  Frame prev;
+  CycleConfig cfg;
+  PersistedMeta meta;
+
+  // now_reads: what the (possibly corrupt) RTC reports on this wake.
+  // expected_wake: what the previous cycle persisted as its wake target —
+  //   the reference the drift guard checks now() against.
+  // true_now: where a real ntpSync() would land the clock.
+  HeuristicWarmFixture(time_t now_reads, time_t expected_wake, time_t true_now)
+      : clock(trace, now_reads),
+        net(trace, /*wifi_ok=*/true, /*http_ok=*/true, "{}"),
+        sleep(trace, WakeCause::Timer), store(trace), display(trace),
+        renderer(trace) {
+    cfg.api_base = "http://api/";
+    cfg.efa_base = "http://efa/";
+    clock.setSyncTarget(true_now);
+    meta.expected_wake_at = expected_wake;
+    // A prior good sync exists (so the periodic-refresh branch is a separate
+    // concern); keep it just behind the expected wake.
+    meta.last_ntp_sync = expected_wake;
+    meta.last_api_success = expected_wake;
+    meta.last_success_at = expected_wake;
+    meta.has_any_data = true;
+    meta.framebuffer_valid = false;
+    store.seedMeta(meta);
+  }
+
+  CycleDeps deps() {
+    return CycleDeps{clock,    net,  sleep, store, display,
+                     renderer, curr, prev,  cfg};
+  }
+};
+
 } // namespace
 
 void setUp() {}
@@ -187,6 +232,64 @@ void test_warm_fetch_fail_stale_renders_stale_overlay() {
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
 }
 
+// --- Clock-drift ("58B coma") regression --------------------------------
+//
+// Field bug: on the 58B, a warm cycle rendered departures a few hours in the
+// future with nonsensical minutes. Root cause: after a deep-sleep wake the
+// RTC wall clock came back CORRUPT — hours ahead of true time — but still
+// past 2023, so isSynced() (lower-bound-only) reported "synced" and no
+// re-sync fired. The schedule-hint merge then filtered every hint against a
+// now() that was hours off, so the panel showed the wrong times.
+
+void test_warm_clock_jumped_hours_ahead_forces_resync() {
+  // The previous cycle asked to wake at kSyncedNow, but the RTC came back 3 h
+  // past that — physically impossible, so it must be treated as corrupt and
+  // re-synced despite reading > 2023.
+  const time_t expected_wake = kSyncedNow;
+  const time_t true_now = kSyncedNow + 30; // where a real sync would land
+  const time_t corrupt_now = kSyncedNow + 3 * 3600;
+  HeuristicWarmFixture fx(corrupt_now, expected_wake, true_now);
+  CycleDeps deps = fx.deps();
+  runWarmCycle(deps, fx.meta);
+
+  // The guard must have forced an NTP re-sync despite isSynced()==true...
+  TEST_ASSERT_GREATER_OR_EQUAL(1, fx.clock.ntp_sync_calls);
+  // ...and the cycle then proceeds on the corrected clock, not the bogus one.
+  TEST_ASSERT_EQUAL_INT64(true_now, fx.clock.now());
+  // A render still happens (we didn't just bail); it uses the good time.
+  TEST_ASSERT_GREATER_OR_EQUAL(1, fx.renderer.calls);
+}
+
+void test_warm_clock_lands_on_wake_target_does_not_resync() {
+  // Legitimate wake: the RTC lands right on the expected-wake epoch (true for
+  // any sleep length — this is what a healthy clock does). A small overshoot
+  // within the jitter budget must NOT trip the guard, or we'd burn NTP every
+  // wake.
+  const time_t expected_wake = kSyncedNow;
+  const time_t now_reads =
+      kSyncedNow + 20; // 20 s wake latency, well under 30 min
+  HeuristicWarmFixture fx(now_reads, expected_wake, now_reads);
+  CycleDeps deps = fx.deps();
+  runWarmCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(0, fx.clock.ntp_sync_calls);
+  TEST_ASSERT_GREATER_OR_EQUAL(1, fx.renderer.calls);
+}
+
+void test_warm_first_boot_no_wake_reference_does_not_resync() {
+  // expected_wake_at == 0 (never slept with a known clock): the guard has no
+  // reference and must abstain, even though now() is arbitrarily large.
+  const time_t now_reads = kSyncedNow + 10 * 3600;
+  HeuristicWarmFixture fx(now_reads, /*expected_wake=*/kSyncedNow, now_reads);
+  fx.meta.expected_wake_at = 0; // override: simulate first-ever warm cycle
+  fx.store.seedMeta(fx.meta);
+  CycleDeps deps = fx.deps();
+  runWarmCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(0, fx.clock.ntp_sync_calls);
+  TEST_ASSERT_GREATER_OR_EQUAL(1, fx.renderer.calls);
+}
+
 void test_update_stamp_tracks_applied_updates_not_wall_time() {
   // Semantics of the "upd HH:MM" stamp: it must show the time of the last
   // ACTUALLY applied panel update — never advance just because minutes pass.
@@ -232,6 +335,9 @@ int main(int, char **) {
   RUN_TEST(test_warm_unsynced_clock_forces_ntp_then_continues);
   RUN_TEST(test_warm_fetch_fail_prestale_keeps_last_frame);
   RUN_TEST(test_warm_fetch_fail_stale_renders_stale_overlay);
+  RUN_TEST(test_warm_clock_jumped_hours_ahead_forces_resync);
+  RUN_TEST(test_warm_clock_lands_on_wake_target_does_not_resync);
+  RUN_TEST(test_warm_first_boot_no_wake_reference_does_not_resync);
   RUN_TEST(test_update_stamp_tracks_applied_updates_not_wall_time);
   return UNITY_END();
 }

@@ -38,6 +38,13 @@ struct PersistedMeta {
   // light-full, or deep clean). Drives the UPDATE_STAMP_ENABLED debug stamp
   // bottom-right; 0 = never / stamp absent.
   time_t last_display_update = 0;
+
+  // Wall-clock epoch this cycle asked to wake at (now + planned sleep
+  // seconds), written right before sleeping. On the next wake, the drift
+  // guard compares now() against this: a healthy RTC lands at ~this value,
+  // a corrupt one (the "58B coma") reads far past it and forces a re-sync.
+  // 0 = never slept with a known clock (first boot); guard abstains.
+  time_t expected_wake_at = 0;
 };
 
 class IPersistentStore {

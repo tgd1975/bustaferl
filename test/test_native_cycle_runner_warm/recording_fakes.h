@@ -63,6 +63,44 @@ private:
   time_t last_sync_ = 0;
 };
 
+// Clock double that models the REAL hardware sync heuristic: isSynced() is
+// derived from now() via IClock's default (now() >= MIN_PLAUSIBLE_EPOCH),
+// exactly like Esp32Clock. Use this — not RecordingClock's independent
+// `synced_` flag — for the drift/coma scenarios, where a wall clock that
+// jumped hours forward still reads > 2023 and therefore reports "synced" on
+// the lower-bound-only check. That decoupling is the whole point of the
+// 58B repro: RecordingClock could never exhibit it.
+class HeuristicClock : public IClock {
+public:
+  HeuristicClock(std::vector<std::string> &trace, time_t now)
+      : trace_(trace), now_(now) {}
+  time_t now() override {
+    trace_.emplace_back("clock.now");
+    return now_;
+  }
+  bool ntpSync() override {
+    trace_.emplace_back("clock.ntpSync");
+    ++ntp_sync_calls;
+    // A real sync snaps the corrupt clock back onto true wall time.
+    now_ = sync_target_;
+    last_sync_ = now_;
+    return true;
+  }
+  time_t lastSync() const override { return last_sync_; }
+  // isSynced() intentionally left as IClock's default heuristic.
+  void advance(time_t delta) { now_ += delta; }
+  void setNow(time_t t) { now_ = t; }
+  // Where ntpSync() lands the clock (the "true" wall time).
+  void setSyncTarget(time_t t) { sync_target_ = t; }
+  int ntp_sync_calls = 0;
+
+private:
+  std::vector<std::string> &trace_;
+  time_t now_;
+  time_t last_sync_ = 0;
+  time_t sync_target_ = 0;
+};
+
 class RecordingNet : public INetwork {
 public:
   RecordingNet(std::vector<std::string> &trace, bool wifi_ok, bool http_ok,
