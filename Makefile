@@ -256,11 +256,15 @@ native-runtime-https-smoke:  ## live-call check gegen Wiener-Linien-Endpoints
 format:                ## run clang-format in place
 	@find src test -type f \( -name '*.h' -o -name '*.cpp' \) \
 	  -not -path '*/fixtures/*' \
+	  -not -name 'secrets.h' \
 	  -print0 | xargs -0 clang-format -i
 
 format-check:          ## verify formatting without writing
+	@# secrets.h is gitignored/generated (copied from secrets.h.example in CI
+	@# and locally via `make secrets`) — not linted source, so skip it.
 	@find src test -type f \( -name '*.h' -o -name '*.cpp' \) \
 	  -not -path '*/fixtures/*' \
+	  -not -name 'secrets.h' \
 	  -print0 | xargs -0 clang-format --dry-run --Werror
 
 lint:                  ## run cppcheck
