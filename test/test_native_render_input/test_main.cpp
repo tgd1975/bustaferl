@@ -165,6 +165,29 @@ void test_state_night_when_outside_window_and_next_far() {
   TEST_ASSERT_TRUE(s == DisplayState::Quiet || s == DisplayState::Night);
 }
 
+void test_state_normal_at_night_when_schedule_hint_present() {
+  // Regression: overnight the realtime window (~70 min) is empty, so the
+  // selector used to fall into Quiet ("KEINE ABFAHRTEN") and discard the
+  // schedule hints. With tomorrow's first departures present the selector
+  // must merge them first and yield Normal, so the board shows the plan.
+  time_t night_now = 1700016600; // 2023-11-14 02:30 Vienna local (night)
+  StreamSnapshot empty;          // no realtime departures overnight
+  ScheduleSnapshot sched;
+  sched.fetched_at = night_now - 3600; // fresh, well within 48 h
+  // First scheduled 58A departure at 05:12-ish — inside the Quiet horizon so
+  // the merged view is not "all beyond horizon".
+  sched.hint[STREAM_58A_ATZ].first_tomorrow[0] = night_now + 600;
+  sched.hint[STREAM_58A_ATZ].first_tomorrow[1] = night_now + 1200;
+
+  PersistedMeta meta = baseMeta();
+  meta.last_success_at = night_now - 60;
+  SelectorSignals sig = baseSignals();
+  sig.now = night_now;
+  sig.last_success = night_now - 60;
+  TEST_ASSERT_EQUAL(DisplayState::Normal,
+                    selectDisplayState(empty, sched, meta, sig));
+}
+
 void test_state_normal_when_realtime_imminent() {
   StreamSnapshot snap;
   snap.stream[STREAM_58A_ATZ].slot[0] = makeRealtime(kNow + 300);
@@ -296,6 +319,30 @@ void test_compose_stale_yields_empty_snapshot() {
   TEST_ASSERT_FALSE(in.snapshot.stream[STREAM_58A_ATZ].slot[0].valid);
 }
 
+// The rendered snapshot's api_ok is what run.log prints. Quiet/Stale don't
+// carry slot data, but must still reflect the real fetch result so a
+// reachable API is not misreported as down (soak diagnostics).
+void test_compose_quiet_preserves_api_ok() {
+  StreamSnapshot snap;
+  snap.api_ok = true;
+  ScheduleSnapshot sched;
+  PersistedMeta meta = baseMeta();
+  RenderInput in =
+      composeRenderInput(DisplayState::Quiet, snap, sched, meta, kNow);
+  TEST_ASSERT_EQUAL(DisplayState::Quiet, in.state);
+  TEST_ASSERT_TRUE(in.snapshot.api_ok);
+}
+
+void test_compose_stale_preserves_api_ok() {
+  StreamSnapshot snap;
+  snap.api_ok = true;
+  ScheduleSnapshot sched;
+  PersistedMeta meta = baseMeta();
+  RenderInput in =
+      composeRenderInput(DisplayState::Stale, snap, sched, meta, kNow);
+  TEST_ASSERT_TRUE(in.snapshot.api_ok);
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_state_auth_when_auth_error_seen);
@@ -304,6 +351,7 @@ int main(int, char **) {
   RUN_TEST(test_state_stale_when_long_since_success);
   RUN_TEST(test_state_quiet_when_all_deps_beyond_horizon);
   RUN_TEST(test_state_night_when_outside_window_and_next_far);
+  RUN_TEST(test_state_normal_at_night_when_schedule_hint_present);
   RUN_TEST(test_state_normal_when_realtime_imminent);
   RUN_TEST(test_state_auth_dominates_boot);
   RUN_TEST(test_allDeparturesBeyond_empty_is_true);
@@ -318,5 +366,7 @@ int main(int, char **) {
   RUN_TEST(test_compose_auth_fills_aid_short);
   RUN_TEST(test_compose_normal_merges_slots);
   RUN_TEST(test_compose_stale_yields_empty_snapshot);
+  RUN_TEST(test_compose_quiet_preserves_api_ok);
+  RUN_TEST(test_compose_stale_preserves_api_ok);
   return UNITY_END();
 }

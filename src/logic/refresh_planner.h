@@ -42,9 +42,18 @@ struct RefreshConfig {
 // = leftmost). Returns the decision and (for partial) the bbox aligned to
 // 8-px boundaries on the x axis. `prev_valid` lets the caller signal that
 // the previous framebuffer is unusable (cold boot, RLE overflow).
+//
+// `panel_ram_untrusted` signals that the panel's on-glass differential image
+// RAM cannot be trusted — the case after a deep-sleep wake, where supply may
+// have dropped and a fast-partial-update panel (UC8176) would render garbage
+// everywhere outside the freshly-written bbox. When set, a would-be Partial is
+// promoted to LightFull so the whole panel is rewritten from a known state.
+// Light-sleep polls keep the panel powered, so the active-phase caller leaves
+// this false and partials stay cheap.
 RefreshDecision planRefresh(const uint8_t *prev, const uint8_t *curr,
                             bool prev_valid, time_t now, time_t last_light_full,
-                            uint16_t partial_count, const RefreshConfig &cfg);
+                            uint16_t partial_count, const RefreshConfig &cfg,
+                            bool panel_ram_untrusted = false);
 
 } // namespace bustaferl
 

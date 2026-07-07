@@ -55,7 +55,7 @@ bool nextDepartureFarAway(const StreamSnapshot &snap, std::time_t now) {
 }
 
 DisplayState selectDisplayState(const StreamSnapshot &snap,
-                                const ScheduleSnapshot & /*schedule*/,
+                                const ScheduleSnapshot &schedule,
                                 const PersistedMeta &meta,
                                 const SelectorSignals &sig) {
   // Auth ahead of Boot: a cold boot with a broken AID should surface the
@@ -72,10 +72,16 @@ DisplayState selectDisplayState(const StreamSnapshot &snap,
   if ((sig.now - sig.last_success) > STALE_THRESHOLD_V2_S) {
     return DisplayState::Stale;
   }
-  if (allDeparturesBeyond(snap, sig.now + QUIET_HORIZON_S)) {
+  // Quiet/Night must be decided against the *merged* view, not raw realtime.
+  // Overnight the realtime window (~70 min) is empty, but the schedule hints
+  // still carry tomorrow's first departures — falling through to Quiet here
+  // would show "KEINE ABFAHRTEN" and throw those hints away. Merging first
+  // means Quiet/Night only fire when even the plan has nothing to show.
+  const StreamSnapshot merged = mergeSlots(snap, schedule, sig.now);
+  if (allDeparturesBeyond(merged, sig.now + QUIET_HORIZON_S)) {
     return DisplayState::Quiet;
   }
-  if (outsideServiceWindow(sig.now) && nextDepartureFarAway(snap, sig.now)) {
+  if (outsideServiceWindow(sig.now) && nextDepartureFarAway(merged, sig.now)) {
     return DisplayState::Night;
   }
   return DisplayState::Normal;
@@ -125,15 +131,19 @@ RenderInput composeRenderInput(DisplayState state, const StreamSnapshot &snap,
   }
   case DisplayState::Stale:
     // Slots show "??:??" — driven by valid=false from the merger pass below
-    // (Stale forces an empty snapshot, then no merge).
+    // (Stale forces an empty snapshot, then no merge). Preserve the fetch's
+    // api_ok so diagnostics don't misreport a reachable API as down.
     out.snapshot = StreamSnapshot{};
+    out.snapshot.api_ok = snap.api_ok;
     break;
   case DisplayState::Night:
   case DisplayState::Normal:
     out.snapshot = mergeSlots(snap, schedule, now);
     break;
   case DisplayState::Quiet:
-    // Fullscreen state — slot data is irrelevant.
+    // Fullscreen state — slot data is irrelevant, but keep the fetch's api_ok
+    // so run.log reflects the real fetch result instead of the default false.
+    out.snapshot.api_ok = snap.api_ok;
     break;
   }
 

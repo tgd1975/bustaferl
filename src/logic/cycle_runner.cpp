@@ -87,7 +87,7 @@ void renderAndPush(CycleDeps &deps, DisplayState state,
   RefreshConfig rc;
   RefreshDecision d =
       planRefresh(deps.prev.data(), deps.curr.data(), prev_valid, now,
-                  meta.last_light_full, meta.partial_count, rc);
+                  meta.last_light_full, meta.partial_count, rc, deps.deep_wake);
 
 #if UPDATE_STAMP_ENABLED
   if (d.kind != RefreshKind::None) {
@@ -96,7 +96,8 @@ void renderAndPush(CycleDeps &deps, DisplayState state,
     drawUpdateStamp(deps.curr, now);
     meta.last_display_update = now;
     d = planRefresh(deps.prev.data(), deps.curr.data(), prev_valid, now,
-                    meta.last_light_full, meta.partial_count, rc);
+                    meta.last_light_full, meta.partial_count, rc,
+                    deps.deep_wake);
   }
 #endif
 

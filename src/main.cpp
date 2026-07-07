@@ -58,9 +58,14 @@ CycleConfig makeCycleConfig() {
 
 const CycleConfig g_cycle_cfg = makeCycleConfig();
 
-CycleDeps makeDeps() {
-  return CycleDeps{g_clock,    g_net,       g_sleep,      g_store,    g_display,
-                   g_renderer, g_frame_new, g_frame_prev, g_cycle_cfg};
+// `deep_wake` marks a setup()-entry cycle (fresh deep-sleep wake): the panel's
+// on-glass RAM is untrusted so the first refresh is forced full. The loop()
+// active phase reuses the powered panel across light sleep, so it leaves the
+// default false and keeps partials.
+CycleDeps makeDeps(bool deep_wake = false) {
+  return CycleDeps{g_clock,     g_net,      g_sleep,     g_store,
+                   g_display,   g_renderer, g_frame_new, g_frame_prev,
+                   g_cycle_cfg, deep_wake};
 }
 
 void registerWifiCredentials() {
@@ -82,7 +87,9 @@ void setup() {
   g_display.init();
 
   PersistedMeta meta = g_store.loadMeta();
-  CycleDeps deps = makeDeps();
+  // setup() always runs after a deep-sleep wake (ESP32 reboots from cold) —
+  // the panel's differential RAM is untrusted, so force the first refresh full.
+  CycleDeps deps = makeDeps(/*deep_wake=*/true);
 
   WakeCause cause = g_sleep.wakeupCause();
   if (cause == WakeCause::ColdBoot) {

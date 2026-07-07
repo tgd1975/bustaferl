@@ -76,9 +76,9 @@ struct WarmFixture {
     store.seedMeta(meta);
   }
 
-  CycleDeps deps() {
+  CycleDeps deps(bool deep_wake = false) {
     return CycleDeps{clock,    net,  sleep, store, display,
-                     renderer, curr, prev,  cfg};
+                     renderer, curr, prev,  cfg,   deep_wake};
   }
 };
 
@@ -327,6 +327,57 @@ void test_update_stamp_tracks_applied_updates_not_wall_time() {
   TEST_ASSERT_GREATER_THAN(draws_after_c2, draws_after_c3);
 }
 
+// --- Deep-wake panel-RAM guard -------------------------------------------
+//
+// Field bug: after a timer (deep-sleep) wake, a small content change produced a
+// PARTIAL refresh. On the UC8176 fast-partial panel the on-glass differential
+// RAM was gone, so everything outside the freshly-written bbox came back as
+// stale garbage — "thick white borders top/left, garbled middle, one clean
+// block lower-right". The fix promotes the first post-deep-wake refresh to a
+// full. These two tests pin the end-to-end wiring (deps.deep_wake →
+// renderAndPush → planRefresh), not just the planner unit.
+
+// Runs two cycles: the first seeds a valid persisted framebuffer and a recent
+// last_light_full; the second changes one pixel. Returns the fixture so the
+// caller can inspect which refresh op the second cycle issued.
+static void seedValidPrevFrame(WarmFixture &fx) {
+  // Cycle 1 (not the one under test): renders, saves a framebuffer, and — via
+  // the light-full it performs on the first-ever (invalid-prev) refresh — sets
+  // last_light_full to now, so the time-trigger won't fire next cycle.
+  CycleDeps warmup = fx.deps(/*deep_wake=*/false);
+  runWarmCycle(warmup, fx.meta);
+}
+
+void test_deep_wake_promotes_small_change_to_light_full() {
+  WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true);
+  seedValidPrevFrame(fx);
+  const int lf_before = fx.display.light_full_calls;
+  const int pt_before = fx.display.draw_partial_calls;
+
+  // Second cycle: renderer advances one pixel (freeze stays false) → the diff
+  // is a tiny partial. deep_wake=true must promote it to a light-full.
+  CycleDeps deps = fx.deps(/*deep_wake=*/true);
+  runWarmCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(pt_before, fx.display.draw_partial_calls); // no partial
+  TEST_ASSERT_EQUAL(lf_before + 1, fx.display.light_full_calls);
+}
+
+void test_active_phase_small_change_stays_partial() {
+  // Control: same small change, but deep_wake=false (active-phase light-sleep
+  // poll, panel still powered) must stay a cheap partial.
+  WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true);
+  seedValidPrevFrame(fx);
+  const int lf_before = fx.display.light_full_calls;
+  const int pt_before = fx.display.draw_partial_calls;
+
+  CycleDeps deps = fx.deps(/*deep_wake=*/false);
+  runWarmCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(pt_before + 1, fx.display.draw_partial_calls);
+  TEST_ASSERT_EQUAL(lf_before, fx.display.light_full_calls); // no extra full
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_warm_happy_renders_and_saves_before_sleep);
@@ -339,5 +390,7 @@ int main(int, char **) {
   RUN_TEST(test_warm_clock_lands_on_wake_target_does_not_resync);
   RUN_TEST(test_warm_first_boot_no_wake_reference_does_not_resync);
   RUN_TEST(test_update_stamp_tracks_applied_updates_not_wall_time);
+  RUN_TEST(test_deep_wake_promotes_small_change_to_light_full);
+  RUN_TEST(test_active_phase_small_change_stays_partial);
   return UNITY_END();
 }

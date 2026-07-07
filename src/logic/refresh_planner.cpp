@@ -47,7 +47,8 @@ static Bbox diffBbox(const uint8_t *a, const uint8_t *b, int w, int h) {
 // NOLINTNEXTLINE(readability-function-size)
 RefreshDecision planRefresh(const uint8_t *prev, const uint8_t *curr,
                             bool prev_valid, time_t now, time_t last_light_full,
-                            uint16_t partial_count, const RefreshConfig &cfg) {
+                            uint16_t partial_count, const RefreshConfig &cfg,
+                            bool panel_ram_untrusted) {
   RefreshDecision d;
 
   if (!prev_valid) {
@@ -59,10 +60,13 @@ RefreshDecision planRefresh(const uint8_t *prev, const uint8_t *curr,
     return d;
   }
 
+  // The panel content differs and something will reach the glass. If the
+  // on-glass RAM is untrusted (deep-sleep wake), a partial would leave stale
+  // garbage outside the bbox on a fast-partial-update panel — force a full.
   bool time_trigger = (last_light_full == 0) ||
                       (now - last_light_full >= cfg.light_full_every_s);
   bool cap_trigger = partial_count >= cfg.partial_hardcap;
-  if (time_trigger || cap_trigger) {
+  if (time_trigger || cap_trigger || panel_ram_untrusted) {
     d.kind = RefreshKind::LightFull;
     return d;
   }

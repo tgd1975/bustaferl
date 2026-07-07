@@ -79,6 +79,33 @@ void test_bbox_spans_multiple_bytes() {
   TEST_ASSERT_EQUAL(0, d.bbox.w & 7);
 }
 
+// A deep-sleep wake leaves the panel's on-glass differential RAM untrusted;
+// a would-be partial must be promoted to a full so stale garbage outside the
+// bbox is rewritten. (Reproduces the "white borders + garbled middle + one
+// clean block" corruption seen on-device after timer wakes.)
+void test_untrusted_ram_promotes_partial_to_light_full() {
+  auto a = blankFrame();
+  auto b = blankFrame();
+  // A change that would normally be a tiny partial.
+  const int stride = cfg.width / 8;
+  b[42 * stride + (17 / 8)] ^= (0x80 >> (17 & 7));
+  auto d = planRefresh(a.data(), b.data(), true, 1000, 999, 0, cfg,
+                       /*panel_ram_untrusted=*/true);
+  TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::LightFull),
+                    static_cast<int>(d.kind));
+}
+
+// Untrusted RAM must not manufacture a refresh out of nothing: identical
+// frames still resolve to None (no needless flash on an unchanged panel).
+void test_untrusted_ram_still_skips_identical_frames() {
+  auto a = blankFrame();
+  auto b = blankFrame();
+  auto d = planRefresh(a.data(), b.data(), true, 1000, 999, 0, cfg,
+                       /*panel_ram_untrusted=*/true);
+  TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                    static_cast<int>(d.kind));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -90,5 +117,7 @@ int main(int, char **) {
   RUN_TEST(test_old_light_full_triggers_light_full);
   RUN_TEST(test_partial_hardcap_triggers_light_full);
   RUN_TEST(test_bbox_spans_multiple_bytes);
+  RUN_TEST(test_untrusted_ram_promotes_partial_to_light_full);
+  RUN_TEST(test_untrusted_ram_still_skips_identical_frames);
   return UNITY_END();
 }
