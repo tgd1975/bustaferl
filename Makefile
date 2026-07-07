@@ -50,6 +50,7 @@ NR_SRC := \
   src/logic/filter_health.cpp \
   src/logic/refresh_planner.cpp \
   src/logic/render_input.cpp \
+  src/logic/rescue_policy.cpp \
   src/logic/schedule_fetcher.cpp \
   src/logic/schedule_refresh.cpp \
   src/logic/sleep_planner.cpp \

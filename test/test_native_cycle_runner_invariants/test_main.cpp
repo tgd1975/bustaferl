@@ -90,7 +90,10 @@ void test_warm_saves_meta_at_most_once() {
 // Property: warm cycle calls renderer.render at most once per cycle. Double-
 // rendering would burn the panel (each render is followed by a display
 // update) and used to happen in the old nightly path (renderFrame then
-// renderAndPush which re-rendered).
+// renderAndPush which re-rendered). Exception by design: a *successful*
+// rescue fetch adds one extra render ≥ RESCUE_WINDOW_START_S after the
+// first — that path needs the network to heal mid-cycle, which this static
+// matrix never does, so the invariant holds here.
 void test_warm_renders_at_most_once() {
   for (bool wifi_ok : {false, true}) {
     for (bool http_ok : {false, true}) {

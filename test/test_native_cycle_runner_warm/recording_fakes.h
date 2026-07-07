@@ -21,6 +21,7 @@
 #include "render/layout.h"
 
 #include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -86,22 +87,26 @@ public:
     return true;
   }
   // ÖBB S-Bahn POST. Defaults to an empty-but-OK HAFAS body so the cycle's
-  // auth-health stays green; tests that care set a richer body.
+  // auth-health stays green; tests that care set a richer body. Gated by
+  // `post_ok_` on top of the shared `http_ok_` so a test can fail just the
+  // ÖBB batch (partial snapshot → rescue-fetch path).
   bool httpPost(const std::string &url, const std::string &,
                 const std::string &, std::string &out) override {
     trace_.emplace_back("net.httpPost(" + truncate(url, 40) + ")");
     ++http_post_calls;
-    if (!http_ok_)
+    if (!http_ok_ || !post_ok_)
       return false;
     out = oebb_body_;
     return true;
   }
   void setOebbBody(std::string b) { oebb_body_ = std::move(b); }
+  void setPostOk(bool ok) { post_ok_ = ok; }
 
 private:
   std::vector<std::string> &trace_;
   bool wifi_ok_;
   bool http_ok_;
+  bool post_ok_ = true;
   std::string body_;
   std::string oebb_body_ = R"({"svcResL":[{"res":{"jnyL":[]}}],"err":"OK"})";
 
@@ -127,11 +132,16 @@ public:
     trace_.emplace_back("sleep.lightSleep(" + std::to_string(seconds) + ")");
     ++light_sleep_calls;
     last_light_sleep_seconds = seconds;
+    if (on_light_sleep)
+      on_light_sleep(seconds);
   }
   int deep_sleep_calls = 0;
   int light_sleep_calls = 0;
   unsigned last_deep_sleep_seconds = 0;
   unsigned last_light_sleep_seconds = 0;
+  // Test hook, fired after recording: lets a rescue-fetch test advance the
+  // fake clock (and e.g. heal the network) while the cycle sleeps.
+  std::function<void(unsigned)> on_light_sleep;
 
 private:
   std::vector<std::string> &trace_;
