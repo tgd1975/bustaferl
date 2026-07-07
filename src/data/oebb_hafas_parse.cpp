@@ -173,7 +173,11 @@ bool parseOebbStationBoard(const std::string &json, time_t now,
     JsonObjectConst stbStop = jny["stbStop"].as<JsonObjectConst>();
     if (stbStop.isNull())
       continue;
+    // `x | false` ist hier ArduinoJsons value-or-default-operator
+    // (JsonVariant::operator|), kein Bitwise-Or. Beide cppcheck-Regeln, die
+    // je nach Version anschlagen, unterdruecken:
     // cppcheck-suppress badBitmaskCheck
+    // cppcheck-suppress bitwiseOnBoolean
     bool cancelled = stbStop["dCncl"] | false;
     if (cancelled)
       continue;
