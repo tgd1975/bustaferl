@@ -181,11 +181,12 @@ Reihenfolge nach Power-on-Reset, wenn weder Framebuffer noch RTC-Zeit gültig si
 
 1. **WiFi** verbinden (WiFiMulti, Timeout 10 s)
 2. **NTP-Sync** — zwingend, weil RTC bei 1970 startet und ohne korrekte Zeit kein sinnvolles `t_ref` berechnet werden kann
-3. **API-Call** für alle 3 Streams
-4. **Deep Clean** (3× S/W-Flash) — billiges Reset des Panel-Zustands, gibt sauberes Startbild ohne Ghost-Reste vom letzten Betrieb
-5. **Voller Render** des Initialbilds
-6. Framebuffer in RTC-RAM ablegen
-7. Reguläre Sleep-Logik nach §6
+3. **API-Call** für alle Streams (+ EFA-Plan-Hints, best effort)
+4. **Boot-Check-Dashboard** für `BOOT_INFO_SHOW_S` Sekunden (default 15, 0 = aus): WLAN (SSID, Empfangsstärke, IP), Uhrzeit, Selbsttest pro Linie mit den ersten Abfahrten aus Schritt 3, Morgen-Fahrplan, Abfrage-Bilanz, Heap, RTC-Restore-Status und „WLAN & NTP ok (n/max)". Kurzer Tastendruck überspringt die Wartezeit (GPIO-Wake aus dem Light Sleep). Keine zusätzlichen API-Calls — das Dashboard zeigt, was Schritt 3 ohnehin geholt hat, und macht damit die Pre-Flash-Verifikation (ÖBB-Auth, `towards`-Filter) am Gerät sichtbar
+5. **Deep Clean** (3× S/W-Flash) — billiges Reset des Panel-Zustands, gibt sauberes Startbild ohne Ghost-Reste vom letzten Betrieb
+6. **Voller Render** des Initialbilds
+7. Framebuffer in RTC-RAM ablegen
+8. Reguläre Sleep-Logik nach §6
 
 Wenn Schritt 1 oder 2 fehlschlägt: 60 s warten, retry. Nach 5 Fehlversuchen: einmaliges Striche-Bild rendern mit Hinweis „Start fehlgeschlagen", dann 5 min schlafen und alles neu versuchen.
 

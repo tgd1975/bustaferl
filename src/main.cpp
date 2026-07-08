@@ -53,6 +53,7 @@ CycleConfig makeCycleConfig() {
   c.rescue_window_end_s = RESCUE_WINDOW_END_S;
   c.rescue_retry_pause_s = RESCUE_RETRY_PAUSE_S;
   c.rescue_max_attempts = RESCUE_MAX_ATTEMPTS;
+  c.boot_info_show_s = BOOT_INFO_SHOW_S;
   return c;
 }
 

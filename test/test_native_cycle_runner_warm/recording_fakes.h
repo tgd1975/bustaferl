@@ -232,6 +232,10 @@ public:
     trace_.emplace_back("renderer.render");
     ++calls;
     last_overlay = in.overlay;
+    if (in.overlay == OverlayKind::Boot && in.boot_report.valid) {
+      ++boot_report_renders;
+      last_boot_report = in.boot_report;
+    }
     // Touch the framebuffer so a downstream refresh_planner-style diff against
     // the previous frame yields a non-empty change region.
     fb.clear(true);
@@ -240,7 +244,9 @@ public:
     ++seq_;
   }
   int calls = 0;
+  int boot_report_renders = 0;
   OverlayKind last_overlay = OverlayKind::None;
+  BootReport last_boot_report;
 
 private:
   std::vector<std::string> &trace_;

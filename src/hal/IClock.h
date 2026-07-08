@@ -1,6 +1,7 @@
 #ifndef BUSTAFERL_ICLOCK_H
 #define BUSTAFERL_ICLOCK_H
 
+#include <cstdint>
 #include <ctime>
 
 namespace bustaferl {
@@ -29,6 +30,9 @@ public:
   // value. Host adapters whose clock is always wall-clock (libcurl runtime,
   // unit tests) override to return true unconditionally.
   virtual bool isSynced() { return now() >= MIN_PLAUSIBLE_EPOCH; }
+  // Monotonic milliseconds since power-on (Arduino millis()). Unlike now()
+  // it is valid before NTP. Default 0 = not available (host fakes).
+  virtual std::uint32_t ticksMs() { return 0; }
 };
 
 } // namespace bustaferl

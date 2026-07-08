@@ -14,6 +14,7 @@ public:
   void addAp(const char *ssid, const char *password);
   bool connect(unsigned timeout_ms) override;
   bool isConnected() override;
+  bool connectionInfo(NetInfo &out) override;
   bool httpGet(const std::string &url, std::string &out) override;
   bool httpPost(const std::string &url, const std::string &body,
                 const std::string &content_type, std::string &out) override;

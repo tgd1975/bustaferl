@@ -28,6 +28,10 @@ S2  HH:MM   S3  HH:MM
 - Banner `58B Filter ungueltig` — die Richtungs-Filterung schlägt fehl, RBL prüfen
 - Banner `OEBB-API: Auth ungueltig` — ÖBB-HAFAS lehnt ab; AID/Client in `config.h` erneuern
 - Banner `Start fehlgeschlagen` — Cold Boot hat WiFi/NTP nicht hochbekommen
+- Nach dem Einschalten: 15 s **Boot-Check** (WLAN, Uhrzeit, Selbsttest pro
+  Linie, Systemstatus) — Taste drücken überspringt
+- Taste kurz drücken — sofortiger Daten-Refresh; lang drücken (≥ 2 s) —
+  Panel-Reset gegen Ghosting
 
 ## Quick Start
 

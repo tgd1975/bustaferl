@@ -93,6 +93,12 @@
 #define COLD_BOOT_RETRY_S 60
 #define COLD_BOOT_MAX_RETRIES 5
 
+// Boot-check dashboard: after a successful cold boot the first fetch's
+// results (WLAN, NTP, per-line self-test, heap, RTC state) are shown for
+// this many seconds before the regular first frame. Boot-button skips the
+// wait; 0 disables the dashboard entirely.
+#define BOOT_INFO_SHOW_S 15
+
 #define FILTER_HEALTH_DEAD_AFTER 3 // consecutive misses → dead
 
 // Rescue fetch: when a cycle rendered with an incomplete snapshot (some API

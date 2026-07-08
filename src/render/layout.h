@@ -1,6 +1,7 @@
 #ifndef BUSTAFERL_LAYOUT_H
 #define BUSTAFERL_LAYOUT_H
 
+#include "../data/BootReport.h"
 #include "../data/StreamSnapshot.h"
 #include "frame_buffer.h"
 
@@ -19,7 +20,8 @@ enum class OverlayKind : std::uint8_t {
   None,
   Stale,       // global: all times "??:??" + VERALTET banner
   StartFailed, // full-screen cold-boot failure plate
-  Boot,        // full-screen power-on splash
+  Boot,        // splash — or the boot-check dashboard when a valid
+               // RenderInput::boot_report is attached
 };
 
 struct RenderInput {
@@ -27,6 +29,11 @@ struct RenderInput {
   OverlayKind overlay = OverlayKind::None;
   bool filter_dead_58b = false; // section 2 → "58B Filter ungueltig" banner
   bool oebb_auth_dead = false; // section 3 → "OEBB-API: Auth ungueltig" banner
+  // Boot-check dashboard payload; consumed only when overlay == Boot and
+  // boot_report.valid — otherwise Boot renders the plain splash. The default
+  // member initializer keeps the existing two-element aggregate inits
+  // warning-free under -Wmissing-field-initializers.
+  BootReport boot_report = {};
 };
 
 // Renders the layout described in CONCEPT.md §3 into the framebuffer.

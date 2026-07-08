@@ -1,6 +1,8 @@
 #ifndef BUSTAFERL_INETWORK_H
 #define BUSTAFERL_INETWORK_H
 
+#include "../data/BootReport.h" // WIFI_SSID_BUF / IPV4_STR_BUF
+
 #include <string>
 
 #ifndef NATIVE_BUILD
@@ -10,12 +12,27 @@
 
 namespace bustaferl {
 
+// Connection details for the boot-check dashboard. Fixed-size buffers keep
+// the struct trivially copyable (it feeds BootReport, which rides in
+// RenderInput).
+struct NetInfo {
+  char ssid[WIFI_SSID_BUF] = "";
+  char ip[IPV4_STR_BUF] = "";
+  int rssi_dbm = 0;
+};
+
 class INetwork {
 public:
   virtual ~INetwork() = default;
   // Brings up WiFi with timeout in ms. Returns true if connected.
   virtual bool connect(unsigned timeout_ms) = 0;
   virtual bool isConnected() = 0;
+  // Fills `out` with details of the current connection. Default: not
+  // available (host fakes, curl runtime) — the dashboard then omits them.
+  virtual bool connectionInfo(NetInfo &out) {
+    (void)out;
+    return false;
+  }
   // GET, writes body to `out`. Returns true on HTTP 2xx.
   virtual bool httpGet(const std::string &url, std::string &out) = 0;
   // POST `body` with `content_type`, writes response body to `out`. Returns

@@ -19,6 +19,8 @@ time_t Esp32Clock::now() {
   return t;
 }
 
+std::uint32_t Esp32Clock::ticksMs() { return millis(); }
+
 bool Esp32Clock::ntpSync() {
   // Primary + two well-known fallbacks. The SNTP daemon races them, so a
   // single sluggish pool member can't fail the whole sync.

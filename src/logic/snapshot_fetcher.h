@@ -29,6 +29,9 @@ extern const int FETCH_ORDER[OGD_STREAM_COUNT];
 struct FetchSummary {
   int total_batches = 0;
   int failed_batches = 0;
+  // Batches that succeeded but needed more than one HTTP attempt — surfaced
+  // on the boot-check dashboard as an early flakiness indicator.
+  int retried_batches = 0;
   // True iff the ÖBB POST returned 2xx (regardless of the HAFAS err field).
   // Lets the cycle tell "no S-Bahn HTTP response" apart from "responded with
   // an auth error" for ÖBB auth-health tracking.

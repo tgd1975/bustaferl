@@ -48,14 +48,21 @@ struct ColdFixture {
 void setUp() {}
 void tearDown() {}
 
-void test_cold_happy_deep_cleans_and_renders_once() {
+void test_cold_happy_shows_dashboard_then_deep_cleans() {
   ColdFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*retries=*/0);
   CycleDeps deps = fx.deps();
   runColdCycle(deps, fx.meta);
 
-  // Cold path always ends with a deepClean (known-good panel) and exactly
-  // one renderer.render call followed by a deepSleep.
-  TEST_ASSERT_EQUAL(1, fx.renderer.calls);
+  // Happy cold path: boot-check dashboard (Boot overlay + light full +
+  // lightSleep(BOOT_INFO_SHOW_S)), then the regular first frame with a
+  // deepClean, then a deepSleep.
+  TEST_ASSERT_EQUAL(2, fx.renderer.calls);
+  TEST_ASSERT_EQUAL(1, fx.renderer.boot_report_renders);
+  TEST_ASSERT_EQUAL(OverlayKind::None, fx.renderer.last_overlay);
+  TEST_ASSERT_EQUAL(1, fx.display.light_full_calls);
+  TEST_ASSERT_EQUAL(1, fx.sleep.light_sleep_calls);
+  TEST_ASSERT_EQUAL_UINT(static_cast<unsigned>(fx.cfg.boot_info_show_s),
+                         fx.sleep.last_light_sleep_seconds);
   TEST_ASSERT_EQUAL(1, fx.display.deep_clean_calls);
   TEST_ASSERT_EQUAL(0, fx.display.draw_partial_calls);
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
@@ -64,6 +71,25 @@ void test_cold_happy_deep_cleans_and_renders_once() {
   TEST_ASSERT_EQUAL_INT64(kSyncedNow, fx.meta.last_deep_clean);
   // cold_boot_retries reset after success.
   TEST_ASSERT_EQUAL(0, fx.meta.cold_boot_retries);
+  // Report says: fresh RTC, attempt 1 of max.
+  TEST_ASSERT_FALSE(fx.renderer.last_boot_report.meta_restored);
+  TEST_ASSERT_EQUAL(1, fx.renderer.last_boot_report.boot_attempt);
+}
+
+void test_cold_dashboard_disabled_renders_once() {
+  ColdFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*retries=*/0);
+  fx.cfg.boot_info_show_s = 0;
+  CycleDeps deps = fx.deps();
+  runColdCycle(deps, fx.meta);
+
+  // With the dashboard disabled the pre-dashboard behaviour holds: exactly
+  // one render straight into the deepClean.
+  TEST_ASSERT_EQUAL(1, fx.renderer.calls);
+  TEST_ASSERT_EQUAL(0, fx.renderer.boot_report_renders);
+  TEST_ASSERT_EQUAL(0, fx.display.light_full_calls);
+  TEST_ASSERT_EQUAL(0, fx.sleep.light_sleep_calls);
+  TEST_ASSERT_EQUAL(1, fx.display.deep_clean_calls);
+  TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
 }
 
 void test_cold_retry_later_increments_retries_and_short_sleeps() {
@@ -100,7 +126,8 @@ void test_cold_give_up_overlay_and_reset() {
 
 int main(int, char **) {
   UNITY_BEGIN();
-  RUN_TEST(test_cold_happy_deep_cleans_and_renders_once);
+  RUN_TEST(test_cold_happy_shows_dashboard_then_deep_cleans);
+  RUN_TEST(test_cold_dashboard_disabled_renders_once);
   RUN_TEST(test_cold_retry_later_increments_retries_and_short_sleeps);
   RUN_TEST(test_cold_give_up_overlay_and_reset);
   return UNITY_END();

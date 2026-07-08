@@ -31,6 +31,7 @@ constexpr uint8_t DEFAULT_FILTER_HEALTH_DEAD_AFTER = 3;
 constexpr unsigned DEFAULT_LONG_SLEEP_FOR_NIGHTLY_CLEAN_S = 4U * 3600U;
 constexpr int DEFAULT_NIGHTLY_DEEP_CLEAN_INTERVAL_S = 20 * 3600;
 constexpr unsigned DEFAULT_BTN_LONG_PRESS_MS = 2000;
+constexpr int DEFAULT_BOOT_INFO_SHOW_S = 15;
 
 // Endpoint URLs + tunables the cycle reads. Defaults reflect the production
 // values in config.h; host tests instantiate with empty strings and the
@@ -63,6 +64,8 @@ struct CycleConfig {
   int rescue_window_end_s = DEFAULT_RESCUE_WINDOW_END_S;
   int rescue_retry_pause_s = DEFAULT_RESCUE_RETRY_PAUSE_S;
   int rescue_max_attempts = DEFAULT_RESCUE_MAX_ATTEMPTS;
+  // Boot-check dashboard duration after a cold boot; 0 disables it.
+  int boot_info_show_s = DEFAULT_BOOT_INFO_SHOW_S;
 };
 
 // Bundle of HAL handles + framebuffers + config the cycle functions consume.

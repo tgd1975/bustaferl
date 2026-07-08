@@ -38,6 +38,49 @@ Pro Slot wird **eine absolute Uhrzeit** im Format `HH:MM` gezeigt. Keine
 Minutenangabe „in X Minuten", keine aktuelle Uhrzeit, keine
 Niederflur-Info, keine Empfehlung.
 
+### Boot-Check nach dem Einschalten
+
+Nach jedem Kaltstart (Einstecken, Stromausfall) erscheint für 15 Sekunden
+ein Statusbild, bevor die normale Anzeige startet:
+
+```text
+BUSTAFERL v2                          BOOT-CHECK
+──────────────────────────────────────────────────
+WLAN      OK   "MeinNetz", Empfang gut (-58 dBm)
+               Adresse 192.168.1.42
+Uhrzeit   OK   Mo 07.07.2026 11:43 (per Internet gestellt)
+
+FAHRPLANDATEN
+58A -> Atzgersdorf   OK      naechste: 11:49 und 11:57
+58A -> Hietzing      OK      naechste: 11:46 und 11:58
+58B -> Atzgersdorf   OK      naechste: 11:52
+S-Bahn -> Hbf        FEHLER  OEBB lehnt Zugang ab
+Morgen-Fahrplan      OK      fuer alle 3 Linien geladen
+Alle Abfragen beim 1. Versuch ok
+
+SYSTEM
+Heap 187 kB frei, groesster Block 113 kB
+RTC: Meta neu | Frame neu | Fahrplan neu
+WLAN & NTP ok (1/5) | Uptime 14 s
+
+Anzeige startet in 15 s - Taste druecken: sofort
+```
+
+- **FAHRPLANDATEN** ist ein Selbsttest mit den echten Daten des ersten
+  Abrufs: pro Zeile `OK` mit den nächsten Abfahrten oder ein
+  `FEHLER`-Badge mit Klartext-Ursache (z. B. „OEBB lehnt Zugang ab" bei
+  abgelaufenem HAFAS-Schlüssel, „keine Antwort" bei Netzproblemen). Damit
+  ist direkt nach dem Flashen sichtbar, ob Filter und Zugangsdaten in
+  `config.h` stimmen.
+- **RTC** zeigt, was den Neustart im RTC-Speicher überlebt hat — nach
+  einem echten Stromausfall steht überall „neu", nach einem Software-Reset
+  „OK".
+- **WLAN & NTP ok (1/5)**: Start gelang beim 1. von maximal 5 Anläufen.
+  Steht dort z. B. „3/5", haben WLAN oder Zeitabgleich zweimal gezickt —
+  ein Hinweis auf schwachen Empfang, noch bevor Symptome auftreten.
+- Ein kurzer Druck auf die Taste überspringt die Wartezeit sofort.
+  `BOOT_INFO_SHOW_S 0` in `config.h` schaltet das Bild ganz ab.
+
 ## 2. Was die einzelnen Werte bedeuten
 
 | Anzeige | Bedeutung                                                          |

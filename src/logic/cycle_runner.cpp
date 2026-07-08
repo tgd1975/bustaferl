@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 
 #ifndef NATIVE_BUILD
@@ -234,6 +235,66 @@ bool runRescueFetch(CycleDeps &deps, PersistedMeta &meta,
   return false;
 }
 
+// Captured at cold-cycle entry, before this boot mutates meta/schedule —
+// feeds the boot-check dashboard (CONCEPT.md §8).
+struct BootContext {
+  bool meta_restored = false;
+  bool frame_restored = false;
+  bool schedule_restored = false;
+  int attempt = 1; // 1-based attempt WLAN+NTP came up on
+};
+
+BootReport buildBootReport(CycleDeps &deps, const StreamSnapshot &snap,
+                           const FetchSummary &summary,
+                           const ScheduleSnapshot &schedule,
+                           const BootContext &ctx) {
+  BootReport r;
+  r.valid = true;
+  NetInfo ni;
+  r.has_net_info = deps.net.connectionInfo(ni);
+  if (r.has_net_info) {
+    std::memcpy(r.ssid, ni.ssid, sizeof(r.ssid));
+    std::memcpy(r.ip, ni.ip, sizeof(r.ip));
+    r.rssi_dbm = ni.rssi_dbm;
+  }
+  r.now = deps.clock.now();
+  r.ntp_ok = deps.clock.isSynced();
+  r.snap = snap;
+  r.oebb_http_ok = summary.oebb_http_ok;
+  r.batches_total = summary.total_batches;
+  r.batches_failed = summary.failed_batches;
+  r.batches_retried = summary.retried_batches;
+  r.schedule_ok = schedule.fetched_at != 0;
+  r.hint_streams_expected = OGD_STREAM_COUNT;
+  for (int i = 0; i < OGD_STREAM_COUNT; ++i) {
+    const ScheduleHint &h = schedule.hint[i];
+    if (h.last_today != 0 || h.next_today[1] != 0 || h.first_tomorrow[0] != 0)
+      ++r.hint_streams_loaded;
+  }
+  r.meta_restored = ctx.meta_restored;
+  r.frame_restored = ctx.frame_restored;
+  r.schedule_restored = ctx.schedule_restored;
+  r.boot_attempt = ctx.attempt;
+  r.boot_attempts_max = deps.cfg.cold_boot_max_retries;
+  r.uptime_ms = deps.clock.ticksMs();
+  r.show_s = deps.cfg.boot_info_show_s;
+  return r;
+}
+
+// Boot-check dashboard: one light-full render, then a lightSleep the boot
+// button may cut short (GPIO wake) — afterwards the regular first frame
+// replaces it. Refresh bookkeeping is untouched; the deep clean right after
+// resets the counters anyway.
+void showBootDashboard(CycleDeps &deps, const BootReport &report,
+                       const StreamSnapshot &snap) {
+  RenderInput in{snap, OverlayKind::Boot};
+  in.boot_report = report;
+  deps.renderer.render(in, deps.curr);
+  deps.display.lightFull(deps.curr.data());
+  CYCLE_LOG("[boot] dashboard shown for %d s (button skips)\n", report.show_s);
+  deps.sleep.lightSleep(static_cast<unsigned>(report.show_s));
+}
+
 } // namespace
 
 bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,
@@ -245,9 +306,57 @@ bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,
                                cfg.nightly_deep_clean_interval_s);
 }
 
+// Post-boot tail of the cold cycle: first fetch, schedule hints, boot-check
+// dashboard, first render + deep clean, sleep. Split out of runColdCycle so
+// both stay under the readability-function-size thresholds.
+static void finishColdCycle(CycleDeps &deps, PersistedMeta &meta,
+                            BootContext ctx) {
+  // First-ever render after a cold boot: deep clean for a known-good panel.
+  StreamSnapshot snap;
+  FetchSummary summary;
+  bool ok = fetchSnapshotAndLog(deps, snap, summary);
+  if (ok) {
+    meta.last_api_success = deps.clock.now();
+  }
+  // Schedule fetch is best-effort: failure leaves `schedule.fetched_at = 0`
+  // and the renderer falls back to pure realtime behaviour.
+  ScheduleSnapshot schedule = deps.store.loadSchedule();
+  ctx.schedule_restored = schedule.fetched_at != 0;
+  if (refreshSchedule(deps, schedule)) {
+    deps.store.saveSchedule(schedule);
+  }
+
+  if (deps.cfg.boot_info_show_s > 0) {
+    showBootDashboard(deps, buildBootReport(deps, snap, summary, schedule, ctx),
+                      snap);
+  }
+
+  CYCLE_LOG("[boot] fetch ok=%d, rendering and deep-cleaning panel\n", ok);
+  time_t now = deps.clock.now();
+  RenderInput in = composeRenderInput(snap, schedule, OverlayKind::None, now);
+  deps.renderer.render(in, deps.curr);
+  deps.display.deepClean(deps.curr.data());
+  meta.last_deep_clean = now;
+  meta.last_light_full = meta.last_deep_clean;
+  meta.last_ntp_sync = deps.clock.lastSync();
+  deps.store.saveFramebuffer(deps.curr.data(), Frame::bytes);
+  meta.framebuffer_valid = true;
+
+  SleepConfig sc = makeSleepConfig(deps.cfg);
+  // planSleep wants the merged view: if realtime has nothing but hints fill
+  // a slot, the next bus is the hint's time — sleep until then, not until
+  // the conservative "no data" interval.
+  SleepDecision sd = planSleep(in.snapshot, now, sc);
+  doSleepOrLoop(deps, sd, meta);
+}
+
 void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
   CYCLE_LOG("[boot] cold path, retry %u/%u\n", meta.cold_boot_retries,
             deps.cfg.cold_boot_max_retries);
+  BootContext ctx;
+  ctx.meta_restored = meta.last_deep_clean != 0 || meta.last_api_success != 0;
+  ctx.frame_restored = meta.framebuffer_valid;
+  ctx.attempt = meta.cold_boot_retries + 1;
   BootConfig bc;
   bc.max_retries = deps.cfg.cold_boot_max_retries;
   BootResult r = runColdBoot(deps.net, deps.clock, meta.cold_boot_retries, bc);
@@ -274,37 +383,7 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
     return;
   }
   meta.cold_boot_retries = 0;
-
-  // First-ever render after a cold boot: deep clean for a known-good panel.
-  StreamSnapshot snap;
-  FetchSummary summary;
-  bool ok = fetchSnapshotAndLog(deps, snap, summary);
-  if (ok) {
-    meta.last_api_success = deps.clock.now();
-  }
-  // Schedule fetch is best-effort: failure leaves `schedule.fetched_at = 0`
-  // and the renderer falls back to pure realtime behaviour.
-  ScheduleSnapshot schedule = deps.store.loadSchedule();
-  if (refreshSchedule(deps, schedule)) {
-    deps.store.saveSchedule(schedule);
-  }
-  CYCLE_LOG("[boot] fetch ok=%d, rendering and deep-cleaning panel\n", ok);
-  time_t now = deps.clock.now();
-  RenderInput in = composeRenderInput(snap, schedule, OverlayKind::None, now);
-  deps.renderer.render(in, deps.curr);
-  deps.display.deepClean(deps.curr.data());
-  meta.last_deep_clean = now;
-  meta.last_light_full = meta.last_deep_clean;
-  meta.last_ntp_sync = deps.clock.lastSync();
-  deps.store.saveFramebuffer(deps.curr.data(), Frame::bytes);
-  meta.framebuffer_valid = true;
-
-  SleepConfig sc = makeSleepConfig(deps.cfg);
-  // planSleep wants the merged view: if realtime has nothing but hints fill
-  // a slot, the next bus is the hint's time — sleep until then, not until
-  // the conservative "no data" interval.
-  SleepDecision sd = planSleep(in.snapshot, now, sc);
-  doSleepOrLoop(deps, sd, meta);
+  finishColdCycle(deps, meta, ctx);
 }
 
 // ESP32 deep sleep loses the system clock — now() returns seconds since

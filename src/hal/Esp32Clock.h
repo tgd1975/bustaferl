@@ -12,6 +12,7 @@ public:
   Esp32Clock(const char *ntp_server, const char *tz_info);
   time_t now() override;
   bool ntpSync() override;
+  std::uint32_t ticksMs() override;
   time_t lastSync() const override { return last_sync_; }
   void setLastSync(time_t t) { last_sync_ = t; }
 
