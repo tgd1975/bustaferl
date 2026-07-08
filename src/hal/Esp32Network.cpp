@@ -17,7 +17,10 @@ namespace {
 // buffer — no Arduino String intermediate, so no 2x 37 KB peak (which on
 // the third back-to-back EFA call fragmented the heap and threw bad_alloc
 // inside assign()). HTTPClient still handles chunked Transfer-Encoding.
-class StringAppender : public Stream {
+// Bases are spelled ::Stream (Arduino) throughout: inside namespace
+// bustaferl an unqualified `Stream` can silently bind to the
+// StreamSnapshot.h enum if any include drags it into this TU.
+class StringAppender : public ::Stream {
 public:
   explicit StringAppender(std::string &s) : s_(s) {}
   size_t write(uint8_t b) override {
@@ -59,7 +62,7 @@ int waitForByte(WiFiClient &c, uint32_t timeout_ms, bool consume) {
 
 // Pass-through blocking stream used when the response has a Content-Length
 // (identity transfer encoding).
-class BlockingClientStream : public Stream {
+class BlockingClientStream : public ::Stream {
 public:
   BlockingClientStream(WiFiClient &c, uint32_t timeout_ms)
       : c_(c), timeout_ms_(timeout_ms) {}
@@ -79,7 +82,7 @@ private:
 // would strip these markers, but we read from the raw WiFiClient to keep
 // the body out of memory — so we strip them ourselves and present only
 // the decoded body bytes to the consumer.
-class ChunkedDecodingStream : public Stream {
+class ChunkedDecodingStream : public ::Stream {
 public:
   ChunkedDecodingStream(WiFiClient &c, uint32_t timeout_ms)
       : c_(c), timeout_ms_(timeout_ms), remaining_(0), done_(false) {}

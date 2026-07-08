@@ -1,17 +1,13 @@
 #ifndef BUSTAFERL_BOOTREPORT_H
 #define BUSTAFERL_BOOTREPORT_H
 
+#include "NetInfo.h" // WIFI_SSID_BUF / IPV4_STR_BUF
 #include "StreamSnapshot.h"
 
 #include <cstdint>
 #include <ctime>
 
 namespace bustaferl {
-
-// Buffer sizes for WiFi connection details (shared with hal/INetwork.h's
-// NetInfo): 802.11 SSID max 32 bytes + NUL; dotted IPv4 + NUL.
-constexpr int WIFI_SSID_BUF = 33;
-constexpr int IPV4_STR_BUF = 16;
 
 // Payload of the boot-check dashboard (CONCEPT.md §8): assembled by the cold
 // cycle after the first fetch, rendered once and shown for BOOT_INFO_SHOW_S

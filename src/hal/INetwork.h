@@ -1,7 +1,7 @@
 #ifndef BUSTAFERL_INETWORK_H
 #define BUSTAFERL_INETWORK_H
 
-#include "../data/BootReport.h" // WIFI_SSID_BUF / IPV4_STR_BUF
+#include "../data/NetInfo.h"
 
 #include <string>
 
@@ -11,15 +11,6 @@
 #endif
 
 namespace bustaferl {
-
-// Connection details for the boot-check dashboard. Fixed-size buffers keep
-// the struct trivially copyable (it feeds BootReport, which rides in
-// RenderInput).
-struct NetInfo {
-  char ssid[WIFI_SSID_BUF] = "";
-  char ip[IPV4_STR_BUF] = "";
-  int rssi_dbm = 0;
-};
 
 class INetwork {
 public:
