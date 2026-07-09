@@ -4,6 +4,7 @@
 #include "data/StreamSnapshot.h"
 #include "logic/boot_sequencer.h"
 #include "logic/button_classifier.h"
+#include "logic/cycle_trace.h"
 #include "logic/display_apply.h"
 #include "logic/filter_builder.h"
 #include "logic/filter_health.h"
@@ -19,6 +20,8 @@
 #include "logic/stale_policy.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 
 #ifndef NATIVE_BUILD
 #include <Arduino.h>
@@ -273,6 +276,84 @@ bool runRescueFetch(CycleDeps &deps, PersistedMeta &meta,
   return false;
 }
 
+// --- Diagnostic trace stamping (data/CycleTrace.h) ---------------------
+// One CycleRecord per warm cycle + anomaly ErrorRecords, so the double-click
+// diagnostic screens can reconstruct "what happened" without a serial log.
+
+std::uint32_t traceEpoch(time_t now) {
+  return now >= MIN_PLAUSIBLE_EPOCH ? static_cast<std::uint32_t>(now) : 0U;
+}
+
+std::uint16_t streamOkFlags(const StreamSnapshot &snap) {
+  std::uint16_t f = 0;
+  if (snap.stream[STREAM_58A_ATZ].slot[0].valid)
+    f |= CYC_STREAM0_OK;
+  if (snap.stream[STREAM_58A_HIETZING].slot[0].valid)
+    f |= CYC_STREAM1_OK;
+  if (snap.stream[STREAM_58B_ATZ].slot[0].valid)
+    f |= CYC_STREAM2_OK;
+  if (snap.stream[STREAM_SBAHN_HBF].slot[0].valid)
+    f |= CYC_STREAM3_OK;
+  return f;
+}
+
+// Outcome bits the fetch/render/sleep code gathers for the trace record.
+// Bundled (not loose params) so traceCycle stays under the parameter
+// threshold.
+struct CycleOutcome {
+  CycleTrigger trigger = CycleTrigger::Timer;
+  bool rendered = false;
+  bool rescue_tried = false;
+  bool rescue_ok = false;
+  bool wifi_failed = false;
+};
+
+void pushError(CycleTrace &t, TraceError code, time_t now) {
+  tracePushError(
+      t, ErrorRecord{traceEpoch(now), static_cast<std::uint8_t>(code), 0});
+}
+
+void traceCycle(CycleDeps &deps, const FetchCycleResult &fc,
+                const SleepDecision &sd, const CycleOutcome &oc, time_t now) {
+  CycleTrace t = deps.store.loadTrace();
+
+  // Anomalies: wifi failure this cycle, and Stale transitions detected off
+  // the previous cycle record so they land once (not every stale cycle).
+  const CycleRecord *prev = traceCycleAt(t, 0);
+  const bool was_stale = prev != nullptr && (prev->flags & CYC_STALE) != 0;
+  const bool is_stale = fc.state == DisplayState::Stale;
+  if (oc.wifi_failed)
+    pushError(t, TraceError::WifiFail, now);
+  if (is_stale && !was_stale)
+    pushError(t, TraceError::StaleEnter, now);
+  else if (!is_stale && was_stale)
+    pushError(t, TraceError::StaleExit, now);
+
+  CycleRecord rec;
+  rec.at = traceEpoch(now);
+  rec.flags = streamOkFlags(fc.snap);
+  if (oc.rendered)
+    rec.flags |= CYC_RENDERED;
+  if (oc.rescue_tried)
+    rec.flags |= CYC_RESCUE_TRIED;
+  if (oc.rescue_ok)
+    rec.flags |= CYC_RESCUE_OK;
+  if (is_stale)
+    rec.flags |= CYC_STALE;
+  if (sd.mode == Mode::DeepSleep)
+    rec.flags |= CYC_DEEP_SLEEP;
+  const unsigned sleep_s =
+      sd.mode == Mode::DeepSleep ? sd.seconds : deps.cfg.poll_interval_s;
+  rec.sleep_s = static_cast<std::uint16_t>(
+      std::min<unsigned>(sleep_s, std::numeric_limits<std::uint16_t>::max()));
+  rec.trigger = static_cast<std::uint8_t>(oc.trigger);
+  rec.failed_batches = static_cast<std::uint8_t>(fc.summary.failed_batches);
+  rec.retried_batches = static_cast<std::uint8_t>(fc.summary.retried_batches);
+  tracePushCycle(t, rec);
+
+  deps.store.saveTrace(t);
+}
+
 } // namespace
 
 bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,
@@ -443,21 +524,24 @@ void doNightlyClean(CycleDeps &deps, PersistedMeta &meta,
 // both stay under the readability-function-size thresholds.
 static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
                             const ScheduleSnapshot &schedule,
-                            FetchCycleResult &fc, time_t now,
-                            bool force_stamp) {
+                            FetchCycleResult &fc, time_t now, bool force_stamp,
+                            CycleTrigger trigger) {
   SleepConfig sc = makeSleepConfig(deps.cfg);
   SleepDecision pre = planSleep(fc.merged, now, sc);
   bool nightly = pre.mode == Mode::DeepSleep &&
                  shouldPromoteToNightlyClean(pre.seconds, now,
                                              meta.last_deep_clean, deps.cfg);
 
+  bool rendered = false;
   if (nightly) {
     doNightlyClean(deps, meta, schedule, fc, now);
+    rendered = true;
   } else if (fc.fetched_ok || fc.state != DisplayState::Normal || force_stamp) {
     // force_stamp (button press) pushes even on a transient pre-stale failure:
     // the user pressed the button, so give visible feedback (stamp advances)
     // rather than silently keeping the last frame.
     renderAndPush(deps, fc.state, fc.snap, meta, schedule, force_stamp);
+    rendered = true;
   } else {
     // Transient fetch failure (not yet stale): keep showing the last good
     // frame. Re-rendering with an empty snap would flicker every slot to
@@ -468,8 +552,11 @@ static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
   // Rescue: the snapshot was incomplete → keep trying after the update and
   // push one extra refresh once complete. Skipped on the nightly clean (the
   // panel just deep-cleaned into a long sleep; the next cycle re-fetches).
-  if (!nightly && !fetchComplete(fc.summary)) {
-    if (runRescueFetch(deps, meta, schedule, fc, deps.clock.now())) {
+  const bool rescue_tried = !nightly && !fetchComplete(fc.summary);
+  bool rescue_ok = false;
+  if (rescue_tried) {
+    rescue_ok = runRescueFetch(deps, meta, schedule, fc, deps.clock.now());
+    if (rescue_ok) {
       // The sleep plan from the partial snapshot may be wrong in both
       // directions; recompute it from the rescued (complete) merge.
       now = deps.clock.now();
@@ -477,10 +564,18 @@ static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
     }
   }
 
+  CycleOutcome oc;
+  oc.trigger = trigger;
+  oc.rendered = rendered || rescue_ok;
+  oc.rescue_tried = rescue_tried;
+  oc.rescue_ok = rescue_ok;
+  traceCycle(deps, fc, pre, oc, now);
+
   doSleepOrLoop(deps, pre, meta, now);
 }
 
-void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, bool force_stamp) {
+void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, bool force_stamp,
+                  CycleTrigger trigger) {
   CYCLE_LOG_LN("[warm] cycle start");
   ScheduleSnapshot schedule = deps.store.loadSchedule();
   if (!deps.net.connect(deps.cfg.wifi_connect_ms)) {
@@ -495,9 +590,20 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, bool force_stamp) {
     sig.now = now;
     sig.last_success = meta.last_success_at;
     DisplayState s = selectDisplayState(StreamSnapshot{}, schedule, meta, sig);
+    bool rendered = false;
     if (s == DisplayState::Stale || s == DisplayState::Offline) {
       renderAndPush(deps, s, StreamSnapshot{}, meta, schedule, force_stamp);
+      rendered = true;
     }
+    FetchCycleResult wfc;
+    wfc.state = s;
+    CycleOutcome oc;
+    oc.trigger = trigger;
+    oc.rendered = rendered;
+    oc.wifi_failed = true;
+    traceCycle(deps, wfc,
+               SleepDecision{Mode::DeepSleep, deps.cfg.poll_interval_s}, oc,
+               now);
     deps.sleep.deepSleep(deps.cfg.poll_interval_s);
     return;
   }
@@ -520,7 +626,7 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, bool force_stamp) {
     }
   }
 
-  finishWarmCycle(deps, meta, schedule, fc, now, force_stamp);
+  finishWarmCycle(deps, meta, schedule, fc, now, force_stamp, trigger);
 }
 
 void runBwReset(CycleDeps &deps, PersistedMeta &meta) {
@@ -556,7 +662,7 @@ void runButtonWake(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
   }
   // Always button-triggered here → force the update stamp so the press gives
   // visible feedback even when the departure data is unchanged.
-  runWarmCycle(deps, meta, /*force_stamp=*/true);
+  runWarmCycle(deps, meta, /*force_stamp=*/true, CycleTrigger::Button);
 }
 
 void pollButtonAndRunWarm(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
@@ -575,7 +681,8 @@ void pollButtonAndRunWarm(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
   }
   // Force the stamp only when this wake was actually a button press (not the
   // routine poll-timer wake), so idle polls still no-op on unchanged data.
-  runWarmCycle(deps, meta, /*force_stamp=*/pressed);
+  runWarmCycle(deps, meta, /*force_stamp=*/pressed,
+               pressed ? CycleTrigger::Button : CycleTrigger::Timer);
 }
 
 } // namespace bustaferl

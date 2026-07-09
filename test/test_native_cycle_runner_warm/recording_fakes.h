@@ -207,16 +207,31 @@ public:
     schedule_ = s;
     ++save_schedule_calls;
   }
+  // Trace round-trip. Deliberately NOT emitted to the string trace so the
+  // existing call-sequence assertions stay unaffected; counters + the latched
+  // CycleTrace let the diagnostic-stamping tests inspect what was recorded.
+  CycleTrace loadTrace() override {
+    ++load_trace_calls;
+    return cycle_trace_;
+  }
+  void saveTrace(const CycleTrace &t) override {
+    cycle_trace_ = t;
+    ++save_trace_calls;
+  }
   void seedMeta(const PersistedMeta &m) { meta_ = m; }
   void seedSchedule(const ScheduleSnapshot &s) { schedule_ = s; }
+  const CycleTrace &recordedTrace() const { return cycle_trace_; }
   int save_meta_calls = 0;
   int save_framebuffer_calls = 0;
   int save_schedule_calls = 0;
+  int save_trace_calls = 0;
+  int load_trace_calls = 0;
 
 private:
   std::vector<std::string> &trace_;
   PersistedMeta meta_;
   ScheduleSnapshot schedule_;
+  CycleTrace cycle_trace_;
   std::vector<uint8_t> fb_;
   bool fb_valid_ = false;
 };

@@ -66,6 +66,7 @@ void fetchOebbStream(INetwork &net, const FetchInputs &inputs, time_t now,
     return;
   }
   if (fo.attempts_taken > 1) {
+    ++summary.retried_batches;
     SNAP_LOG("[api] oebb succeeded on attempt %d/%d\n", fo.attempts_taken,
              fc.max_attempts);
   }
@@ -136,6 +137,7 @@ void runOgdBatchLoop(INetwork &net, const std::string &endpoint_base,
       continue;
     }
     if (fo.attempts_taken > 1) {
+      ++summary.retried_batches;
       SNAP_LOG("[api] batch [%s] succeeded on attempt %d/%d\n", batch_label,
                fo.attempts_taken, fc.max_attempts);
     }

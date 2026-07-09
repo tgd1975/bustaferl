@@ -1,6 +1,7 @@
 #ifndef BUSTAFERL_CYCLE_RUNNER_H
 #define BUSTAFERL_CYCLE_RUNNER_H
 
+#include "../data/CycleTrace.h" // CycleTrigger
 #include "../hal/IButton.h"
 #include "../hal/IClock.h"
 #include "../hal/IDisplay.h"
@@ -110,7 +111,8 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta);
 // pushes a refresh even when the departure data is unchanged, so a boot-button
 // press always gives visible feedback.
 void runWarmCycle(CycleDeps &deps, PersistedMeta &meta,
-                  bool force_stamp = false);
+                  bool force_stamp = false,
+                  CycleTrigger trigger = CycleTrigger::Timer);
 
 // Button-wake entry: classify long-vs-short press; long press triggers
 // B/W reset, then either path runs runWarmCycle.

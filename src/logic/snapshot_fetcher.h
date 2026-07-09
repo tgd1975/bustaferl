@@ -34,6 +34,9 @@ constexpr uint8_t OGD_AUTH_STREAK_TRIPWIRE = 3;
 struct FetchSummary {
   int total_batches = 0;
   int failed_batches = 0;
+  // Batches that succeeded but needed more than one HTTP attempt. Surfaced on
+  // the diagnostic ZYKLEN page as an early flakiness indicator.
+  int retried_batches = 0;
   // Schritt 9.4 sleep-budget instrumentation. Wall-clock per leg (ms) so
   // cycle_runner / device test can flag a wake exceeding ~10 s and decide
   // whether V13 mitigation is needed (session resumption, parallelisation,
