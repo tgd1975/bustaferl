@@ -15,16 +15,20 @@ nachgezogen; die `check-budgets`-Skill erinnert daran.
 | `g_snap` (`StreamSnapshot`, 4 Streams inkl. `Departure::line_label`) | — |
 | `g_sched.hint[0..3]` (`ScheduleHint`, 4 Streams) | — |
 | `PersistedMeta` (`has_any_data`, `last_success_at`, `auth_error_seen`, Auth-/Filter-Streaks, Wake-/Clean-Timestamps + Alignment-Padding) | — |
-| **Reserve** | ~800 / 8192 |
+| `g_trace` (`CycleTrace`, 16 Cycle- + 16 Error-Einträge, Diagnose-Modus) | ~292 |
+| **Reserve** | ~500 / 8192 |
 
-Die Reserve liegt bei ~800 B. Das ist komfortabel, aber nicht üppig: eine
-künftige Erweiterung (mehr Slots pro Stream, weitere Meta-Felder) muss entweder
-den RLE-Hardcap senken oder ein anderes Feld kürzen.
+Die Reserve liegt nach Einführung des Diagnose-Ereignis-Gedächtnisses
+(`data/CycleTrace.h`, ~292 B) bei ~500 B. Das ist noch komfortabel, aber nicht
+üppig: eine künftige Erweiterung (mehr Slots pro Stream, weitere Meta-Felder,
+größere Trace-Ringe) muss entweder den RLE-Hardcap senken oder ein anderes Feld
+kürzen. Die Trace-Ring-Größen (`CYCLE_TRACE_CAP` / `ERROR_TRACE_CAP` in
+`data/CycleTrace.h`) sind der naheliegende Stellhebel.
 
 ## Pflege
 
-Bei jeder Änderung an `Departure`, `StreamSnapshot`, `ScheduleHint` oder
-`PersistedMeta`:
+Bei jeder Änderung an `Departure`, `StreamSnapshot`, `ScheduleHint`,
+`PersistedMeta` oder `CycleTrace`:
 
 1. Diese Tabelle aktualisieren.
 2. `MAGIC` in [Esp32PersistentStore.cpp](../src/hal/Esp32PersistentStore.cpp)
