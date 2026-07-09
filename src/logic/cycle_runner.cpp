@@ -524,8 +524,12 @@ void doNightlyClean(CycleDeps &deps, PersistedMeta &meta,
 // both stay under the readability-function-size thresholds.
 static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
                             const ScheduleSnapshot &schedule,
-                            FetchCycleResult &fc, time_t now, bool force_stamp,
+                            FetchCycleResult &fc, time_t now,
                             CycleTrigger trigger) {
+  // A button-triggered cycle forces the update stamp (visible feedback even on
+  // unchanged data); timer cycles do not. force_stamp is fully determined by
+  // the trigger, so it is derived here rather than passed as a 7th parameter.
+  const bool force_stamp = trigger == CycleTrigger::Button;
   SleepConfig sc = makeSleepConfig(deps.cfg);
   SleepDecision pre = planSleep(fc.merged, now, sc);
   bool nightly = pre.mode == Mode::DeepSleep &&
@@ -574,9 +578,9 @@ static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
   doSleepOrLoop(deps, pre, meta, now);
 }
 
-void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, bool force_stamp,
-                  CycleTrigger trigger) {
+void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, CycleTrigger trigger) {
   CYCLE_LOG_LN("[warm] cycle start");
+  const bool force_stamp = trigger == CycleTrigger::Button;
   ScheduleSnapshot schedule = deps.store.loadSchedule();
   if (!deps.net.connect(deps.cfg.wifi_connect_ms)) {
     CYCLE_LOG_LN("[warm] wifi down");
@@ -626,7 +630,7 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, bool force_stamp,
     }
   }
 
-  finishWarmCycle(deps, meta, schedule, fc, now, force_stamp, trigger);
+  finishWarmCycle(deps, meta, schedule, fc, now, trigger);
 }
 
 void runBwReset(CycleDeps &deps, PersistedMeta &meta) {
@@ -660,9 +664,10 @@ void runButtonWake(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
   } else {
     CYCLE_LOG_LN("[btn] short — proceed with update");
   }
-  // Always button-triggered here → force the update stamp so the press gives
-  // visible feedback even when the departure data is unchanged.
-  runWarmCycle(deps, meta, /*force_stamp=*/true, CycleTrigger::Button);
+  // Always button-triggered here → the Button trigger forces the update stamp
+  // so the press gives visible feedback even when the departure data is
+  // unchanged.
+  runWarmCycle(deps, meta, CycleTrigger::Button);
 }
 
 void pollButtonAndRunWarm(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
@@ -679,9 +684,9 @@ void pollButtonAndRunWarm(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
       CYCLE_LOG_LN("[btn] short — proceed with update");
     }
   }
-  // Force the stamp only when this wake was actually a button press (not the
-  // routine poll-timer wake), so idle polls still no-op on unchanged data.
-  runWarmCycle(deps, meta, /*force_stamp=*/pressed,
+  // A Button trigger forces the stamp; the routine poll-timer wake stays a
+  // Timer so idle polls still no-op on unchanged data.
+  runWarmCycle(deps, meta,
                pressed ? CycleTrigger::Button : CycleTrigger::Timer);
 }
 

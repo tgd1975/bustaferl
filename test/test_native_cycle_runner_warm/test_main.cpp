@@ -183,7 +183,7 @@ void test_warm_happy_stamps_cycle_trace() {
 void test_warm_button_trigger_recorded() {
   WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true);
   CycleDeps deps = fx.deps();
-  runWarmCycle(deps, fx.meta, /*force_stamp=*/true, CycleTrigger::Button);
+  runWarmCycle(deps, fx.meta, CycleTrigger::Button);
 
   const CycleRecord *rec = traceCycleAt(fx.store.recordedTrace(), 0);
   TEST_ASSERT_NOT_NULL(rec);
@@ -386,7 +386,7 @@ void test_force_stamp_advances_stamp_on_unchanged_data() {
   // Cycle 2, five minutes later, identical content, forced (button press):
   // the stamp MUST tick to the new time and a draw MUST reach the panel.
   fx.clock.advance(300);
-  runWarmCycle(deps, fx.meta, /*force_stamp=*/true);
+  runWarmCycle(deps, fx.meta, CycleTrigger::Button);
   TEST_ASSERT_EQUAL_INT64(kSyncedNow + 300, fx.meta.last_display_update);
   const int draws_after_c2 = fx.display.draw_partial_calls +
                              fx.display.light_full_calls +

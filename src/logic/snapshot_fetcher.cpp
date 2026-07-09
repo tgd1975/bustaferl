@@ -93,6 +93,10 @@ void fetchOebbStream(INetwork &net, const FetchInputs &inputs, time_t now,
   }
 }
 
+// One line over the size threshold after adding the retried-batch counter for
+// the diagnostic trace. The loop is a single cohesive unit (per-batch fetch +
+// auth-streak + retry accounting); splitting it would fragment shared state.
+// NOLINTNEXTLINE(readability-function-size)
 void runOgdBatchLoop(INetwork &net, const std::string &endpoint_base,
                      const StreamFilter (&filters)[STREAM_COUNT],
                      StreamSnapshot &out, FetchSummary &summary,

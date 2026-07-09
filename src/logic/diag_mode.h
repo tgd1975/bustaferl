@@ -9,7 +9,7 @@ namespace bustaferl {
 // plain-text pages the user flips through to understand an anomaly the panel
 // showed — the device keeps no serial log, so this is the only window into
 // "what happened". Forward-only with wrap; a long press leaves the mode.
-enum class DiagPage : int {
+enum class DiagPage : std::uint8_t {
   Status = 0,     // WLAN / clock / per-stream self-test / heap / uptime
   Cycles = 1,     // recent cycle history (newest first)
   Errors = 2,     // recent anomalies (newest first)
