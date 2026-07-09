@@ -7,6 +7,8 @@
 
 #include <cstdint>
 #include <unity.h>
+#include <utility>
+#include <vector>
 
 using namespace bustaferl;
 
@@ -29,6 +31,26 @@ public:
     if (!pressed_initially)
       return false;
     return now < release_at;
+  }
+  std::uint32_t nowMs() override { return now; }
+  void sleepMs(std::uint32_t ms) override { now += ms; }
+};
+
+// Multi-press timeline: isPressed() is true whenever `now` falls inside any
+// [start, end) interval. Drives classifyPress through two-click sequences.
+class ScriptedButton : public IButton {
+public:
+  std::uint32_t now = 0;
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> presses;
+
+  void init() override {}
+  bool isPressed() override {
+    for (const auto &p : presses) {
+      if (now >= p.first && now < p.second) {
+        return true;
+      }
+    }
+    return false;
   }
   std::uint32_t nowMs() override { return now; }
   void sleepMs(std::uint32_t ms) override { now += ms; }
@@ -103,6 +125,43 @@ void test_init_runs_before_first_sample() {
                            "debounce sleep did not advance fake clock");
 }
 
+void test_classify_press_single_short_no_second() {
+  // One short press [0,80); no second within the 400ms window → Short.
+  ScriptedButton btn;
+  btn.presses = {{0, 80}};
+  ButtonPress p = classifyPress(btn, 2000, 400);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(ButtonPress::Short),
+                        static_cast<int>(p));
+}
+
+void test_classify_press_double_within_window() {
+  // Short press [0,80), second press starts at 200 (120ms gap < 400) → Double.
+  ScriptedButton btn;
+  btn.presses = {{0, 80}, {200, 280}};
+  ButtonPress p = classifyPress(btn, 2000, 400);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(ButtonPress::Double),
+                        static_cast<int>(p));
+}
+
+void test_classify_press_second_click_too_late_is_short() {
+  // Second press only at 900ms — well past the 400ms window → Short, not
+  // Double (the late press is left for the next classification round).
+  ScriptedButton btn;
+  btn.presses = {{0, 80}, {900, 980}};
+  ButtonPress p = classifyPress(btn, 2000, 400);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(ButtonPress::Short),
+                        static_cast<int>(p));
+}
+
+void test_classify_press_long_is_decisive() {
+  // A long first press never enters the double-click window.
+  ScriptedButton btn;
+  btn.presses = {{0, 3000}};
+  ButtonPress p = classifyPress(btn, 2000, 400);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(ButtonPress::Long),
+                        static_cast<int>(p));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -114,5 +173,9 @@ int main(int, char **) {
   RUN_TEST(test_classify_short_exactly_below_threshold);
   RUN_TEST(test_classify_long_just_past_threshold);
   RUN_TEST(test_init_runs_before_first_sample);
+  RUN_TEST(test_classify_press_single_short_no_second);
+  RUN_TEST(test_classify_press_double_within_window);
+  RUN_TEST(test_classify_press_second_click_too_late_is_short);
+  RUN_TEST(test_classify_press_long_is_decisive);
   return UNITY_END();
 }
