@@ -1,6 +1,8 @@
 #ifndef BUSTAFERL_INETWORK_H
 #define BUSTAFERL_INETWORK_H
 
+#include "NetInfo.h"
+
 #include <string>
 
 #ifndef NATIVE_BUILD
@@ -33,6 +35,11 @@ public:
   virtual HttpResult httpPost(const std::string &url, const std::string &body,
                               const std::string &content_type,
                               std::string &out) = 0;
+
+  // Live association details for the diagnostic status line (SSID / IP / RSSI).
+  // Defaulted to "no info" so host fakes and the native runtime — which never
+  // associate — need no override. Esp32Network fills it from the WiFi driver.
+  virtual NetInfo connectionInfo() { return NetInfo{}; }
 
 #ifndef NATIVE_BUILD
   // Streaming GET: invokes `consumer(stream)` with the response body

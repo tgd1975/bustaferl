@@ -221,3 +221,62 @@ Hauptsächlich Tiefschlaf, < 50 µA Stromaufnahme zwischen den Wachphasen.
 - **USB-Netzteil:** Dauerbetrieb, problemlos
 - **Akku (18650 + LDO):** mehrere Wochen pro Ladung realistisch, abhängig
   von Render-Häufigkeit und WiFi-Verbindungszeit
+
+## 9. Der BOOT-Knopf
+
+Der einzige Bedienknopf ist der **BOOT**-Taster (GPIO 0) auf dem ESP32-Board.
+Er kennt drei Gesten:
+
+| Geste | Aktion |
+|-------|--------|
+| **Kurz drücken** | Sofort-Update: Daten neu holen und Anzeige auffrischen — auch aus dem Tiefschlaf heraus. Der Zeitstempel „upd HH:MM" springt immer, auch wenn sich die Abfahrten nicht geändert haben (sichtbare Rückmeldung). |
+| **Lang halten** (> 3 s) | S/W-Reset: Ein Deep Clean räumt Ghosting weg und zeichnet das letzte Bild neu. |
+| **Doppelklick** | Öffnet den **Diagnose-Modus** (siehe unten). |
+
+Ein manuelles Update darf beliebig lange dauern, unterbricht aber **kein**
+laufendes Update — es reiht sich dahinter ein.
+
+## 10. Der Diagnose-Modus
+
+Das Gerät schreibt keine Logs. Wenn dir im Betrieb eine Anomalie in den
+angezeigten Daten auffällt, gibt dir der Diagnose-Modus ein Fenster darauf,
+**was gerade passiert ist** — als schlichter, dichter Text.
+
+**Öffnen:** Doppelklick auf den BOOT-Knopf (während Betrieb oder direkt nach
+einem Button-Aufwecken). Das Gerät holt einmal frische Daten und zeigt dann
+die erste Seite.
+
+**Navigieren:**
+
+- **Kurz drücken** → eine Seite weiter (nach der letzten wieder auf die erste).
+- **Lang halten** → zurück in den Normalbetrieb.
+- Nach spätestens **10 Minuten** ohne Eingabe kehrt das Gerät von selbst zum
+  Normalbetrieb zurück (Sicherheits-Timeout).
+
+Beim Verlassen rendert der nächste Zyklus wieder die gewohnte Abfahrtstafel.
+
+**Die vier Seiten:**
+
+1. **STATUS** — WLAN (SSID, IP, Signalstärke), Uhrzeit + NTP-Sync,
+   pro Stream ein Selbsttest (antwortet der Endpunkt? kommt eine Abfahrt?),
+   Streak-Zähler (58B-Filter, ÖBB-Auth), freier Heap und Uptime.
+2. **ZYKLEN** — die jüngsten Aufwach-Zyklen: Uhrzeit,
+   Auslöser (T=Timer, B=Button, C=Cold-Boot; neueste zuerst), welche Streams OK waren,
+   fehlgeschlagene Batches, Rescue-Marker und die geplante Schlafdauer.
+3. **FEHLER** — die jüngsten Anomalien im Klartext (z. B. „OEBB lehnt Zugang
+   ab", „Daten veraltet").
+4. **DATEN-DETAILS** — pro Slot die Quelle (E=Echtzeit, P=Plan, H=Hint) und
+   Zeit, wann der Morgen-Fahrplan geladen wurde, sowie der Panel-Zustand
+   (Partials, letzter Light-Full / Deep-Clean).
+
+Die Zyklen- und Fehler-Historie liegt im RTC-Speicher und übersteht den
+Tiefschlaf — sie geht nur bei komplettem Stromverlust verloren.
+
+## 11. Boot-Check nach dem Kaltstart
+
+Nach einem Kaltstart (Strom an / Reset) zeigt das Gerät für **15 Sekunden**
+einen **Boot-Check** — dieselbe STATUS-Übersicht plus ein paar
+Start-spezifische Zeilen: ob die RTC-Speicher (Meta / Bild / Fahrplan)
+erhalten geblieben sind, wie viele Abfragen beim ersten Versuch klappten und
+im wievielten Anlauf sich WLAN & NTP verbunden haben. Ein Tastendruck
+überspringt die Anzeige sofort; danach startet die normale Abfahrtstafel.

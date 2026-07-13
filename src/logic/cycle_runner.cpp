@@ -1,10 +1,12 @@
 #include "logic/cycle_runner.h"
 
 #include "config.h"
+#include "data/DiagView.h"
 #include "data/StreamSnapshot.h"
 #include "logic/boot_sequencer.h"
 #include "logic/button_classifier.h"
 #include "logic/cycle_trace.h"
+#include "logic/diag_mode.h"
 #include "logic/display_apply.h"
 #include "logic/filter_builder.h"
 #include "logic/filter_health.h"
@@ -18,9 +20,11 @@
 #include "logic/snapshot_fetcher.h"
 #include "logic/snapshot_logger.h"
 #include "logic/stale_policy.h"
+#include "render/diag_page.h"
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 
 #ifndef NATIVE_BUILD
@@ -354,6 +358,150 @@ void traceCycle(CycleDeps &deps, const FetchCycleResult &fc,
   deps.store.saveTrace(t);
 }
 
+// --- Diagnostic view assembly (data/DiagView.h) ------------------------
+
+// Live heap + uptime probe. Device-only (ESP APIs); a no-op on the host so
+// the STATUS page's numbers simply read 0 in native tests.
+#ifndef NATIVE_BUILD
+void probeSystem(DiagView &v) {
+  constexpr std::uint32_t BYTES_PER_KB = 1024;
+  constexpr std::uint32_t MS_PER_S = 1000;
+  v.heap_free_kb = ESP.getFreeHeap() / BYTES_PER_KB;
+  v.heap_largest_kb = ESP.getMaxAllocHeap() / BYTES_PER_KB;
+  v.uptime_s = millis() / MS_PER_S;
+}
+#else
+void probeSystem(DiagView & /*v*/) {}
+#endif
+
+// Fill the fields shared by the diagnostic pages and the boot-check screen from
+// the live HAL + persisted meta + the passed snapshot/schedule. Boot-specific
+// extras (attempt count, batch stats, RTC-restore flags) are layered on top by
+// buildBootCheckView.
+DiagView buildDiagView(CycleDeps &deps, const PersistedMeta &meta,
+                       const StreamSnapshot &snap,
+                       const ScheduleSnapshot &schedule) {
+  DiagView v;
+  const NetInfo ni = deps.net.connectionInfo();
+  v.has_net_info = ni.valid;
+  std::snprintf(v.ssid, sizeof(v.ssid), "%s", ni.ssid);
+  std::snprintf(v.ip, sizeof(v.ip), "%s", ni.ip);
+  v.rssi_dbm = ni.rssi_dbm;
+  v.now = deps.clock.now();
+  v.ntp_ok = deps.clock.isSynced();
+  v.last_ntp_sync = meta.last_ntp_sync;
+  v.snap = snap;
+  v.schedule = schedule;
+  v.filter_miss_streak = meta.filter_miss_streak;
+  v.ogd_auth_streak = meta.ogd_auth_streak;
+  v.auth_error_seen = meta.auth_error_seen;
+  v.partial_count = meta.partial_count;
+  v.last_light_full = meta.last_light_full;
+  v.last_deep_clean = meta.last_deep_clean;
+  probeSystem(v);
+  v.trace = deps.store.loadTrace();
+  return v;
+}
+
+// What the boot-check screen adds on top of the live status: which cold-boot
+// attempt succeeded, whether the RTC slots survived, and the fetch batch tally.
+struct ColdBootStats {
+  int attempt = 1;
+  int attempts_max = 1;
+  bool meta_restored = false;
+  bool frame_restored = false;
+  bool schedule_restored = false;
+};
+
+DiagView buildBootCheckView(CycleDeps &deps, const PersistedMeta &meta,
+                            const StreamSnapshot &snap,
+                            const ScheduleSnapshot &schedule,
+                            const FetchSummary &summary,
+                            const ColdBootStats &stats) {
+  DiagView v = buildDiagView(deps, meta, snap, schedule);
+  v.boot_attempt = stats.attempt;
+  v.boot_attempts_max = stats.attempts_max;
+  v.meta_restored = stats.meta_restored;
+  v.frame_restored = stats.frame_restored;
+  v.schedule_restored = stats.schedule_restored;
+  v.batches_total = summary.total_batches;
+  v.batches_failed = summary.failed_batches;
+  v.batches_retried = summary.retried_batches;
+  v.show_s = deps.cfg.boot_info_show_s;
+  return v;
+}
+
+// Records the cold boot as a ColdBoot cycle so it shows up on the diagnostic
+// CYCLES page alongside the warm cycles.
+void traceColdBoot(CycleDeps &deps, const StreamSnapshot &snap,
+                   const FetchSummary &summary, DisplayState state,
+                   const SleepDecision &sd, time_t now) {
+  FetchCycleResult fc;
+  fc.snap = snap;
+  fc.summary = summary;
+  fc.state = state;
+  CycleOutcome oc;
+  oc.trigger = CycleTrigger::ColdBoot;
+  oc.rendered = true;
+  traceCycle(deps, fc, sd, oc, now);
+}
+
+// Boot-check dashboard: render + deep-clean it and hold for boot_info_show_s
+// (a boot-button tap wakes the light sleep early to skip ahead to the board).
+void showBootCheck(CycleDeps &deps, const PersistedMeta &meta,
+                   const StreamSnapshot &snap, const ScheduleSnapshot &schedule,
+                   const FetchSummary &summary, const ColdBootStats &stats) {
+  if (deps.cfg.boot_info_show_s <= 0)
+    return;
+  DiagView v = buildBootCheckView(deps, meta, snap, schedule, summary, stats);
+  renderBootCheck(v, deps.curr);
+  deps.display.deepClean(deps.curr.data());
+  deps.sleep.lightSleep(static_cast<unsigned>(deps.cfg.boot_info_show_s));
+}
+
+// Render/clean/sleep tail of the cold cycle. Split from runColdCycle to keep
+// both under the readability-function-size thresholds.
+void finishColdCycle(CycleDeps &deps, PersistedMeta &meta,
+                     const StreamSnapshot &snap,
+                     const ScheduleSnapshot &schedule,
+                     const FetchSummary &summary) {
+  time_t now = deps.clock.now();
+  SelectorSignals sig;
+  sig.first_render_ever = !meta.has_any_data;
+  sig.auth_error_seen = meta.auth_error_seen;
+  sig.wifi_up = deps.net.isConnected();
+  sig.now = now;
+  sig.last_success = meta.last_success_at;
+  DisplayState state = selectDisplayState(snap, schedule, meta, sig);
+  RenderInput in = composeRenderInput(state, snap, schedule, meta, now);
+  deps.renderer.render(in, deps.curr);
+#if UPDATE_STAMP_ENABLED
+  drawUpdateStamp(deps.curr, now);
+  meta.last_display_update = now;
+#endif
+  // If the boot-check ran it already deep-cleaned the panel, so a single-flash
+  // light full clears its ghost; otherwise deep-clean here for the first
+  // known-good frame.
+  if (deps.cfg.boot_info_show_s > 0) {
+    deps.display.lightFull(deps.curr.data());
+  } else {
+    deps.display.deepClean(deps.curr.data());
+  }
+  meta.last_deep_clean = now;
+  meta.last_light_full = now;
+  meta.last_ntp_sync = deps.clock.lastSync();
+  deps.store.saveFramebuffer(deps.curr.data(), Frame::bytes);
+  meta.framebuffer_valid = true;
+
+  SleepConfig sc = makeSleepConfig(deps.cfg);
+  // planSleep wants the merged view: if realtime has nothing but hints fill a
+  // slot, the next bus is the hint's time — sleep until then, not until the
+  // conservative "no data" interval.
+  SleepDecision sd = planSleep(in.snapshot, now, sc);
+  traceColdBoot(deps, snap, summary, state, sd, now);
+  doSleepOrLoop(deps, sd, meta, now);
+}
+
 } // namespace
 
 bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,
@@ -399,6 +547,14 @@ bool handleColdBootOutcome(CycleDeps &deps, PersistedMeta &meta, BootResult r) {
 void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
   CYCLE_LOG("[boot] cold path, retry %u/%u\n", meta.cold_boot_retries,
             deps.cfg.cold_boot_max_retries);
+  // Snapshot the boot context for the boot-check screen before the outcome
+  // handler resets cold_boot_retries / the render overwrites framebuffer_valid.
+  ColdBootStats stats;
+  stats.attempt = static_cast<int>(meta.cold_boot_retries) + 1;
+  stats.attempts_max = static_cast<int>(deps.cfg.cold_boot_max_retries);
+  stats.meta_restored = meta.has_any_data;
+  stats.frame_restored = meta.framebuffer_valid;
+
   BootConfig bc;
   bc.max_retries = deps.cfg.cold_boot_max_retries;
   BootResult r = runColdBoot(deps.net, deps.clock, meta.cold_boot_retries, bc);
@@ -410,9 +566,9 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
     return;
   }
 
-  // First-ever render after a cold boot: deep clean for a known-good panel.
   StreamSnapshot snap;
-  bool ok = fetchSnapshotAndLog(deps, snap, meta);
+  FetchSummary summary;
+  bool ok = fetchSnapshotAndLog(deps, snap, summary, meta);
   if (ok) {
     time_t now = deps.clock.now();
     meta.last_api_success = now;
@@ -422,40 +578,16 @@ void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
   // Schedule fetch is best-effort: failure leaves `schedule.fetched_at = 0`
   // and the renderer falls back to pure realtime behaviour.
   ScheduleSnapshot schedule = deps.store.loadSchedule();
+  stats.schedule_restored = schedule.fetched_at != 0;
   if (refreshSchedule(deps, schedule)) {
     deps.store.saveSchedule(schedule);
   }
-  CYCLE_LOG("[boot] fetch ok=%d, rendering and deep-cleaning panel\n", ok);
-  time_t now = deps.clock.now();
-  // Cold boot, post-fetch: ask the state-selector for the right screen.
-  // On first-ever boot (has_any_data still false) this resolves to Boot;
-  // on subsequent wakes after Update it picks Normal/Stale/etc.
-  SelectorSignals sig;
-  sig.first_render_ever = !meta.has_any_data;
-  sig.auth_error_seen = meta.auth_error_seen;
-  sig.wifi_up = deps.net.isConnected();
-  sig.now = now;
-  sig.last_success = meta.last_success_at;
-  DisplayState state = selectDisplayState(snap, schedule, meta, sig);
-  RenderInput in = composeRenderInput(state, snap, schedule, meta, now);
-  deps.renderer.render(in, deps.curr);
-#if UPDATE_STAMP_ENABLED
-  drawUpdateStamp(deps.curr, now);
-  meta.last_display_update = now;
-#endif
-  deps.display.deepClean(deps.curr.data());
-  meta.last_deep_clean = now;
-  meta.last_light_full = meta.last_deep_clean;
-  meta.last_ntp_sync = deps.clock.lastSync();
-  deps.store.saveFramebuffer(deps.curr.data(), Frame::bytes);
-  meta.framebuffer_valid = true;
+  CYCLE_LOG("[boot] fetch ok=%d\n", ok);
 
-  SleepConfig sc = makeSleepConfig(deps.cfg);
-  // planSleep wants the merged view: if realtime has nothing but hints fill
-  // a slot, the next bus is the hint's time — sleep until then, not until
-  // the conservative "no data" interval.
-  SleepDecision sd = planSleep(in.snapshot, now, sc);
-  doSleepOrLoop(deps, sd, meta, now);
+  // Boot-check dashboard first (system self-test the user can read), then the
+  // departure board.
+  showBootCheck(deps, meta, snap, schedule, summary, stats);
+  finishColdCycle(deps, meta, snap, schedule, summary);
 }
 
 // True when the wall clock reads implausibly far past the epoch this device
@@ -656,17 +788,63 @@ void runBwReset(CycleDeps &deps, PersistedMeta &meta) {
   deps.store.saveMeta(meta);
 }
 
+void runDiagMode(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
+  CYCLE_LOG_LN("[diag] enter");
+  // Poll cadence while the page is on screen — tight enough to catch a tap,
+  // idle enough not to spin. The wall clock (RTC-backed) drives the timeout.
+  constexpr std::uint32_t DIAG_WAIT_POLL_MS = 50;
+  btn.init();
+
+  // Best-effort live fetch so STATUS / DATA reflect the current network —
+  // an empty snapshot is itself a useful diagnostic.
+  ScheduleSnapshot schedule = deps.store.loadSchedule();
+  StreamSnapshot snap;
+  if (deps.net.connect(deps.cfg.wifi_connect_ms)) {
+    snap = doFetchCycle(deps, meta, schedule).snap;
+  }
+  DiagView v = buildDiagView(deps, meta, snap, schedule);
+
+  int page = static_cast<int>(DiagPage::Status);
+  const time_t start = deps.clock.now();
+  for (;;) {
+    v.diag_page = page;
+    renderDiagPage(v, static_cast<DiagPage>(page), deps.curr);
+    deps.display.lightFull(deps.curr.data());
+
+    ButtonPress press = ButtonPress::None;
+    bool timed_out = false;
+    while (press == ButtonPress::None && !timed_out) {
+      if (btn.isPressed()) {
+        press = classifyHeld(btn, deps.cfg.btn_long_press_ms);
+      } else if (deps.clock.now() - start >= deps.cfg.diag_max_s) {
+        timed_out = true;
+      } else {
+        btn.sleepMs(DIAG_WAIT_POLL_MS);
+      }
+    }
+    DiagStep step = diagNext(page, press, timed_out);
+    if (step.action == DiagAction::Exit) {
+      CYCLE_LOG_LN("[diag] exit");
+      return;
+    }
+    page = step.page;
+  }
+}
+
 void runButtonWake(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
   CYCLE_LOG_LN("[boot] button-wake");
-  ButtonPress p = classifyHeld(btn, deps.cfg.btn_long_press_ms);
+  ButtonPress p = classifyPress(btn, deps.cfg.btn_long_press_ms,
+                                deps.cfg.btn_double_click_ms);
   if (p == ButtonPress::Long) {
     runBwReset(deps, meta);
+  } else if (p == ButtonPress::Double) {
+    runDiagMode(deps, btn, meta);
   } else {
     CYCLE_LOG_LN("[btn] short — proceed with update");
   }
   // Always button-triggered here → the Button trigger forces the update stamp
   // so the press gives visible feedback even when the departure data is
-  // unchanged.
+  // unchanged. After a diagnostic session this also re-renders the board.
   runWarmCycle(deps, meta, CycleTrigger::Button);
 }
 
@@ -677,9 +855,12 @@ void pollButtonAndRunWarm(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
   bool pressed = btn.isPressed();
   if (pressed) {
     CYCLE_LOG_LN("[btn] press detected");
-    ButtonPress p = classifyHeld(btn, deps.cfg.btn_long_press_ms);
+    ButtonPress p = classifyPress(btn, deps.cfg.btn_long_press_ms,
+                                  deps.cfg.btn_double_click_ms);
     if (p == ButtonPress::Long) {
       runBwReset(deps, meta);
+    } else if (p == ButtonPress::Double) {
+      runDiagMode(deps, btn, meta);
     } else {
       CYCLE_LOG_LN("[btn] short — proceed with update");
     }

@@ -10,10 +10,12 @@ src/
 │
 ├── hal/                      Hardware-Abstraktion
 │   ├── IClock.h              Interface
-│   ├── INetwork.h
+│   ├── INetwork.h            + `connectionInfo()` (SSID/IP/RSSI für Diagnose)
+│   ├── NetInfo.h             Leaf-Struct: WLAN-Assoziationsdetails
 │   ├── IDisplay.h
 │   ├── ISleep.h
-│   ├── IPersistentStore.h
+│   ├── IButton.h             Boot-Taster (isPressed / nowMs / sleepMs)
+│   ├── IPersistentStore.h    + `loadTrace()` / `saveTrace()` (CycleTrace)
 │   └── Esp32*.{h,cpp}        ESP32-Implementierungen
 │
 ├── data/                     plattformneutral, parsing/structs
@@ -21,6 +23,8 @@ src/
 │   ├── StreamSnapshot.h
 │   ├── PersistedMeta.h
 │   ├── ScheduleHint.h
+│   ├── CycleTrace.h          RTC-Ringpuffer: Zyklus- + Fehler-Historie
+│   ├── DiagView.h            transientes Bündel für Diagnose-/Boot-Check-Seiten
 │   ├── wienerlinien_parse.{h,cpp}   OGD-JSON → bus-StreamData
 │   ├── efa_parse.{h,cpp}            EFA-DM-Response → ScheduleHint
 │   └── oebb_hafas_parse.{h,cpp}     mgate.exe-Antwort → S-Bahn-StreamData
@@ -41,8 +45,10 @@ src/
 │   ├── slot_merger.{h,cpp}          Realtime ∪ `next_today` ∪ `first_tomorrow`
 │   ├── render_input.{h,cpp}         Snapshot + `selectDisplayState` → `RenderInput`
 │   ├── display_apply.{h,cpp}        Frame-Diff → `IDisplay::partial/full`
-│   ├── button_classifier.{h,cpp}    Press-Klassifikation (Short / Long)
-│   └── cycle_runner.{h,cpp}         `runColdCycle` / `runWarmCycle` — Engine
+│   ├── button_classifier.{h,cpp}    Press-Klassifikation (Short / Long / Double)
+│   ├── cycle_trace.{h,cpp}          Ring-Push/-Zugriff auf CycleTrace (pure)
+│   ├── diag_mode.{h,cpp}            Pager-Automat (diagNext) für Diagnose-Seiten
+│   └── cycle_runner.{h,cpp}         `runColdCycle` / `runWarmCycle` / `runDiagMode` — Engine
 │
 └── render/                   Layout und Rasterisierung
     ├── frame_buffer.h        Template FrameBuffer<W,H>, 1-bpp
@@ -52,6 +58,7 @@ src/
     ├── plan_marker.{h,cpp}   5×5-Plan-Marker `□`
     ├── network_plan.{h,cpp}  Diamond/Big/Dot-Marker + Atzg-Linie
     ├── display_state.{h,cpp} Fullscreen-Renderer für Boot/Offline/Auth/Quiet
+    ├── diag_page.{h,cpp}     Text-Renderer der Diagnose-Seiten + Boot-Check
     ├── layout.{h,cpp}        Spalten-Layout für Normal/Stale/Night + `renderFrame`
     └── rle.{h,cpp}           Lauflängenkompression für RTC-RAM
 ```
@@ -211,8 +218,9 @@ stateDiagram-v2
 
     state ColdBoot {
         [*] --> BootSequenz: WiFi + NTP
-        BootSequenz --> FirstRender: Ok
-        FirstRender --> [*]: DeepClean + Stempel
+        BootSequenz --> BootCheck: Ok
+        BootCheck --> FirstRender: 15 s Info-Screen (Taste überspringt)
+        FirstRender --> [*]: LightFull/DeepClean + Stempel
     }
 
     ColdBoot --> DeepSleep: Ok → planSleep
@@ -224,7 +232,10 @@ stateDiagram-v2
     DeepSleep --> WarmCycle: Timer-Wakeup
     DeepSleep --> ButtonWake: BOOT-Taste
     ButtonWake --> WarmCycle: kurzer Druck → Update-Zyklus
-    ButtonWake --> BwReset: langer Druck (ab 2 s) → DeepClean + Redraw
+    ButtonWake --> BwReset: langer Druck (ab 3 s) → DeepClean + Redraw
+    ButtonWake --> DiagMode: Doppelklick → Diagnose-Seiten
+    Active --> DiagMode: Doppelklick beim Poll
+    DiagMode --> WarmCycle: langer Druck / 10-min-Timeout → Board neu
 
     state WarmCycle {
         [*] --> WifiCheck
@@ -345,6 +356,32 @@ Departure mit passendem `towards` liefert, blendet das Bustaferl
 `58B Filter ungueltig` ein. Sonst würde der Wegfall stillschweigend zu
 `--:--` werden und ewig so bleiben.
 
+### Diagnose-Modus statt serieller Logs
+
+Das Gerät hängt im Betrieb an keiner seriellen Konsole. Um eine im Feld
+beobachtete Anomalie („warum stand da `--:--`?") ohne Log verstehen zu können,
+führt jeder Warm-Zyklus einen kompakten **CycleTrace** mit: pro Zyklus ein
+12-B-`CycleRecord` (Zeit, Auslöser, Stream-OK-Bits, fehlgeschlagene Batches,
+Rescue-/Stale-Flags, Schlafdauer) plus 6-B-`ErrorRecord`s für Anomalien — zwei
+RTC-Ringpuffer (je 16 Einträge, ~292 B), die den Tiefschlaf überstehen.
+
+Ein **Doppelklick** öffnet `runDiagMode`: einmal frisch fetchen, dann vier
+schlichte Text-Seiten (STATUS / ZYKLEN / FEHLER / DATEN-DETAILS), vorwärts per
+Kurzdruck (mit Umlauf), zurück per Langdruck, Sicherheits-Timeout nach 10 min.
+Die Aufteilung ist bewusst geschichtet: `logic/cycle_trace` (Ring, pure),
+`logic/diag_mode` (`diagNext`-Pager-Automat, pure) und `render/diag_page`
+(Text auf abstraktem `render::Canvas`) sind alle host-testbar; `cycle_runner`
+verdrahtet nur Fetch, HAL-Probe (`connectionInfo`, Heap/Uptime) und den
+Button-Loop.
+
+### Boot-Check nach dem Kaltstart
+
+Nach erfolgreicher Boot-Sequenz zeigt `runColdCycle` für `BOOT_INFO_SHOW_S`
+(15 s, per Taste überspringbar) denselben STATUS-Screen plus Start-Zeilen
+(RTC-Restore-Status, Batch-Tally, WLAN&NTP-Anlauf) — ein Selbsttest, den man
+direkt nach dem Einschalten lesen kann. Erst danach rendert das Board. Weil der
+Boot-Check bereits deep-cleant, genügt dem Board danach ein Light-Full.
+
 ## Wo welche Konstante wirkt
 
 | Konstante                  | Wert | Modul                         | Effekt                              |
@@ -364,6 +401,10 @@ Departure mit passendem `towards` liefert, blendet das Bustaferl
 | `RESCUE_WINDOW_START/END_S` | 20/40 | logic/rescue_policy          | Nachhol-Fenster nach unvollständigem Fetch |
 | `RESCUE_MAX_ATTEMPTS`      | 3    | logic/rescue_policy           | max. Komplett-Fetches im Rescue-Fenster |
 | `NTP_INTERVAL_S`           | 86400 | logic/cycle_runner           | NTP-Resync täglich                  |
+| `BTN_LONG_PRESS_MS`        | 3000 | logic/button_classifier       | Halten bis Long → S/W-Reset         |
+| `BTN_DOUBLE_CLICK_MS`      | 400  | logic/button_classifier       | Fenster für Doppelklick → Diagnose  |
+| `DIAG_MAX_S`               | 600  | logic/cycle_runner            | Sicherheits-Timeout des Diagnose-Modus |
+| `BOOT_INFO_SHOW_S`         | 15   | logic/cycle_runner            | Dauer des Boot-Check-Screens (0 = aus) |
 | `MAX_WAKE_OVERSHOOT_S`     | 1800 | logic/cycle_runner            | Wake über `expected_wake_at` hinaus → Drift-Guard erzwingt NTP |
 | `FILTER_HEALTH_DEAD_AFTER` | 3    | logic/filter_health           | Misses bis „Filter ungültig"        |
 | `OGD_AUTH_STREAK_TRIPWIRE` | 3    | logic/snapshot_fetcher        | 3× OGD-401 → `auth_error_seen`      |
@@ -378,7 +419,8 @@ Departure mit passendem `towards` liefert, blendet das Bustaferl
   Font-Roles aus `render/bitmap_fonts`) + Custom-Glyphen
 - **DRAM:** zwei Framebuffer à 15 kB (`g_frame_new`, `g_frame_prev`) + Stack + Heap
 - **RTC slow memory (8 kB):** `PersistedMeta` + `StreamSnapshot` (inkl.
-  `Departure::line_label` pro Slot) + `ScheduleHint` + RLE-Framebuffer
+  `Departure::line_label` pro Slot) + `ScheduleHint` + `CycleTrace`
+  (Zyklus-/Fehler-Historie, ~292 B) + RLE-Framebuffer
   (Budget ~3 kB, Hardcap `RLE_HARDCAP_BYTES` = 7168 B) — Bilanz in
   [rtc-memory-budget.md](rtc-memory-budget.md)
 - **RTC fast memory:** ungenutzt

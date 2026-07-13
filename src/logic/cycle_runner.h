@@ -40,6 +40,9 @@ constexpr uint8_t DEFAULT_FILTER_HEALTH_DEAD_AFTER = 3;
 constexpr unsigned DEFAULT_LONG_SLEEP_FOR_NIGHTLY_CLEAN_S = 4U * 3600U;
 constexpr int DEFAULT_NIGHTLY_DEEP_CLEAN_INTERVAL_S = 20 * 3600;
 constexpr unsigned DEFAULT_BTN_LONG_PRESS_MS = 2000;
+constexpr unsigned DEFAULT_BTN_DOUBLE_CLICK_MS = 400;
+constexpr int DEFAULT_DIAG_MAX_S = 600;
+constexpr int DEFAULT_BOOT_INFO_SHOW_S = 15;
 
 // Endpoint URLs + tunables the cycle reads. Defaults reflect the production
 // values in config.h; host tests instantiate with empty strings and the
@@ -66,6 +69,11 @@ struct CycleConfig {
       DEFAULT_LONG_SLEEP_FOR_NIGHTLY_CLEAN_S;
   int nightly_deep_clean_interval_s = DEFAULT_NIGHTLY_DEEP_CLEAN_INTERVAL_S;
   unsigned btn_long_press_ms = DEFAULT_BTN_LONG_PRESS_MS;
+  unsigned btn_double_click_ms = DEFAULT_BTN_DOUBLE_CLICK_MS;
+  // Diagnostic mode (logic/diag_mode.h): safety timeout out of the pager, and
+  // the boot-check dashboard duration after a cold boot (0 disables it).
+  int diag_max_s = DEFAULT_DIAG_MAX_S;
+  int boot_info_show_s = DEFAULT_BOOT_INFO_SHOW_S;
   // Rescue fetch (logic/rescue_policy.h): when a cycle rendered with an
   // incomplete snapshot, re-fetch inside this window after the display update
   // and push one extra update as soon as the data is complete.
@@ -116,6 +124,13 @@ void runWarmCycle(CycleDeps &deps, PersistedMeta &meta,
 // Button-wake entry: classify long-vs-short press; long press triggers
 // B/W reset, then either path runs runWarmCycle.
 void runButtonWake(CycleDeps &deps, IButton &btn, PersistedMeta &meta);
+
+// Diagnostic pager (entered by a double-click). Does one best-effort live
+// fetch so the STATUS/DATA pages reflect the current network, then renders the
+// plain-text pages the user flips through (short = next with wrap, long =
+// exit) until a long press or the DIAG_MAX_S safety timeout. Returns to the
+// caller, which re-renders the normal board on the next warm cycle.
+void runDiagMode(CycleDeps &deps, IButton &btn, PersistedMeta &meta);
 
 // Active-phase loop body: poll button (handles long-press while awake),
 // then run a warm cycle.

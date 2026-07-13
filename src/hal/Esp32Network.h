@@ -18,6 +18,7 @@ public:
   HttpResult httpPost(const std::string &url, const std::string &body,
                       const std::string &content_type,
                       std::string &out) override;
+  NetInfo connectionInfo() override;
   bool httpGetStream(const std::string &url, StreamConsumer consumer) override;
 
 private:

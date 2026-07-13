@@ -53,6 +53,9 @@ CycleConfig makeCycleConfig() {
   c.long_sleep_for_nightly_clean_s = LONG_SLEEP_FOR_NIGHTLY_CLEAN_S;
   c.nightly_deep_clean_interval_s = NIGHTLY_DEEP_CLEAN_INTERVAL_S;
   c.btn_long_press_ms = BTN_LONG_PRESS_MS;
+  c.btn_double_click_ms = BTN_DOUBLE_CLICK_MS;
+  c.diag_max_s = DIAG_MAX_S;
+  c.boot_info_show_s = BOOT_INFO_SHOW_S;
   c.rescue_window_start_s = RESCUE_WINDOW_START_S;
   c.rescue_window_end_s = RESCUE_WINDOW_END_S;
   c.rescue_retry_pause_s = RESCUE_RETRY_PAUSE_S;

@@ -115,6 +115,17 @@
 #define BTN_BOOT_PIN 0
 #define BTN_LONG_PRESS_MS 3000
 
+// Diagnostic mode: two taps within this window (during a button-wake or the
+// active poll phase) open the plain-text diagnostic pages. Short press = next
+// page (wrap), long press = back to normal, and a safety timeout after
+// DIAG_MAX_S so a forgotten session cannot pin the device out of its poll loop.
+#define BTN_DOUBLE_CLICK_MS 400
+#define DIAG_MAX_S 600 // 10 min diagnostic-mode safety timeout
+
+// Boot-check dashboard shown for this many seconds after a cold boot, before
+// the departure board. A boot-button tap skips it early; 0 disables it.
+#define BOOT_INFO_SHOW_S 15
+
 // Behaviour thresholds (seconds unless noted).
 #define STALE_THRESHOLD_S 180  // 3 min until stale state
 #define WAKE_BEFORE_BUS_S 900  // 15 min safety lead
