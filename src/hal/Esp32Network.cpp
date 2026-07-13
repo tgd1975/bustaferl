@@ -6,6 +6,7 @@
 #include <Stream.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <cstdio>
 #include <esp_wifi.h>
 
 namespace bustaferl {
@@ -195,6 +196,18 @@ bool Esp32Network::connect(unsigned timeout_ms) {
 }
 
 bool Esp32Network::isConnected() { return WiFi.status() == WL_CONNECTED; }
+
+NetInfo Esp32Network::connectionInfo() {
+  NetInfo ni;
+  if (WiFi.status() != WL_CONNECTED) {
+    return ni;
+  }
+  ni.valid = true;
+  std::snprintf(ni.ssid, sizeof(ni.ssid), "%s", WiFi.SSID().c_str());
+  std::snprintf(ni.ip, sizeof(ni.ip), "%s", WiFi.localIP().toString().c_str());
+  ni.rssi_dbm = WiFi.RSSI();
+  return ni;
+}
 
 HttpResult Esp32Network::httpGet(const std::string &url, std::string &out) {
   // Release dangling capacity from a previous body — otherwise a 37 KB EFA

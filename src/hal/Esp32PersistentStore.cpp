@@ -44,6 +44,13 @@ constexpr size_t FB_STRIDE = EPD_WIDTH / 8;
 // path). Reusing the old slot would inject U1 hints into the S-Bahn stream.
 constexpr uint32_t SCHED_MAGIC = 0x5CEDB053; // sched-bustaferl-3 (v2)
 
+// Diagnostic event memory: its own RTC slot + magic, independent of the
+// framebuffer/meta and schedule slots. A schema change to CycleTrace only
+// needs this magic bumped; the trace simply starts empty after an update.
+RTC_DATA_ATTR uint32_t g_trace_magic = 0;
+RTC_DATA_ATTR CycleTrace g_trace{};
+constexpr uint32_t TRACE_MAGIC = 0x7ACE0001; // trace ring v1
+
 } // namespace
 
 PersistedMeta Esp32PersistentStore::loadMeta() {
@@ -88,6 +95,17 @@ ScheduleSnapshot Esp32PersistentStore::loadSchedule() {
 void Esp32PersistentStore::saveSchedule(const ScheduleSnapshot &s) {
   g_sched = s;
   g_sched_magic = SCHED_MAGIC;
+}
+
+CycleTrace Esp32PersistentStore::loadTrace() {
+  if (g_trace_magic != TRACE_MAGIC)
+    return CycleTrace{};
+  return g_trace;
+}
+
+void Esp32PersistentStore::saveTrace(const CycleTrace &t) {
+  g_trace = t;
+  g_trace_magic = TRACE_MAGIC;
 }
 
 } // namespace bustaferl

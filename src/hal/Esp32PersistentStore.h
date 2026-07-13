@@ -18,6 +18,8 @@ public:
   bool saveFramebuffer(const uint8_t *fb, size_t len) override;
   ScheduleSnapshot loadSchedule() override;
   void saveSchedule(const ScheduleSnapshot &s) override;
+  CycleTrace loadTrace() override;
+  void saveTrace(const CycleTrace &t) override;
 };
 
 } // namespace bustaferl

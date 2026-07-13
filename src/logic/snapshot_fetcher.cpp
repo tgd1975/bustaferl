@@ -66,6 +66,7 @@ void fetchOebbStream(INetwork &net, const FetchInputs &inputs, time_t now,
     return;
   }
   if (fo.attempts_taken > 1) {
+    ++summary.retried_batches;
     SNAP_LOG("[api] oebb succeeded on attempt %d/%d\n", fo.attempts_taken,
              fc.max_attempts);
   }
@@ -92,6 +93,10 @@ void fetchOebbStream(INetwork &net, const FetchInputs &inputs, time_t now,
   }
 }
 
+// One line over the size threshold after adding the retried-batch counter for
+// the diagnostic trace. The loop is a single cohesive unit (per-batch fetch +
+// auth-streak + retry accounting); splitting it would fragment shared state.
+// NOLINTNEXTLINE(readability-function-size)
 void runOgdBatchLoop(INetwork &net, const std::string &endpoint_base,
                      const StreamFilter (&filters)[STREAM_COUNT],
                      StreamSnapshot &out, FetchSummary &summary,
@@ -136,6 +141,7 @@ void runOgdBatchLoop(INetwork &net, const std::string &endpoint_base,
       continue;
     }
     if (fo.attempts_taken > 1) {
+      ++summary.retried_batches;
       SNAP_LOG("[api] batch [%s] succeeded on attempt %d/%d\n", batch_label,
                fo.attempts_taken, fc.max_attempts);
     }

@@ -6,6 +6,7 @@
 // behavioural branches.
 
 #include "logic/cycle_runner.h"
+#include "logic/cycle_trace.h"
 #include "recording_fakes.h"
 
 #include <algorithm>
@@ -163,6 +164,44 @@ void test_warm_wifi_down_skips_render_and_deepSleeps_poll_interval() {
   TEST_ASSERT_EQUAL_UINT(fx.cfg.poll_interval_s,
                          fx.sleep.last_deep_sleep_seconds);
   TEST_ASSERT_FALSE(traceContains(fx.trace, "renderer.render"));
+}
+
+void test_warm_happy_stamps_cycle_trace() {
+  WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true);
+  CycleDeps deps = fx.deps();
+  runWarmCycle(deps, fx.meta); // trigger defaults to Timer
+
+  TEST_ASSERT_GREATER_OR_EQUAL(1, fx.store.save_trace_calls);
+  const CycleTrace &t = fx.store.recordedTrace();
+  TEST_ASSERT_EQUAL(1, t.cycle_count);
+  const CycleRecord *rec = traceCycleAt(t, 0);
+  TEST_ASSERT_NOT_NULL(rec);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(CycleTrigger::Timer), rec->trigger);
+  TEST_ASSERT_TRUE((rec->flags & CYC_RENDERED) != 0);
+}
+
+void test_warm_button_trigger_recorded() {
+  WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true);
+  CycleDeps deps = fx.deps();
+  runWarmCycle(deps, fx.meta, CycleTrigger::Button);
+
+  const CycleRecord *rec = traceCycleAt(fx.store.recordedTrace(), 0);
+  TEST_ASSERT_NOT_NULL(rec);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(CycleTrigger::Button), rec->trigger);
+}
+
+void test_warm_wifi_down_records_anomaly() {
+  WarmFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*synced=*/true);
+  fx.meta.last_api_success = kSyncedNow - 30; // not yet stale
+  CycleDeps deps = fx.deps();
+  runWarmCycle(deps, fx.meta);
+
+  const CycleTrace &t = fx.store.recordedTrace();
+  const ErrorRecord *e = traceErrorAt(t, 0);
+  TEST_ASSERT_NOT_NULL(e);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(TraceError::WifiFail), e->code);
+  // The wifi-down cycle is still logged in the cycle ring.
+  TEST_ASSERT_EQUAL(1, t.cycle_count);
 }
 
 void test_warm_wifi_down_stale_renders_stale_overlay() {
@@ -347,7 +386,7 @@ void test_force_stamp_advances_stamp_on_unchanged_data() {
   // Cycle 2, five minutes later, identical content, forced (button press):
   // the stamp MUST tick to the new time and a draw MUST reach the panel.
   fx.clock.advance(300);
-  runWarmCycle(deps, fx.meta, /*force_stamp=*/true);
+  runWarmCycle(deps, fx.meta, CycleTrigger::Button);
   TEST_ASSERT_EQUAL_INT64(kSyncedNow + 300, fx.meta.last_display_update);
   const int draws_after_c2 = fx.display.draw_partial_calls +
                              fx.display.light_full_calls +
@@ -409,6 +448,9 @@ void test_active_phase_small_change_stays_partial() {
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_warm_happy_renders_and_saves_before_sleep);
+  RUN_TEST(test_warm_happy_stamps_cycle_trace);
+  RUN_TEST(test_warm_button_trigger_recorded);
+  RUN_TEST(test_warm_wifi_down_records_anomaly);
   RUN_TEST(test_warm_wifi_down_skips_render_and_deepSleeps_poll_interval);
   RUN_TEST(test_warm_wifi_down_stale_renders_stale_overlay);
   RUN_TEST(test_warm_unsynced_clock_forces_ntp_then_continues);

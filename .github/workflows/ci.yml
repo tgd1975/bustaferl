@@ -33,8 +33,19 @@ jobs:
         # Install via the official LLVM apt source (versioned packages aren't
         # on ubuntu-latest yet), then symlink the unversioned names so the
         # Makefile targets pick them up.
+        #
+        # llvm.sh probes apt.llvm.org with a HEAD request and aborts
+        # ("Distribution not supported") the moment that host is briefly
+        # unreachable — an external single point of failure with no built-in
+        # retry. Wrap it in a bounded retry so a transient outage doesn't fail
+        # an otherwise-green run. (Longer-term: bake clang-21 into a container
+        # image to drop the runtime apt.llvm.org dependency entirely.)
         run: |
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+          for i in 1 2 3; do
+            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21 && break
+            echo "llvm.sh attempt $i failed; retrying in $((i * 15))s"
+            sleep $((i * 15))
+          done
           sudo apt-get install -y clang-format-21 clang-tidy-21
           sudo ln -sf "$(command -v clang-format-21)" /usr/local/bin/clang-format
           sudo ln -sf "$(command -v clang-tidy-21)" /usr/local/bin/clang-tidy

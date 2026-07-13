@@ -1,6 +1,7 @@
 #ifndef BUSTAFERL_IPERSISTENTSTORE_H
 #define BUSTAFERL_IPERSISTENTSTORE_H
 
+#include "../data/CycleTrace.h"
 #include "../data/ScheduleHint.h"
 
 #include <cstddef>
@@ -63,6 +64,14 @@ public:
   // zero-initialised ScheduleSnapshot (fetched_at = 0).
   virtual ScheduleSnapshot loadSchedule() = 0;
   virtual void saveSchedule(const ScheduleSnapshot &s) = 0;
+
+  // Diagnostic event memory (data/CycleTrace.h), its own RTC slot with its
+  // own magic. Defaulted to a no-op so the host fakes and the native-runtime
+  // DiskStore that do not care about the trace need no changes; only
+  // Esp32PersistentStore persists it across deep sleep. A never-saved trace
+  // reads back as an empty CycleTrace.
+  virtual CycleTrace loadTrace() { return CycleTrace{}; }
+  virtual void saveTrace(const CycleTrace &) {}
 };
 
 } // namespace bustaferl

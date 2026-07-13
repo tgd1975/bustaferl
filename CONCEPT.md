@@ -175,10 +175,12 @@ Reihenfolge nach Power-on-Reset, wenn weder Framebuffer noch RTC-Zeit gültig si
 1. **WiFi** verbinden (WiFiMulti, Timeout 10 s)
 2. **NTP-Sync** — zwingend, weil RTC bei 1970 startet und ohne korrekte Zeit kein sinnvolles `t_ref` berechnet werden kann
 3. **API-Call** für alle Streams
-4. **Deep Clean** (3× S/W-Flash) — billiges Reset des Panel-Zustands, gibt sauberes Startbild ohne Ghost-Reste vom letzten Betrieb
-5. **Voller Render** des Initialbilds
+4. **Boot-Check** (`BOOT_INFO_SHOW_S`, 15 s, per Taste überspringbar): STATUS-Screen + Start-Zeilen (RTC-Restore, Batch-Tally, WLAN&NTP-Anlauf) — Selbsttest zum Mitlesen. Deep-cleant das Panel bereits.
+5. **Board-Render** des Initialbilds (Light Full, weil der Boot-Check schon deep-cleant hat)
 6. Framebuffer in RTC-RAM ablegen
 7. Reguläre Sleep-Logik nach §6
+
+`BOOT_INFO_SHOW_S = 0` schaltet den Boot-Check ab; dann deep-cleant Schritt 5 selbst.
 
 Wenn Schritt 1 oder 2 fehlschlägt: 60 s warten, retry. Nach 5 Fehlversuchen: einmaliges Striche-Bild rendern mit Hinweis „Start fehlgeschlagen", dann 5 min schlafen und alles neu versuchen.
 
@@ -419,10 +421,43 @@ Die WiFi-Regulierungsdomäne ist auf Österreich gepinnt (2,4 GHz Kanäle 1–13
 | `FILTER_HEALTH_DEAD_AFTER` | 3 | erfolglose Filter-Matches bis Fehlerzustand |
 | `RESCUE_WINDOW_START_S` / `_END_S` | 20 / 40 | Rescue-Fetch-Fenster nach Display-Update |
 | `RESCUE_MAX_ATTEMPTS` | 3 | max. Komplett-Fetches im Rescue-Fenster |
+| `BTN_LONG_PRESS_MS` | 3000 | Halten bis Long-Press → S/W-Reset |
+| `BTN_DOUBLE_CLICK_MS` | 400 | Fenster für den Doppelklick → Diagnose-Modus |
+| `DIAG_MAX_S` | 600 | Sicherheits-Timeout aus dem Diagnose-Modus |
+| `BOOT_INFO_SHOW_S` | 15 | Dauer des Boot-Check-Screens (0 = aus) |
 
 Hinweis: `STALE_THRESHOLD_S` (180 s) existiert weiterhin in `config.h` als
 Legacy-Wert in `CycleConfig`, steuert aber **nicht** den Stale-Screen — das
 tut der State-Selector über `STALE_THRESHOLD_V2_S` (600 s).
+
+## 14. Bedienung: BOOT-Knopf und Diagnose-Modus
+
+Der BOOT-Taster (GPIO 0) ist das einzige Bedienelement. `button_classifier`
+klassifiziert jeden Druck in **Short / Long / Double**:
+
+- **Short** → sofortiger Update-Zyklus (weckt auch aus dem Tiefschlaf); der
+  Stempel „upd HH:MM" springt immer, auch bei unveränderten Daten.
+- **Long** (> `BTN_LONG_PRESS_MS`) → S/W-Reset (Deep Clean + Redraw).
+- **Double** (zwei Short innerhalb `BTN_DOUBLE_CLICK_MS`) → Diagnose-Modus.
+
+Preis der gestenfreien Doppelklick-Erkennung auf einem Taster: ein einzelner
+Short-Druck löst erst nach Ablauf des `BTN_DOUBLE_CLICK_MS`-Fensters aus
+(~0,4 s später) — nicht wahrnehmbar.
+
+**Diagnose-Modus** (`runDiagMode`): Das Gerät schreibt keine seriellen Logs,
+darum führt jeder Warm-Zyklus einen persistenten **CycleTrace** in zwei
+RTC-Ringpuffern mit (Zyklus- und Fehler-Historie, je 16 Einträge, überstehen
+den Tiefschlaf, nicht den Stromverlust). Ein Doppelklick holt einmal frische
+Daten und blättert dann durch vier schlichte Text-Seiten:
+
+1. **STATUS** — WLAN (SSID/IP/RSSI), Uhr + NTP, Stream-Selbsttest, Streaks, Heap, Uptime
+2. **ZYKLEN** — jüngste Zyklen (Auslöser, Stream-OK, fehlgeschlagene Batches, Rescue/Stale, Schlaf)
+3. **FEHLER** — jüngste Anomalien im Klartext
+4. **DATEN-DETAILS** — Slot-Quellen (E/P/H), Fahrplan-Ladezeit, Panel-Zustand
+
+Navigation: Kurzdruck = eine Seite weiter (mit Umlauf), Langdruck = zurück zum
+Normalbetrieb, Auto-Exit nach `DIAG_MAX_S` (10 min). Beim Verlassen rendert der
+nächste Warm-Zyklus wieder das gewohnte Board.
 
 ## Quellen (ÖBB-S-Bahn-Recherche)
 
