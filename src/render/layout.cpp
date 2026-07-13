@@ -4,6 +4,7 @@
 #include "badge.h"
 #include "bitmap_fonts.h"
 #include "canvas.h"
+#include "deviation_gauge.h"
 #include "diag_page.h"
 #include "display_state.h"
 #include "network_plan.h"
@@ -56,7 +57,15 @@ constexpr int COL_TIME2_DIGIT_RIGHT =
 // readable inter-column gap — 100 px is what makes the times stop touching.
 constexpr int COL_TIME_GRID_PITCH = 100;
 constexpr int COL_TIME1_DIGIT_RIGHT =
-    COL_TIME2_DIGIT_RIGHT - COL_TIME_GRID_PITCH; // 304
+    COL_TIME2_DIGIT_RIGHT - COL_TIME_GRID_PITCH; // 284
+
+// 58A deviation-gauge track centres. The gauge reuses the plan-marker slot
+// after each time column — marker and gauge are mutually exclusive (marker for
+// plan departures, gauge for live ones), so there is no collision and no need
+// to shrink the times. Placed so the 7 px zero baseline stays inside the right
+// margin (cx + 3 <= FB_W - LAYOUT_PAD_X). PROVISIONAL — tune against a render.
+constexpr int GAUGE1_CX = COL_TIME1_DIGIT_RIGHT + 6;              // ~290
+constexpr int GAUGE2_CX = FB_W - LAYOUT_PAD_X - GAUGE_HALF_W - 1; // 388
 
 // S-Bahn: three equal-width slots filling the section between LAYOUT_PAD_X
 // and FB_W - LAYOUT_PAD_X.
@@ -205,10 +214,46 @@ struct SlotSpec {
   BadgeSize sz;
   FontRole row_font;
   bool stale;
+  // 58A only: draw the live-vs-Fahrplan deviation gauge after each time (in
+  // place of the plan-marker). Left false for 58B and the S-Bahn, which render
+  // exactly as before.
+  bool show_dev = false;
 };
 
 bool slotIsPlan(const Departure &d, bool stale) {
   return !stale && d.valid && d.source != DepartureSource::Realtime;
+}
+
+// Right-hand marker for the two-time (TG/EG) rows: either the plan-marker
+// superscript (58B / default) or, on the 58A rows (`show_dev`), the deviation
+// gauge in its place. The two are mutually exclusive per slot — the gauge's
+// hollow square already conveys "plan only, no live match". Stale rows show
+// ??:?? and get neither.
+void drawTimeMarkers(render::Canvas &canvas, const SlotSpec &s, int row_h,
+                     bool d_plan, bool d2_plan) {
+  if (!s.show_dev) {
+    if (d_plan) {
+      drawPlanMark(canvas,
+                   COL_TIME1_DIGIT_RIGHT + SLOT_PLAN_MARKER_OFFSET_X_GAP, s.y);
+    }
+    if (d2_plan) {
+      drawPlanMark(canvas,
+                   COL_TIME2_DIGIT_RIGHT + SLOT_PLAN_MARKER_OFFSET_X_GAP, s.y);
+    }
+    return;
+  }
+  if (s.stale) {
+    return;
+  }
+  const int gtop = s.y + (row_h - GAUGE_H) / 2;
+  if (s.d.valid) {
+    drawDeviationGauge(canvas, GAUGE1_CX, gtop, s.d.hasDeviation(),
+                       s.d.deviationMinutes());
+  }
+  if (s.d2 != nullptr && s.d2->valid) {
+    drawDeviationGauge(canvas, GAUGE2_CX, gtop, s.d2->hasDeviation(),
+                       s.d2->deviationMinutes());
+  }
 }
 
 // Render a single departure slot — badge + direction text + HH:MM + plan
@@ -274,16 +319,9 @@ int drawSlot(render::Canvas &canvas, const SlotSpec &s) {
 
   canvas.setCursor(time1_x, s.y);
   canvas.print(hhmm);
-  if (d_plan) {
-    drawPlanMark(canvas, COL_TIME1_DIGIT_RIGHT + SLOT_PLAN_MARKER_OFFSET_X_GAP,
-                 plan_mark_y);
-  }
   canvas.setCursor(time2_x, s.y);
   canvas.print(hhmm2);
-  if (d2_plan) {
-    drawPlanMark(canvas, COL_TIME2_DIGIT_RIGHT + SLOT_PLAN_MARKER_OFFSET_X_GAP,
-                 plan_mark_y);
-  }
+  drawTimeMarkers(canvas, s, row_h, d_plan, d2_plan);
   return COL_TIME2_DIGIT_RIGHT + PLAN_MARK_TOTAL_W;
 }
 
@@ -317,15 +355,16 @@ void drawBoard(render::Canvas &canvas, const RenderInput &in) {
 
   drawHeaderBar(canvas, LAYOUT_TG_BAR_Y, "TULLNERTALGASSE");
   const StreamData &s58a_atz = in.snapshot.stream[STREAM_58A_ATZ];
-  drawSlot(canvas,
-           SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW0_Y, "58A",
-                    display_dir(STREAM_58A_ATZ), s58a_atz.slot[0],
-                    &s58a_atz.slot[1], BadgeSize::Lg, FontRole::TG_Row, stale});
+  drawSlot(canvas, SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW0_Y, "58A",
+                            display_dir(STREAM_58A_ATZ), s58a_atz.slot[0],
+                            &s58a_atz.slot[1], BadgeSize::Lg, FontRole::TG_Row,
+                            stale, /*show_dev=*/true});
   const StreamData &s58a_hietzing = in.snapshot.stream[STREAM_58A_HIETZING];
-  drawSlot(canvas, SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW1_Y, "58A",
-                            display_dir(STREAM_58A_HIETZING),
-                            s58a_hietzing.slot[0], &s58a_hietzing.slot[1],
-                            BadgeSize::Lg, FontRole::TG_Row, stale});
+  drawSlot(canvas,
+           SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW1_Y, "58A",
+                    display_dir(STREAM_58A_HIETZING), s58a_hietzing.slot[0],
+                    &s58a_hietzing.slot[1], BadgeSize::Lg, FontRole::TG_Row,
+                    stale, /*show_dev=*/true});
 
   drawHeaderBar(canvas, LAYOUT_EG_BAR_Y, "ENDEMANNGASSE · NACH SCHLEIFE");
   const StreamData &s58b_atz = in.snapshot.stream[STREAM_58B_ATZ];

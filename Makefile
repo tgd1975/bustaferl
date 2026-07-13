@@ -9,7 +9,7 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help build upload monitor flash \
-        test test-native test-device test-all test-device-trace \
+        test test-native test-native-png test-device test-all test-device-trace \
         test-longterm-smoke test-longterm-jitter test-longterm-horizon-mock \
         test-longterm-wake test-longterm-soak-5min test-longterm-soak-15min \
         test-longterm-soak-1h test-longterm-horizon-scan \
@@ -142,6 +142,14 @@ test-native:                                  ## all test_native_* (~5 s)
 	@test -d ".pio/libdeps/esp32dev/Adafruit GFX Library" \
 	  || $(PIO) pkg install -e esp32dev
 	ASAN_OPTIONS=detect_leaks=0 $(PIO) test -e native
+
+test-native-png:       test-native            ## render screens → PNGs in .tmp/v2-pgm/
+	@# test-native writes the PGM dumps (render-all-states + mockview) into
+	@# .tmp/v2-pgm/; convert them to PNGs next to the PGMs for eyeballing.
+	@# No path arg → the script batch-converts its default dir (.tmp/v2-pgm/);
+	@# a path arg is treated as a single file, not a directory.
+	python3 scripts/pgm-to-png.py
+	@echo "[png] screens written to $(TMP)/v2-pgm/  (open the *.png files)"
 
 test-device:                                  ## all test_device_*, skip if no device
 	@mkdir -p $(TMP)
