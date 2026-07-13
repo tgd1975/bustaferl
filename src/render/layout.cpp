@@ -117,7 +117,7 @@ void formatHHMM(std::time_t t, char *out, std::size_t cap) {
   if (cap < HHMM_BUF_MIN) {
     return;
   }
-  struct tm local {};
+  struct tm local{};
   localtime_r(&t, &local);
   std::snprintf(out, cap, "%02d:%02d", local.tm_hour, local.tm_min);
 }
