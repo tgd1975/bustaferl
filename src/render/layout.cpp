@@ -4,6 +4,7 @@
 #include "badge.h"
 #include "bitmap_fonts.h"
 #include "canvas.h"
+#include "diag_page.h"
 #include "display_state.h"
 #include "network_plan.h"
 #include "plan_marker.h"
@@ -116,7 +117,7 @@ void formatHHMM(std::time_t t, char *out, std::size_t cap) {
   if (cap < HHMM_BUF_MIN) {
     return;
   }
-  struct tm local{};
+  struct tm local {};
   localtime_r(&t, &local);
   std::snprintf(out, cap, "%02d:%02d", local.tm_hour, local.tm_min);
 }
@@ -377,6 +378,26 @@ void renderFrame(const RenderInput &in, Frame &fb) {
     drawBoard(canvas, in);
     return;
   }
+}
+
+void renderDiagPage(const DiagView &v, DiagPage page, Frame &fb) {
+  fb.clear(false); // ink background
+#ifndef NATIVE_BUILD
+  render::AdafruitGfxCanvas canvas(fb.data(), FB_W, FB_H);
+#else
+  render::HostCanvas canvas(fb);
+#endif
+  drawDiagPage(canvas, v, page);
+}
+
+void renderBootCheck(const DiagView &v, Frame &fb) {
+  fb.clear(false);
+#ifndef NATIVE_BUILD
+  render::AdafruitGfxCanvas canvas(fb.data(), FB_W, FB_H);
+#else
+  render::HostCanvas canvas(fb);
+#endif
+  drawBootCheck(canvas, v);
 }
 
 void drawUpdateStamp(Frame &fb, std::time_t t) {
