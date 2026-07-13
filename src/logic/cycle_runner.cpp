@@ -57,14 +57,6 @@ bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
   return ok;
 }
 
-// Convenience overload for callers that don't need the batch summary (the
-// cold path renders once and deep-cleans regardless of completeness).
-bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
-                         PersistedMeta &meta) {
-  FetchSummary summary;
-  return fetchSnapshotAndLog(deps, out, summary, meta);
-}
-
 // One EFA pass per distinct DIVA. Returns true if at least one call yielded
 // usable data; partial success is good enough to update the snapshot.
 bool refreshSchedule(CycleDeps &deps, ScheduleSnapshot &out) {
