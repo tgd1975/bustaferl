@@ -141,20 +141,25 @@ bool parseMonitorResponse(const std::string &json,
         // cppcheck-suppress badBitmaskCheck  // ArduinoJson operator| (default
         // value)
         const char *plan = dt["timePlanned"] | (const char *)nullptr;
+        // Keep the scheduled time around even when a realtime value exists —
+        // the 58A deviation gauge renders live-minus-scheduled, so both are
+        // needed. `when` still carries the displayed (real-if-live) value.
+        const time_t planned = (plan && *plan) ? parseIso8601(plan) : 0;
         time_t t = 0;
         bool rt = false;
         if (real && *real) {
           t = parseIso8601(real);
           rt = (t != 0);
         }
-        if (!t && plan && *plan) {
-          t = parseIso8601(plan);
+        if (!t && planned) {
+          t = planned;
           rt = false;
         }
         if (!t)
           continue;
 
         out.stream[fi].slot[slot].when = t;
+        out.stream[fi].slot[slot].planned = planned;
         out.stream[fi].slot[slot].source =
             rt ? DepartureSource::Realtime : DepartureSource::Plan;
         out.stream[fi].slot[slot].valid = true;

@@ -57,6 +57,17 @@ Der **Plan-Marker `□`** ist neu in v2: er signalisiert visuell, dass der
 Slot Plan-Daten statt Echtzeit zeigt. Häufigster Fall: morgens vor dem
 ersten Bus, wo EFA-Plandaten die Echtzeit-Lücke überbrücken.
 
+### Abweichungs-Anzeige (nur 58A)
+
+Neben jeder **58A**-Zeit mit Echtzeit-Tracking steht eine kleine senkrechte
+Skala: sie zeigt **Echtzeit minus Fahrplan** als Balken. Ein Balken **nach
+oben** heißt „später als geplant" (Verspätung), **nach unten** „früher als
+geplant". Die breite Mittelmarke ist die Fahrplan-Linie (0). So ist erkennbar,
+dass ein scheinbar rückwärts springender Slot (z. B. `07:02 → 07:01 → 07:00`)
+nur eine **Live-Korrektur** ist und kein Datenfehler — der Balken steht dann
+kurz unter der Null. Ein hohles Kästchen auf der Null bedeutet „nur Fahrplan,
+kein Echtzeit-Vergleich". 58B und die S-Bahn haben diese Anzeige nicht.
+
 ### Teilweise leere Slots
 
 Wenn nur eine Spalte keine Daten liefert (z. B. weil dort gerade kein

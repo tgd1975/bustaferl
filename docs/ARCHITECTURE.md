@@ -56,6 +56,7 @@ src/
     ├── bitmap_fonts.{h,cpp}  U8g2-Font-Roles für die sieben Display-States
     ├── badge.{h,cpp}         Header-Badges (sm/md/lg)
     ├── plan_marker.{h,cpp}   5×5-Plan-Marker `□`
+    ├── deviation_gauge.{h,cpp} 58A Live-vs-Fahrplan-Abweichungsanzeige
     ├── network_plan.{h,cpp}  Diamond/Big/Dot-Marker + Atzg-Linie
     ├── display_state.{h,cpp} Fullscreen-Renderer für Boot/Offline/Auth/Quiet
     ├── diag_page.{h,cpp}     Text-Renderer der Diagnose-Seiten + Boot-Check

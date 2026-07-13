@@ -96,6 +96,16 @@ void test_happy_path_all_three_streams() {
   TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].slot[1].valid);
   // 12:31 CET = 11:31 UTC = 1704108660
   TEST_ASSERT_EQUAL(1704108660, s.stream[STREAM_58A_ATZ].slot[0].when);
+  // Planned time kept alongside the live time so the deviation gauge can
+  // render live-minus-scheduled: 12:30 CET = 1704108600, i.e. +1 min late.
+  TEST_ASSERT_EQUAL(1704108600, s.stream[STREAM_58A_ATZ].slot[0].planned);
+  TEST_ASSERT_TRUE(s.stream[STREAM_58A_ATZ].slot[0].hasDeviation());
+  TEST_ASSERT_EQUAL(1, s.stream[STREAM_58A_ATZ].slot[0].deviationMinutes());
+  // Plan-only slot (13:00, no realtime): planned recorded, but no live
+  // comparison → the gauge shows the hollow "no match" square, not a bar.
+  TEST_ASSERT_EQUAL(DepartureSource::Plan,
+                    s.stream[STREAM_58A_ATZ].slot[2].source);
+  TEST_ASSERT_FALSE(s.stream[STREAM_58A_ATZ].slot[2].hasDeviation());
 
   // Hietzing departure has only timePlanned → source = Plan
   TEST_ASSERT_TRUE(s.stream[STREAM_58A_HIETZING].slot[0].valid);
