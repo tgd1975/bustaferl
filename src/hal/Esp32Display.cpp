@@ -53,6 +53,31 @@ void bwFlash(Panel &panel) {
   } while (panel.nextPage());
 }
 
+// RAII power-off guard. GxEPD2's refresh path powers the panel ON automatically
+// (firstPage/nextPage → _Init_Part/Full → _PowerOn), but powers it OFF only
+// after *full* updates, not partial ones. This guard makes "power off after the
+// update" atomic and unconditional: whichever way the drawing method returns
+// (normal exit, early return, or — were it possible — an exception unwinding
+// through it), the destructor drops the DC/DC bias. E-paper is bistable, so the
+// image is held with zero current once unpowered; the next refresh re-powers.
+//
+// Uses powerOff() (DC/DC off), NOT hibernate() (deep-sleep + reset): the active
+// phase does back-to-back *partial* updates, which need the controller's
+// previous-frame RAM intact. hibernate()'s reset would wipe that RAM and
+// corrupt the next partial (the white-border/garble failure class). Full
+// controller hibernation belongs before a real deep sleep, where the next wake
+// re-inits and forces a full refresh anyway.
+class PanelPowerGuard {
+public:
+  explicit PanelPowerGuard(Panel &panel) : panel_(panel) {}
+  ~PanelPowerGuard() { panel_.powerOff(); }
+  PanelPowerGuard(const PanelPowerGuard &) = delete;
+  PanelPowerGuard &operator=(const PanelPowerGuard &) = delete;
+
+private:
+  Panel &panel_;
+};
+
 } // namespace
 
 struct Esp32Display::Impl {
@@ -66,41 +91,36 @@ Esp32Display::~Esp32Display() { delete impl_; }
 void Esp32Display::init() { impl_->panel.init(115200, true, 2, false); }
 
 void Esp32Display::drawFull(const uint8_t *fb) {
+  PanelPowerGuard guard(impl_->panel); // power off on any exit
   impl_->panel.setFullWindow();
   impl_->panel.firstPage();
   do {
     impl_->panel.fillScreen(GxEPD_WHITE);
     blit(impl_->panel, fb);
   } while (impl_->panel.nextPage());
-  // GxEPD2's full-update page loop already powers the panel down, but call it
-  // explicitly so every exit from this class leaves the panel unbiased.
-  impl_->panel.powerOff();
 }
 
 void Esp32Display::drawPartial(const uint8_t *fb, const Bbox &bbox) {
   if (bbox.empty())
-    return;
+    return; // nothing drawn → panel never powered on, so nothing to power off
   // Single windowed partial update: white the bbox, blit its pixels, refresh.
   // (An earlier attempt added black/white de-ghost passes here — extra
   // full-buffer fillScreen loops around this one — which flashed the whole
   // screen, so it was reverted. Ghost accumulation is handled by the periodic
   // light-full in refresh_planner, not per update.)
+  PanelPowerGuard guard(impl_->panel); // power off on any exit
   impl_->panel.setPartialWindow(bbox.x, bbox.y, bbox.w, bbox.h);
   impl_->panel.firstPage();
   do {
     impl_->panel.fillScreen(GxEPD_WHITE);
     blitPartial(impl_->panel, fb, bbox);
   } while (impl_->panel.nextPage());
-  // CRITICAL: GxEPD2's *partial*-update page loop does NOT power the panel off
-  // (only the full-update path does). Without this, the UC8176 stays biased
-  // after every partial — across the active phase's 30 s light-sleeps and any
-  // long stretch of failed network retries — which wastes power and, left
-  // powered for minutes, lets the held image drift ("gets paler"). E-paper is
-  // bistable: once unpowered it holds the image with zero current.
-  impl_->panel.powerOff();
 }
 
 void Esp32Display::lightFull(const uint8_t *fb) {
+  // bwFlash powers the panel on; drawFull's guard powers it off at the end, so
+  // the flash + redraw are one continuous powered session with a guaranteed
+  // power-off.
   bwFlash(impl_->panel);
   drawFull(fb);
 }
