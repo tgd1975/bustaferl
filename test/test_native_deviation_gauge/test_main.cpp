@@ -99,6 +99,49 @@ void test_track_and_baseline_always_drawn() {
   TEST_ASSERT_GREATER_OR_EQUAL(7, widest);
 }
 
+// The three reference ticks — zero baseline, top end (+GAUGE_UP_MIN) and bottom
+// end (-GAUGE_DOWN_MIN) — each get one extra pixel on the RIGHT, so the zero
+// mark's position within the span reads more clearly. Interior minute ticks
+// stay symmetric about cx.
+void test_reference_ticks_extend_one_px_right() {
+  RecordingCanvas c;
+  drawDeviationGauge(c, CX, TOP, /*has_dev=*/true, 0);
+
+  const int topY = ZERO_Y - GAUGE_UP_MIN * GAUGE_SCALE;
+  const int botY = ZERO_Y + GAUGE_DOWN_MIN * GAUGE_SCALE;
+  const int interiorY = ZERO_Y - 1 * GAUGE_SCALE; // the +1 min minor tick
+
+  // Right edge of a horizontal line drawn at x = cx - w/2 with length len.
+  auto rightEdge = [](const Line &l) { return l.x + l.len - 1; };
+  // Left edge is unchanged (centred): cx - w/2. For odd w a symmetric tick's
+  // right edge is cx + w/2; extended it is cx + w/2 + 1.
+  auto expectExtended = [&](int y, int w) {
+    bool ok = false;
+    for (const auto &l : c.lines) {
+      if (!l.vertical && l.y == y) {
+        TEST_ASSERT_EQUAL_INT(CX - w / 2, l.x); // left edge unchanged
+        TEST_ASSERT_EQUAL_INT(CX + w / 2 + 1, rightEdge(l)); // +1 on the right
+        ok = true;
+      }
+    }
+    TEST_ASSERT_TRUE(ok);
+  };
+
+  expectExtended(ZERO_Y, 7); // zero baseline
+  expectExtended(topY, 5);   // top end (major width)
+  expectExtended(botY, 3);   // bottom end (minor width)
+
+  // An interior minor tick is symmetric: right edge = cx + w/2, not +1.
+  bool interior_checked = false;
+  for (const auto &l : c.lines) {
+    if (!l.vertical && l.y == interiorY) {
+      TEST_ASSERT_EQUAL_INT(CX + 3 / 2, rightEdge(l)); // symmetric, no +1
+      interior_checked = true;
+    }
+  }
+  TEST_ASSERT_TRUE(interior_checked);
+}
+
 void test_no_live_draws_square_not_bar() {
   RecordingCanvas c;
   drawDeviationGauge(c, CX, TOP, /*has_dev=*/false, 0);
@@ -173,6 +216,7 @@ void test_overflow_down_adds_tab_below_track() {
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_track_and_baseline_always_drawn);
+  RUN_TEST(test_reference_ticks_extend_one_px_right);
   RUN_TEST(test_no_live_draws_square_not_bar);
   RUN_TEST(test_on_time_shows_nub_not_square);
   RUN_TEST(test_late_bar_extends_up);

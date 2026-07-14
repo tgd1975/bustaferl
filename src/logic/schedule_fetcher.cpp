@@ -74,12 +74,21 @@ std::string buildEfaUrl(const std::string &base, int diva, time_t query_time,
 time_t computeCutoff(time_t now, int cutoff_hour) {
   struct tm local;
   localtime_r(&now, &local);
-  // Move to "tomorrow at cutoff_hour:00". If now is already past today's
-  // cutoff_hour we still want the *next* one, so unconditionally +1 day.
-  local.tm_mday += 1;
+  // The today/tomorrow boundary is the *next* cutoff_hour:00 at or after `now`.
+  // In the small hours (now < cutoff_hour, e.g. 00:07 with a 03:00 cutoff) that
+  // is TODAY's cutoff_hour — not tomorrow's. Anchoring a day too far ahead was
+  // the bug that filed this morning's ~05:00 departures under "first_tomorrow"
+  // and skipped the whole current service day. Only advance to tomorrow once
+  // today's cutoff has already passed.
   local.tm_hour = cutoff_hour;
   local.tm_min = 0;
   local.tm_sec = 0;
+  local.tm_isdst = -1;
+  time_t today_cutoff = mktime(&local);
+  if (today_cutoff > now) {
+    return today_cutoff;
+  }
+  local.tm_mday += 1;
   local.tm_isdst = -1;
   return mktime(&local);
 }
@@ -99,7 +108,11 @@ fetchSchedule(INetwork &net, time_t now,
 
   // Anchor query at today at query_hour:query_minute local. EFA returns
   // departures from that point forward, which spans the evening + next
-  // morning we care about.
+  // morning we care about. But the anchor must never be in the FUTURE relative
+  // to `now`: a refresh in the small hours (cold boot at 00:07) with a 22:00
+  // anchor would jump ~22 h ahead and skip the entire current service day —
+  // this morning's ~05:00 bus then wrongly shows up as "first_tomorrow" (the
+  // 08:50-instead-of-05:00 bug). So clamp the anchor to `now`.
   time_t query_time = 0;
   {
     struct tm local;
@@ -109,6 +122,9 @@ fetchSchedule(INetwork &net, time_t now,
     local.tm_sec = 0;
     local.tm_isdst = -1;
     query_time = mktime(&local);
+    if (query_time > now) {
+      query_time = now;
+    }
   }
   time_t cutoff = computeCutoff(now, cfg.cutoff_hour);
 

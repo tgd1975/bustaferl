@@ -403,10 +403,14 @@ void renderFrame(const RenderInput &in, Frame &fb) {
     drawBoot(canvas, in.firmware_version);
     return;
   case DisplayState::Offline:
-    drawOffline(canvas, in.last_fetch_at, in.retry_in_s);
+    drawOffline(canvas, in.last_fetch_at, in.retry_in_s, in.visible_aps,
+                in.wanted_ssids, in.case_mismatch);
     return;
   case DisplayState::Auth:
     drawAuth(canvas, in.auth_aid_short, in.auth_http_code);
+    return;
+  case DisplayState::WifiAuth:
+    drawWifiAuth(canvas, in.wanted_ssids);
     return;
   case DisplayState::Quiet:
     drawQuiet(canvas);

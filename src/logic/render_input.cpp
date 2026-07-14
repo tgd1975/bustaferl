@@ -145,6 +145,11 @@ RenderInput composeRenderInput(DisplayState state, const StreamSnapshot &snap,
     // so run.log reflects the real fetch result instead of the default false.
     out.snapshot.api_ok = snap.api_ok;
     break;
+  case DisplayState::WifiAuth:
+    // Terminal wrong-password screen. Its only input (the configured SSID) is
+    // set by the caller from the live network, not composed from the snapshot;
+    // nothing to fill here.
+    break;
   }
 
   return out;
