@@ -378,6 +378,52 @@ void test_update_stamp_zero_is_noop() {
       0, std::memcmp(plain.data(), stamped.data(), Frame::bytes));
 }
 
+// Leftmost ink column of the 58A-Hietzing first-time cell (row 1). The cell's
+// right edge is COL_TIME1_DIGIT_RIGHT (284) and TG_Row "HH:MM" is ≈85 px wide,
+// so [150, 290) × the row-1 Y band [54, 90) safely brackets time1 without the
+// badge (left of ~140) or the gauge/time2 (right of 290). -1 if no ink.
+int leftmostInkOfHietzingTime1(const Frame &fb) {
+  constexpr int kX0 = 150, kX1 = 290, kY0 = 54, kY1 = 90;
+  for (int x = kX0; x < kX1; ++x) {
+    for (int y = kY0; y < kY1; ++y) {
+      if (!fb.getPixel(x, y)) { // ink = false
+        return x;
+      }
+    }
+  }
+  return -1;
+}
+
+// Regression for the field-observed "58A Hietzing first time shifted ~2 px
+// left". The times are right-aligned; the old anchor used the string's INK
+// width (u8g2 getUTF8Width), which shrinks when the trailing digit has less
+// right-side ink (…:_1 vs …:_9). That floated the left edge by value. Anchoring
+// to a fixed template width must keep the left edge identical for any minute.
+void test_hietzing_time1_left_edge_is_value_stable() {
+  // Two epochs whose local HH:MM end in different-ink digits. Base is
+  // 1700000000 = 2023-11-14 22:53:20 CET; +N*60 walks the minute.
+  // …:54 (trailing 4) vs …:59 (trailing 9) vs …:51 (trailing 1).
+  const time_t base = 1700000000;
+  int edges[3];
+  const int minute_offsets[3] = {1, 6, -2}; // → :54, :59, :51
+  for (int i = 0; i < 3; ++i) {
+    RenderInput in = makeBoardInput(DisplayState::Normal);
+    in.snapshot.stream[STREAM_58A_HIETZING].slot[0] = {
+        base + minute_offsets[i] * 60, DepartureSource::Realtime, true};
+    Frame fb;
+    renderFrame(in, fb);
+    edges[i] = leftmostInkOfHietzingTime1(fb);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, edges[i],
+                                     "no ink found in the time1 cell");
+  }
+  TEST_ASSERT_EQUAL_INT_MESSAGE(
+      edges[0], edges[1],
+      "time1 left edge moved between minutes ending :4 and :9");
+  TEST_ASSERT_EQUAL_INT_MESSAGE(
+      edges[0], edges[2],
+      "time1 left edge moved between minutes ending :4 and :1");
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_dump_state_boot);
@@ -396,5 +442,6 @@ int main(int, char **) {
   RUN_TEST(test_update_stamp_draws_bottom_right_only);
   RUN_TEST(test_update_stamp_overwrite_is_clean);
   RUN_TEST(test_update_stamp_zero_is_noop);
+  RUN_TEST(test_hietzing_time1_left_edge_is_value_stable);
   return UNITY_END();
 }

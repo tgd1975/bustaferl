@@ -187,17 +187,22 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   if (event != ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
     return;
   }
-  // Reason codes that mean "the AP found us but refused our credentials" — a
-  // wrong PSK. Anything else (beacon timeout, AP gone, assoc-leave) is a normal
-  // transient we keep retrying. 4WAY_HANDSHAKE_TIMEOUT (15) is the field-
-  // observed wrong-password symptom; the others are the sibling auth failures.
+  // Only the reason codes that mean "the AP actively rejected our credentials"
+  // count as a terminal wrong-password. Deliberately NARROW:
+  //   - AUTH_FAIL (202) / MIC_FAILURE (14): the AP refused the key outright.
+  // Everything else is a transient we keep retrying. Notably excluded:
+  //   - 4WAY_HANDSHAKE_TIMEOUT (15) / HANDSHAKE_TIMEOUT (204): the handshake
+  //     frames were lost, which happens just as often on a congested/flaky AP
+  //     with the CORRECT password. Field-observed: this fired mid-life (reason
+  //     15) with an unchanged, correct PSK and wrongly latched the terminal
+  //     "WLAN-PASSWORT FALSCH" screen. A lost handshake is not proof of a wrong
+  //     key, so it must not be terminal — the normal retry loop recovers.
+  //   - AUTH_EXPIRE (2): a routine re-auth timeout on an existing association
+  //     (idle/roam/AP housekeeping), not a credential problem.
   const uint8_t reason = info.wifi_sta_disconnected.reason;
   switch (reason) {
-  case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
-  case WIFI_REASON_HANDSHAKE_TIMEOUT:
   case WIFI_REASON_MIC_FAILURE:
   case WIFI_REASON_AUTH_FAIL:
-  case WIFI_REASON_AUTH_EXPIRE:
     g_wifi_auth_failed = true;
     break;
   default:
