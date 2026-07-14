@@ -19,6 +19,12 @@ struct PersistedMeta {
   uint16_t partial_count = 0;
   uint8_t filter_miss_streak = 0;
   uint8_t cold_boot_retries = 0;
+  // Free-running count of consecutive no-wifi cold cycles. Drives the KEIN-
+  // EMPFANG repaint cadence: the screen is repainted only every
+  // `no_wifi_repaint_every`th cycle (≈5 min) even though WiFi is retried every
+  // cycle (60 s). Reset to 0 the moment a connection succeeds. Distinct from
+  // cold_boot_retries, which caps at max_retries and feeds the attempt display.
+  uint8_t no_wifi_cycles = 0;
   bool framebuffer_valid = false;
 
   // v2 fields (driven by the display state-selector landing in Schritt 7):

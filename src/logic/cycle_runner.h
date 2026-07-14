@@ -24,6 +24,12 @@ namespace bustaferl {
 // defines the constant (boot_sequencer, sleep_planner) we reuse that as the
 // single source of truth.
 constexpr unsigned DEFAULT_COLD_BOOT_RETRY_S = 60;
+// KEIN-EMPFANG repaints only every Nth no-wifi cycle, so the panel refreshes
+// roughly every DEFAULT_COLD_BOOT_RETRY_S * this (60 s * 5 = 5 min) while WiFi
+// stays down, even though the connection is retried every cycle. Cycle-counted
+// rather than clock-based because the clock is unsynced with WiFi down (each
+// retry is a fresh deep-sleep wake, so now() is unreliable).
+constexpr uint8_t DEFAULT_NO_WIFI_REPAINT_EVERY = 5;
 // Wrong-WiFi-password screen is terminal — retrying can't help. Sleep an hour
 // between re-checks (in case the AP or its password changed) rather than the
 // 60 s no-network cadence.
@@ -56,6 +62,7 @@ struct CycleConfig {
   std::string mgate_url; // ÖBB HAFAS mgate.exe (v2 S-Bahn stream)
   unsigned wifi_connect_ms = DEFAULT_WIFI_TIMEOUT_MS;
   unsigned cold_boot_retry_s = DEFAULT_COLD_BOOT_RETRY_S;
+  uint8_t no_wifi_repaint_every = DEFAULT_NO_WIFI_REPAINT_EVERY;
   unsigned wifi_auth_sleep_s = DEFAULT_WIFI_AUTH_SLEEP_S;
   uint8_t cold_boot_max_retries = DEFAULT_COLD_BOOT_MAX_RETRIES;
   unsigned poll_interval_s = DEFAULT_POLL_INTERVAL_S;

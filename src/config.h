@@ -139,6 +139,9 @@
 #define NTP_INTERVAL_S 86400       // 24 h between NTP syncs
 #define COLD_BOOT_RETRY_S 60
 #define COLD_BOOT_MAX_RETRIES 5
+// KEIN-EMPFANG repaints every Nth no-wifi cycle → 60 s * 5 ≈ 5 min between
+// panel refreshes while WiFi is down (retry still every cycle).
+#define NO_WIFI_REPAINT_EVERY 5
 
 #define FILTER_HEALTH_DEAD_AFTER 3 // consecutive misses → dead
 
