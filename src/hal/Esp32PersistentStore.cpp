@@ -35,7 +35,10 @@ RTC_DATA_ATTR ScheduleSnapshot g_sched{};
 // .75: PersistedMeta gained expected_wake_at (clock-drift guard reference).
 //      Appended field — an un-bumped magic would read RTC bytes past the old
 //      struct as a garbage wake target and mis-fire the guard.
-constexpr uint32_t MAGIC = 0xB05AFE75; // bustaferl v2, delta-RLE + stamp
+// .76: PersistedMeta gained no_wifi_cycles (KEIN-EMPFANG 5-min repaint gate).
+//      Inserted mid-struct, so every offset after it shifts — an un-bumped
+//      magic would misread every following field.
+constexpr uint32_t MAGIC = 0xB05AFE76; // bustaferl v2, delta-RLE + stamp
 
 // Framebuffer row width in bytes; encode and decode must agree on it.
 constexpr size_t FB_STRIDE = EPD_WIDTH / 8;

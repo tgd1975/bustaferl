@@ -182,7 +182,9 @@ Reihenfolge nach Power-on-Reset, wenn weder Framebuffer noch RTC-Zeit gültig si
 
 `BOOT_INFO_SHOW_S = 0` schaltet den Boot-Check ab; dann deep-cleant Schritt 5 selbst.
 
-Wenn Schritt 1 oder 2 fehlschlägt (kein WLAN erreichbar): den **KEIN-EMPFANG**-Screen rendern — mit den gesuchten SSIDs, den tatsächlich gefundenen (nicht passenden) Netzen und, falls erkannt, einem Groß-/Kleinschreibungs-Hinweis. Danach 60 s schlafen und erneut versuchen. Solange das Gerät **noch nie** verbunden war (`has_any_data == false`), bleibt es dauerhaft auf dem Cold-Path (siehe `setup()`-Routing): Der Screen wird **einmal pro Minute** mit dem aktuellen Scan-Ergebnis aufgefrischt (erste Anzeige Deep-Clean, danach Light-Full), bis WLAN auftaucht — der nächste Cold-Cycle verbindet sich dann und läuft die volle Boot-Sequenz durch. Es gibt kein endgültiges „Aufgeben"; der Retry-Zähler steigt nur bis zum Cap (für die Boot-Check-„Versuch N"-Anzeige) und ändert die Kadenz nicht mehr.
+Wenn Schritt 1 oder 2 fehlschlägt (kein WLAN erreichbar): den **KEIN-EMPFANG**-Screen rendern — mit den gesuchten SSIDs, den tatsächlich gefundenen (nicht passenden) Netzen und, falls erkannt, einem Groß-/Kleinschreibungs-Hinweis. Danach 60 s schlafen und erneut versuchen. Solange das Gerät **noch nie** verbunden war (`has_any_data == false`), bleibt es dauerhaft auf dem Cold-Path (siehe `setup()`-Routing): **WLAN wird jede Minute erneut versucht, der Screen aber nur alle 5 Minuten neu gezeichnet** (`no_wifi_cycles % NO_WIFI_REPAINT_EVERY`, erste Anzeige Deep-Clean, danach Light-Full) — E-Paper-Full-Refreshes sind langsam und der Scan ändert sich kaum von Minute zu Minute. Sobald WLAN auftaucht, verbindet sich der nächste Cold-Cycle und läuft die volle Boot-Sequenz durch. Es gibt kein endgültiges „Aufgeben"; der Retry-Zähler steigt nur bis zum Cap (für die Boot-Check-„Versuch N"-Anzeige) und ändert die Kadenz nicht mehr.
+
+Sonderfall **falsches WLAN-Passwort** (WPA-Handshake schlägt fehl, Disconnect-Reason 15 u. a.): terminal — Retry hilft nicht. Eigener **WLAN-PASSWORT**-Screen mit dem betroffenen SSID, danach langer Schlaf (`WIFI_AUTH_SLEEP_S`, 1 h) statt der 60-s-Schleife.
 
 Erkennung „Cold Boot vs. Wake from Deep Sleep": `esp_sleep_get_wakeup_cause()`. Bei `ESP_SLEEP_WAKEUP_UNDEFINED` ist es Cold Boot.
 
@@ -418,6 +420,7 @@ Die WiFi-Regulierungsdomäne ist auf Österreich gepinnt (2,4 GHz Kanäle 1–13
 | `NTP_INTERVAL_S` | 86400 | Sekunden zwischen NTP-Syncs |
 | `COLD_BOOT_RETRY_S` | 60 | Retry-Intervall WiFi/NTP beim Cold Boot |
 | `COLD_BOOT_MAX_RETRIES` | 5 | Cap des Cold-Boot-Versuchszählers (Boot-Check-Anzeige); danach hält der Zähler, Retry-Kadenz bleibt `COLD_BOOT_RETRY_S` |
+| `NO_WIFI_REPAINT_EVERY` | 5 | KEIN-EMPFANG nur jeden N-ten No-WiFi-Cycle neu zeichnen (60 s × 5 ≈ 5 min) |
 | `FILTER_HEALTH_DEAD_AFTER` | 3 | erfolglose Filter-Matches bis Fehlerzustand |
 | `RESCUE_WINDOW_START_S` / `_END_S` | 20 / 40 | Rescue-Fetch-Fenster nach Display-Update |
 | `RESCUE_MAX_ATTEMPTS` | 3 | max. Komplett-Fetches im Rescue-Fenster |

@@ -29,13 +29,15 @@ struct ColdFixture {
   CycleConfig cfg;
   PersistedMeta meta;
 
-  ColdFixture(bool wifi_ok, bool http_ok, uint8_t retries_so_far)
+  ColdFixture(bool wifi_ok, bool http_ok, uint8_t retries_so_far,
+              uint8_t no_wifi_cycles = 0)
       : clock(trace, kSyncedNow, /*synced=*/wifi_ok),
         net(trace, wifi_ok, http_ok, "{}"), sleep(trace, WakeCause::ColdBoot),
         store(trace), display(trace), renderer(trace) {
     cfg.api_base = "http://api/";
     cfg.efa_base = "http://efa/";
     meta.cold_boot_retries = retries_so_far;
+    meta.no_wifi_cycles = no_wifi_cycles;
   }
 
   CycleDeps deps() {
@@ -71,11 +73,10 @@ void test_cold_happy_deep_cleans_and_renders() {
   TEST_ASSERT_EQUAL(0, fx.meta.cold_boot_retries);
 }
 
-// First cold attempt with WiFi down: boot screen paints first, then the
-// no-network screen deep-cleans over it (first appearance), the counter
-// advances, and the device sleeps the 60 s retry interval — NOT a longer
-// give-up backoff. The screen stays up and refreshes each minute until WiFi
-// returns.
+// First cold attempt with WiFi down (no_wifi_cycles == 0): boot screen paints
+// first, then the no-network screen deep-cleans over it (first appearance), the
+// no-wifi counter advances, and the device sleeps the 60 s retry interval — NOT
+// a longer give-up backoff.
 void test_cold_no_wifi_first_paints_screen_and_retries_in_60s() {
   ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*retries=*/0);
   CycleDeps deps = fx.deps();
@@ -86,16 +87,35 @@ void test_cold_no_wifi_first_paints_screen_and_retries_in_60s() {
   TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
   TEST_ASSERT_EQUAL(1, fx.display.light_full_calls); // boot screen
   TEST_ASSERT_EQUAL(1, fx.display.deep_clean_calls); // first KEIN EMPFANG
-  TEST_ASSERT_EQUAL(1, fx.meta.cold_boot_retries);
+  TEST_ASSERT_EQUAL(1, fx.meta.no_wifi_cycles);      // 0 -> 1
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
   TEST_ASSERT_EQUAL_UINT(fx.cfg.cold_boot_retry_s,
                          fx.sleep.last_deep_sleep_seconds);
 }
 
-// A later no-wifi cycle (retries > 0): boot screen suppressed, KEIN EMPFANG
-// refreshes with a light single-flash (not another deep clean), still 60 s.
-void test_cold_no_wifi_refresh_is_light_full() {
-  ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*retries=*/2);
+// A no-wifi cycle that is NOT on a repaint boundary (no_wifi_cycles % 5 != 0):
+// retry WiFi + sleep 60 s, but leave the panel untouched. The screen from the
+// last repaint stays up.
+void test_cold_no_wifi_between_repaints_does_not_touch_panel() {
+  ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*retries=*/2,
+                 /*no_wifi_cycles=*/2);
+  CycleDeps deps = fx.deps();
+  runColdCycle(deps, fx.meta);
+
+  // Boot screen suppressed (retries > 0) and no repaint → nothing drawn.
+  TEST_ASSERT_EQUAL(0, fx.renderer.calls);
+  TEST_ASSERT_EQUAL(0, fx.display.light_full_calls);
+  TEST_ASSERT_EQUAL(0, fx.display.deep_clean_calls);
+  TEST_ASSERT_EQUAL(3, fx.meta.no_wifi_cycles); // still advances 2 -> 3
+  TEST_ASSERT_EQUAL_UINT(fx.cfg.cold_boot_retry_s,
+                         fx.sleep.last_deep_sleep_seconds); // still retries
+}
+
+// A no-wifi cycle ON a repaint boundary (no_wifi_cycles == 5): repaint with a
+// light single-flash (not a deep clean — that is reserved for the first paint).
+void test_cold_no_wifi_repaint_boundary_is_light_full() {
+  ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*retries=*/5,
+                 /*no_wifi_cycles=*/5);
   CycleDeps deps = fx.deps();
   runColdCycle(deps, fx.meta);
 
@@ -103,23 +123,20 @@ void test_cold_no_wifi_refresh_is_light_full() {
   TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
   TEST_ASSERT_EQUAL(1, fx.display.light_full_calls); // refresh, not deep clean
   TEST_ASSERT_EQUAL(0, fx.display.deep_clean_calls);
-  TEST_ASSERT_EQUAL(3, fx.meta.cold_boot_retries); // advanced 2 -> 3
+  TEST_ASSERT_EQUAL(6, fx.meta.no_wifi_cycles); // 5 -> 6
   TEST_ASSERT_EQUAL_UINT(fx.cfg.cold_boot_retry_s,
                          fx.sleep.last_deep_sleep_seconds);
 }
 
-// The retry counter holds at the cap instead of wrapping while WiFi stays down.
-void test_cold_no_wifi_counter_holds_at_cap() {
-  ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true,
-                 /*retries=*/DEFAULT_COLD_BOOT_MAX_RETRIES);
+// A successful boot resets the no-wifi counter so the next outage starts its
+// repaint cadence fresh.
+void test_cold_success_resets_no_wifi_counter() {
+  ColdFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*retries=*/0,
+                 /*no_wifi_cycles=*/3);
   CycleDeps deps = fx.deps();
   runColdCycle(deps, fx.meta);
 
-  TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
-  TEST_ASSERT_EQUAL(DEFAULT_COLD_BOOT_MAX_RETRIES, fx.meta.cold_boot_retries);
-  TEST_ASSERT_FALSE(fx.meta.framebuffer_valid);
-  TEST_ASSERT_EQUAL_UINT(fx.cfg.cold_boot_retry_s,
-                         fx.sleep.last_deep_sleep_seconds);
+  TEST_ASSERT_EQUAL(0, fx.meta.no_wifi_cycles);
 }
 
 // The no-network screen carries both the SSIDs the failed scan saw and the
@@ -206,8 +223,9 @@ int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_cold_happy_deep_cleans_and_renders);
   RUN_TEST(test_cold_no_wifi_first_paints_screen_and_retries_in_60s);
-  RUN_TEST(test_cold_no_wifi_refresh_is_light_full);
-  RUN_TEST(test_cold_no_wifi_counter_holds_at_cap);
+  RUN_TEST(test_cold_no_wifi_between_repaints_does_not_touch_panel);
+  RUN_TEST(test_cold_no_wifi_repaint_boundary_is_light_full);
+  RUN_TEST(test_cold_success_resets_no_wifi_counter);
   RUN_TEST(test_cold_no_wifi_screen_carries_visible_ssids);
   RUN_TEST(test_cold_no_wifi_screen_flags_case_mismatch);
   RUN_TEST(test_cold_wrong_password_is_terminal);

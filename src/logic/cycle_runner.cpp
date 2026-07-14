@@ -540,19 +540,21 @@ bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,
 }
 
 // Returns true if boot succeeded (caller continues to fetch + render).
-// Returns false if WiFi/NTP failed — the cycle has painted "KEIN EMPFANG" and
-// scheduled a 60 s retry-sleep, so the caller must return immediately.
+// Returns false if WiFi/NTP failed — the cycle has (possibly) painted "KEIN
+// EMPFANG" and scheduled a 60 s retry-sleep, so the caller must return
+// immediately.
 //
 // There is no permanent "give up": as long as the device has never connected it
-// stays on the cold path (see setup()'s routing on !has_any_data). So every
-// failed attempt is treated the same — repaint the no-network screen with the
-// latest scan and retry in a minute. The counter keeps climbing (for the boot-
-// check "attempt N" display and the RetryLater/GiveUp log label) but no longer
-// changes the cadence: KEIN EMPFANG refreshes once a minute until WiFi appears,
-// then the very next cold cycle connects and runs the full boot sequence.
+// stays on the cold path (see setup()'s routing on !has_any_data). Every failed
+// attempt retries WiFi after 60 s, but the panel is repainted only every
+// `no_wifi_repaint_every`th cycle (≈5 min) — e-paper full refreshes are slow
+// and the scan rarely changes minute-to-minute, so there is no point flashing
+// it every retry. cold_boot_retries still climbs (capped) for the boot-check
+// attempt display; no_wifi_cycles free-runs to gate the repaint.
 bool handleColdBootOutcome(CycleDeps &deps, PersistedMeta &meta, BootResult r) {
   if (r == BootResult::Ok) {
     meta.cold_boot_retries = 0;
+    meta.no_wifi_cycles = 0;
     return true;
   }
   // Wrong WiFi password: the AP accepted the association but rejected the WPA
@@ -568,24 +570,31 @@ bool handleColdBootOutcome(CycleDeps &deps, PersistedMeta &meta, BootResult r) {
     deps.renderer.render(in, deps.curr);
     deps.display.deepClean(deps.curr.data());
     meta.cold_boot_retries = 0;
+    meta.no_wifi_cycles = 0;
     meta.framebuffer_valid = false;
     deps.store.saveMeta(meta);
     deps.sleep.deepSleep(deps.cfg.wifi_auth_sleep_s);
     return false;
   }
-  // First appearance of the screen (retries == 0, i.e. the boot screen is still
-  // showing) gets a crisp deep-clean; the once-a-minute refreshes after that
-  // use a light single-flash. Read before we bump the counter.
-  const bool first_paint = meta.cold_boot_retries == 0;
-  CYCLE_LOG_LN(r == BootResult::GiveUp ? "[boot] no wifi (give up label)"
-                                       : "[boot] no wifi, retry later");
-  paintNoNetworkScreen(deps, first_paint);
-  // Keep incrementing until the cap, then hold at the cap so the counter does
-  // not wrap; framebuffer stays untrusted (the screen is a transient, not the
-  // real board that a warm cycle would diff against).
+  // Repaint only on the 0th, Nth, 2Nth … no-wifi cycle. The first appearance
+  // (no_wifi_cycles == 0, boot screen still showing) gets a crisp deep-clean;
+  // the periodic repaints after that use a light single-flash. Retry (sleep)
+  // happens every cycle regardless.
+  const unsigned every =
+      deps.cfg.no_wifi_repaint_every > 0 ? deps.cfg.no_wifi_repaint_every : 1;
+  const bool first_paint = meta.no_wifi_cycles == 0;
+  const bool repaint = (meta.no_wifi_cycles % every) == 0;
+  CYCLE_LOG("[boot] no wifi (cycle %u, %s)\n", meta.no_wifi_cycles,
+            repaint ? "repaint" : "skip");
+  if (repaint) {
+    paintNoNetworkScreen(deps, first_paint);
+  }
+  // cold_boot_retries caps at max (attempt display); no_wifi_cycles free-runs
+  // (uint8 wrap is harmless — it just lands back on a repaint boundary).
   if (meta.cold_boot_retries < deps.cfg.cold_boot_max_retries) {
     ++meta.cold_boot_retries;
   }
+  ++meta.no_wifi_cycles;
   meta.framebuffer_valid = false;
   deps.store.saveMeta(meta);
   deps.sleep.deepSleep(deps.cfg.cold_boot_retry_s);

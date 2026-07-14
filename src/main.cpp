@@ -39,6 +39,7 @@ CycleConfig makeCycleConfig() {
   c.mgate_url = OEBB_MGATE_URL;
   c.wifi_connect_ms = 10000;
   c.cold_boot_retry_s = COLD_BOOT_RETRY_S;
+  c.no_wifi_repaint_every = NO_WIFI_REPAINT_EVERY;
   c.cold_boot_max_retries = COLD_BOOT_MAX_RETRIES;
   c.poll_interval_s = POLL_INTERVAL_S;
   c.stale_threshold_s = STALE_THRESHOLD_S;
