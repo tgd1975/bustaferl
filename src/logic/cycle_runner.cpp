@@ -19,6 +19,7 @@
 #include "logic/slot_merger.h"
 #include "logic/snapshot_fetcher.h"
 #include "logic/snapshot_logger.h"
+#include "logic/ssid_match.h"
 #include "logic/stale_policy.h"
 #include "render/diag_page.h"
 
@@ -41,6 +42,33 @@
 namespace bustaferl {
 
 namespace {
+
+// Fill the Offline-screen diagnostic fields from the live network: the visible
+// scan, the configured SSIDs, and the case-only mismatch hint (e.g. configured
+// "A-NET2" vs broadcast "a-net2"). Shared by both Offline render sites (cold
+// give-up and warm wifi-down).
+void fillOfflineDiagnostics(CycleDeps &deps, RenderInput &in) {
+  in.visible_aps = deps.net.scanVisible();
+  in.wanted_ssids = deps.net.configuredSsids();
+  in.case_mismatch = findCaseMismatch(in.wanted_ssids, in.visible_aps);
+}
+
+// Paint the "KEIN EMPFANG" screen with a fresh scan. `first_paint` picks a
+// deep-clean (crisp baseline the first time it appears) vs a single-flash
+// light-full for the once-a-minute refreshes while WiFi stays down — the cold
+// retry loop re-scans and repaints every cycle so the found-SSID list stays
+// current without hammering the panel with 3× deep-clean flashes each minute.
+void paintNoNetworkScreen(CycleDeps &deps, bool first_paint) {
+  RenderInput in;
+  in.state = DisplayState::Offline;
+  fillOfflineDiagnostics(deps, in);
+  deps.renderer.render(in, deps.curr);
+  if (first_paint) {
+    deps.display.deepClean(deps.curr.data());
+  } else {
+    deps.display.lightFull(deps.curr.data());
+  }
+}
 
 bool fetchSnapshotAndLog(CycleDeps &deps, StreamSnapshot &out,
                          FetchSummary &summary, PersistedMeta &meta) {
@@ -80,6 +108,12 @@ void renderAndPush(CycleDeps &deps, DisplayState state,
                    const ScheduleSnapshot &schedule, bool force_stamp = false) {
   time_t now = deps.clock.now();
   RenderInput in = composeRenderInput(state, snap, schedule, meta, now);
+  // composeRenderInput is a pure function with no network access; the Offline
+  // screen's diagnostic block (visible scan, configured SSIDs, case-mismatch
+  // hint) needs the live network, so fill it here.
+  if (state == DisplayState::Offline) {
+    fillOfflineDiagnostics(deps, in);
+  }
   deps.renderer.render(in, deps.curr);
 
 #if UPDATE_STAMP_ENABLED
@@ -506,39 +540,83 @@ bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,
 }
 
 // Returns true if boot succeeded (caller continues to fetch + render).
-// Returns false if the cycle has already terminated (retry-sleep or give-up
-// path), in which case the caller must return immediately.
+// Returns false if WiFi/NTP failed — the cycle has painted "KEIN EMPFANG" and
+// scheduled a 60 s retry-sleep, so the caller must return immediately.
+//
+// There is no permanent "give up": as long as the device has never connected it
+// stays on the cold path (see setup()'s routing on !has_any_data). So every
+// failed attempt is treated the same — repaint the no-network screen with the
+// latest scan and retry in a minute. The counter keeps climbing (for the boot-
+// check "attempt N" display and the RetryLater/GiveUp log label) but no longer
+// changes the cadence: KEIN EMPFANG refreshes once a minute until WiFi appears,
+// then the very next cold cycle connects and runs the full boot sequence.
 bool handleColdBootOutcome(CycleDeps &deps, PersistedMeta &meta, BootResult r) {
-  if (r == BootResult::RetryLater) {
-    ++meta.cold_boot_retries;
-    deps.store.saveMeta(meta);
-    CYCLE_LOG_LN("[boot] retry later");
-    deps.sleep.deepSleep(deps.cfg.cold_boot_retry_s);
-    return false;
+  if (r == BootResult::Ok) {
+    meta.cold_boot_retries = 0;
+    return true;
   }
-  if (r == BootResult::GiveUp) {
-    CYCLE_LOG_LN("[boot] give up");
-    // GiveUp ends the cold-boot retry chain — render the Offline screen so
-    // the user knows the device is awake but can't reach the network. v2
-    // dropped the dedicated "Start fehlgeschlagen" overlay in favour of the
-    // generic Offline fullscreen renderer.
+  // Wrong WiFi password: the AP accepted the association but rejected the WPA
+  // handshake. Retrying with the same credentials can never work, so this is
+  // terminal — paint the dedicated screen naming the SSID and deep-sleep a long
+  // interval (we still wake occasionally in case the AP/password changed)
+  // rather than spinning the 60 s no-network loop.
+  if (deps.net.lastFailure() == WifiFailure::AuthFailed) {
+    CYCLE_LOG_LN("[boot] wrong wifi password — terminal");
     RenderInput in;
-    in.state = DisplayState::Offline;
+    in.state = DisplayState::WifiAuth;
+    in.wanted_ssids = deps.net.configuredSsids();
     deps.renderer.render(in, deps.curr);
     deps.display.deepClean(deps.curr.data());
     meta.cold_boot_retries = 0;
     meta.framebuffer_valid = false;
     deps.store.saveMeta(meta);
-    deps.sleep.deepSleep(deps.cfg.cold_boot_giveup_sleep_s);
+    deps.sleep.deepSleep(deps.cfg.wifi_auth_sleep_s);
     return false;
   }
-  meta.cold_boot_retries = 0;
-  return true;
+  // First appearance of the screen (retries == 0, i.e. the boot screen is still
+  // showing) gets a crisp deep-clean; the once-a-minute refreshes after that
+  // use a light single-flash. Read before we bump the counter.
+  const bool first_paint = meta.cold_boot_retries == 0;
+  CYCLE_LOG_LN(r == BootResult::GiveUp ? "[boot] no wifi (give up label)"
+                                       : "[boot] no wifi, retry later");
+  paintNoNetworkScreen(deps, first_paint);
+  // Keep incrementing until the cap, then hold at the cap so the counter does
+  // not wrap; framebuffer stays untrusted (the screen is a transient, not the
+  // real board that a warm cycle would diff against).
+  if (meta.cold_boot_retries < deps.cfg.cold_boot_max_retries) {
+    ++meta.cold_boot_retries;
+  }
+  meta.framebuffer_valid = false;
+  deps.store.saveMeta(meta);
+  deps.sleep.deepSleep(deps.cfg.cold_boot_retry_s);
+  return false;
+}
+
+// First thing a genuine cold boot does: put the "loading…" board on the glass
+// so the user sees the device is alive while WiFi + NTP + the first fetch run.
+// Suppressed when either (a) a trustworthy frame is already on the panel, or
+// (b) we are on a 60 s cold-boot *retry* (cold_boot_retries > 0): the retry
+// re-enters runColdCycle but the boot screen is already showing, so re-flashing
+// the byte-identical screen every retry would only wear the panel. A single
+// lightFull is enough — finishColdCycle deep-cleans the real board afterwards.
+void showBootScreen(CycleDeps &deps, const PersistedMeta &meta) {
+  if (meta.framebuffer_valid || meta.cold_boot_retries > 0) {
+    return;
+  }
+  CYCLE_LOG_LN("[boot] show boot screen");
+  RenderInput in;
+  in.state = DisplayState::Boot;
+  in.firmware_version = DISPLAY_VERSION_STR;
+  deps.renderer.render(in, deps.curr);
+  deps.display.lightFull(deps.curr.data());
 }
 
 void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
   CYCLE_LOG("[boot] cold path, retry %u/%u\n", meta.cold_boot_retries,
             deps.cfg.cold_boot_max_retries);
+  // Boot screen before the network work (CONCEPT.md §8): visible feedback
+  // first, boot process second.
+  showBootScreen(deps, meta);
   // Snapshot the boot context for the boot-check screen before the outcome
   // handler resets cold_boot_retries / the render overwrites framebuffer_valid.
   ColdBootStats stats;
@@ -702,37 +780,59 @@ static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
   doSleepOrLoop(deps, pre, meta, now);
 }
 
+// Warm-cycle WiFi-down branch. Split out of runWarmCycle to keep it under the
+// readability-function-size threshold. Always terminates the cycle (sleeps),
+// so the caller returns right after.
+void handleWarmWifiDown(CycleDeps &deps, PersistedMeta &meta,
+                        const ScheduleSnapshot &schedule, CycleTrigger trigger,
+                        bool force_stamp) {
+  CYCLE_LOG_LN("[warm] wifi down");
+  // Wrong password mid-life (router credentials changed) is terminal here too —
+  // show the dedicated screen and long-sleep instead of the 30 s poll loop.
+  if (deps.net.lastFailure() == WifiFailure::AuthFailed) {
+    CYCLE_LOG_LN("[warm] wrong wifi password — terminal");
+    RenderInput in;
+    in.state = DisplayState::WifiAuth;
+    in.wanted_ssids = deps.net.configuredSsids();
+    deps.renderer.render(in, deps.curr);
+    deps.display.deepClean(deps.curr.data());
+    meta.framebuffer_valid = false;
+    deps.store.saveMeta(meta);
+    deps.sleep.deepSleep(deps.cfg.wifi_auth_sleep_s);
+    return;
+  }
+  // No WiFi → ask the selector whether to surface Offline / Stale / keep the
+  // last frame. SelectorSignals.wifi_up=false drives the choice.
+  time_t now = deps.clock.now();
+  SelectorSignals sig;
+  sig.first_render_ever = !meta.has_any_data;
+  sig.auth_error_seen = meta.auth_error_seen;
+  sig.wifi_up = false;
+  sig.now = now;
+  sig.last_success = meta.last_success_at;
+  DisplayState s = selectDisplayState(StreamSnapshot{}, schedule, meta, sig);
+  bool rendered = false;
+  if (s == DisplayState::Stale || s == DisplayState::Offline) {
+    renderAndPush(deps, s, StreamSnapshot{}, meta, schedule, force_stamp);
+    rendered = true;
+  }
+  FetchCycleResult wfc;
+  wfc.state = s;
+  CycleOutcome oc;
+  oc.trigger = trigger;
+  oc.rendered = rendered;
+  oc.wifi_failed = true;
+  traceCycle(deps, wfc,
+             SleepDecision{Mode::DeepSleep, deps.cfg.poll_interval_s}, oc, now);
+  deps.sleep.deepSleep(deps.cfg.poll_interval_s);
+}
+
 void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, CycleTrigger trigger) {
   CYCLE_LOG_LN("[warm] cycle start");
   const bool force_stamp = trigger == CycleTrigger::Button;
   ScheduleSnapshot schedule = deps.store.loadSchedule();
   if (!deps.net.connect(deps.cfg.wifi_connect_ms)) {
-    CYCLE_LOG_LN("[warm] wifi down");
-    // No WiFi → ask the selector whether to surface Offline / Stale / keep
-    // the last frame. SelectorSignals.wifi_up=false drives the choice.
-    time_t now = deps.clock.now();
-    SelectorSignals sig;
-    sig.first_render_ever = !meta.has_any_data;
-    sig.auth_error_seen = meta.auth_error_seen;
-    sig.wifi_up = false;
-    sig.now = now;
-    sig.last_success = meta.last_success_at;
-    DisplayState s = selectDisplayState(StreamSnapshot{}, schedule, meta, sig);
-    bool rendered = false;
-    if (s == DisplayState::Stale || s == DisplayState::Offline) {
-      renderAndPush(deps, s, StreamSnapshot{}, meta, schedule, force_stamp);
-      rendered = true;
-    }
-    FetchCycleResult wfc;
-    wfc.state = s;
-    CycleOutcome oc;
-    oc.trigger = trigger;
-    oc.rendered = rendered;
-    oc.wifi_failed = true;
-    traceCycle(deps, wfc,
-               SleepDecision{Mode::DeepSleep, deps.cfg.poll_interval_s}, oc,
-               now);
-    deps.sleep.deepSleep(deps.cfg.poll_interval_s);
+    handleWarmWifiDown(deps, meta, schedule, trigger, force_stamp);
     return;
   }
   if (!ensureClockSynced(deps, meta))

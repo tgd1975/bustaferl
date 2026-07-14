@@ -22,8 +22,12 @@ constexpr int TAB_H = 2;
 constexpr int MIN_BAR_H = 2; // a 0-min agreement still shows a visible nub
 constexpr int MAJOR_EVERY = 5;
 
-void hTick(render::Canvas &canvas, int cx, int y, int w) {
-  canvas.drawFastHLine(cx - w / 2, y, w, MARK);
+// Draw a horizontal tick centred on `cx`. `extend_right` adds one pixel on the
+// right edge only (left edge unchanged), used for the three reference ticks —
+// zero baseline plus the top/bottom range ends — so the zero mark's position
+// within the gauge span reads more clearly.
+void hTick(render::Canvas &canvas, int cx, int y, int w, bool extend_right) {
+  canvas.drawFastHLine(cx - w / 2, y, w + (extend_right ? 1 : 0), MARK);
 }
 
 } // namespace
@@ -35,17 +39,21 @@ void drawDeviationGauge(render::Canvas &canvas, int cx, int top, bool has_dev,
   // 1. Track.
   canvas.drawFastVLine(cx, top, GAUGE_H, MARK);
 
-  // 2. Minute ticks (skip zero; a wider tick every 5th minute).
+  // 2. Minute ticks (skip zero; a wider tick every 5th minute). The top
+  //    (+GAUGE_UP_MIN) and bottom (-GAUGE_DOWN_MIN) range ends get one extra
+  //    pixel on the right so, together with the zero baseline, they frame the
+  //    zero mark's position within the span.
   for (int mi = -GAUGE_DOWN_MIN; mi <= GAUGE_UP_MIN; ++mi) {
     if (mi == 0) {
       continue;
     }
     const int w = (mi % MAJOR_EVERY == 0) ? TICK_MAJOR_W : TICK_MINOR_W;
-    hTick(canvas, cx, zeroY - mi * GAUGE_SCALE, w);
+    const bool is_end = (mi == GAUGE_UP_MIN) || (mi == -GAUGE_DOWN_MIN);
+    hTick(canvas, cx, zeroY - mi * GAUGE_SCALE, w, /*extend_right=*/is_end);
   }
 
-  // 3. Zero / Fahrplan baseline (widest tick).
-  hTick(canvas, cx, zeroY, ZERO_W);
+  // 3. Zero / Fahrplan baseline (widest tick), also extended one px right.
+  hTick(canvas, cx, zeroY, ZERO_W, /*extend_right=*/true);
 
   // 4. No live match to compare against → hollow square on the zero line,
   //    and nothing else. Every slot shows either this or a bar, never bare.

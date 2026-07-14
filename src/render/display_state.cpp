@@ -63,8 +63,68 @@ void drawBoot(render::Canvas &canvas, const char *version_str) {
   }
 }
 
+// The KEIN-EMPFANG diagnostic block sits between the sub line and the footer:
+// one "gesucht:" line naming the configured SSIDs (or a case-mismatch "did you
+// mean?" hint when one was detected), then the list of networks actually in
+// range. Y anchors are hand-placed to clear FOOT_Y with 3 rows.
+constexpr int OFFLINE_WANTED_Y = SUB_Y + 20;
+constexpr int OFFLINE_FOUND_Y0 = OFFLINE_WANTED_Y + 16;
+constexpr int OFFLINE_SSID_ROWS = 3;
+constexpr int OFFLINE_SSID_ROW_H = 12;
+
+// When a configured SSID matched a visible one only ignoring case, that IS the
+// diagnosis — show both spellings instead of the plain "gesucht:" line. Returns
+// true if it drew the hint (caller then skips drawWantedSsids).
+bool drawCaseMismatchHint(render::Canvas &canvas,
+                          const SsidCaseMismatch &mismatch) {
+  if (!mismatch.found) {
+    return false;
+  }
+  // Worst case: fixed text (~19) + two full-length SSIDs (NET_SSID_BUF each).
+  char line[24 + 2 * NET_SSID_BUF];
+  std::snprintf(line, sizeof(line), "Schreibweise? \"%s\" vs \"%s\"",
+                mismatch.configured, mismatch.visible);
+  drawCentered(canvas, FontRole::Fullscreen_Foot, OFFLINE_WANTED_Y, line);
+  return true;
+}
+
+// "gesucht: A-NET2" (or "gesucht: A-NET2, Fallback") — the SSIDs the device is
+// configured to look for. Skipped when none were configured.
+void drawWantedSsids(render::Canvas &canvas, const ConfiguredSsids &wanted) {
+  if (wanted.count <= 0) {
+    return;
+  }
+  char line[SUB_BUF_CAP];
+  int n = std::snprintf(line, sizeof(line), "gesucht: %s", wanted.ssid[0]);
+  for (int i = 1; i < wanted.count && n > 0 && n < (int)sizeof(line); ++i) {
+    n += std::snprintf(line + n, sizeof(line) - n, ", %s", wanted.ssid[i]);
+  }
+  drawCentered(canvas, FontRole::Fullscreen_Foot, OFFLINE_WANTED_Y, line);
+}
+
+void drawVisibleAps(render::Canvas &canvas, const ScanResult &aps) {
+  const int rows =
+      aps.count < OFFLINE_SSID_ROWS ? aps.count : OFFLINE_SSID_ROWS;
+  if (rows <= 0) {
+    drawCentered(canvas, FontRole::Fullscreen_Foot, OFFLINE_FOUND_Y0,
+                 "Keine Netze in Reichweite");
+    return;
+  }
+  drawCentered(canvas, FontRole::Fullscreen_Foot, OFFLINE_FOUND_Y0,
+               "Gefundene Netze:");
+  for (int i = 0; i < rows; ++i) {
+    char line[SUB_BUF_CAP];
+    std::snprintf(line, sizeof(line), "%s  %ddBm", aps.aps[i].ssid,
+                  aps.aps[i].rssi_dbm);
+    drawCentered(canvas, FontRole::Fullscreen_Foot,
+                 OFFLINE_FOUND_Y0 + (i + 1) * OFFLINE_SSID_ROW_H, line);
+  }
+}
+
 void drawOffline(render::Canvas &canvas, std::time_t last_fetch_at,
-                 int retry_in_s) {
+                 int retry_in_s, const ScanResult &visible_aps,
+                 const ConfiguredSsids &wanted_ssids,
+                 const SsidCaseMismatch &case_mismatch) {
   drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
                   GlyphBitmap{GLYPH_EXCLAMATION_90, GLYPH_W, GLYPH_H});
   drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "KEIN EMPFANG");
@@ -76,6 +136,13 @@ void drawOffline(render::Canvas &canvas, std::time_t last_fetch_at,
     std::snprintf(sub_buf, sizeof(sub_buf), "Letzte Aktualisierung %s", hhmm);
   }
   drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y, sub_buf);
+
+  // A case-only mismatch is the actionable diagnosis; it replaces the plain
+  // "gesucht:" line when present.
+  if (!drawCaseMismatchHint(canvas, case_mismatch)) {
+    drawWantedSsids(canvas, wanted_ssids);
+  }
+  drawVisibleAps(canvas, visible_aps);
 
   char foot_buf[SUB_BUF_CAP];
   if (retry_in_s > 0) {
@@ -104,6 +171,27 @@ void drawAuth(render::Canvas &canvas, const char *aid_short, int http_code) {
     std::snprintf(foot_buf, sizeof(foot_buf), "AID %s · ERR ---", aid);
   }
   drawCentered(canvas, FontRole::Fullscreen_Foot, FOOT_Y, foot_buf);
+}
+
+void drawWifiAuth(render::Canvas &canvas, const ConfiguredSsids &wanted_ssids) {
+  drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
+                  GlyphBitmap{GLYPH_EXCLAMATION_90, GLYPH_W, GLYPH_H});
+  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "WLAN-PASSWORT");
+
+  // Name the network whose handshake failed so the fix is unambiguous. Sized
+  // for the fixed text (~26) plus a full-length SSID (NET_SSID_BUF).
+  char sub_buf[32 + NET_SSID_BUF];
+  if (wanted_ssids.count > 0) {
+    std::snprintf(sub_buf, sizeof(sub_buf), "Falsches Passwort für \"%s\"",
+                  wanted_ssids.ssid[0]);
+  } else {
+    std::snprintf(sub_buf, sizeof(sub_buf), "Falsches WLAN-Passwort");
+  }
+  drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y, sub_buf);
+
+  // Terminal state — say so, so the user knows waiting won't help.
+  drawCentered(canvas, FontRole::Fullscreen_Foot, FOOT_Y,
+               "Passwort in secrets.h korrigieren · kein Retry");
 }
 
 void drawQuiet(render::Canvas &canvas) {

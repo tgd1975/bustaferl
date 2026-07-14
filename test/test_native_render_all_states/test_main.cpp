@@ -144,9 +144,80 @@ void test_dump_state_offline() {
   in.state = DisplayState::Offline;
   in.last_fetch_at = 1700000000;
   in.retry_in_s = 42;
+  // Visible APs the scan saw — rendered as the "Gefundene Netze" list.
+  in.visible_aps.count = 2;
+  std::snprintf(in.visible_aps.aps[0].ssid, sizeof(in.visible_aps.aps[0].ssid),
+                "%s", "A-NET2");
+  in.visible_aps.aps[0].rssi_dbm = -67;
+  in.visible_aps.aps[0].channel = 6;
+  std::snprintf(in.visible_aps.aps[1].ssid, sizeof(in.visible_aps.aps[1].ssid),
+                "%s", "Nachbar-WLAN");
+  in.visible_aps.aps[1].rssi_dbm = -82;
+  in.visible_aps.aps[1].channel = 11;
+  // SSIDs the device is looking for — shown on the "gesucht:" line.
+  in.wanted_ssids.count = 1;
+  std::snprintf(in.wanted_ssids.ssid[0], sizeof(in.wanted_ssids.ssid[0]), "%s",
+                "Zuhause-WLAN");
   renderFrame(in, fb);
   TEST_ASSERT_TRUE(writePgm(fb, "06-offline.pgm"));
   TEST_ASSERT_GREATER_THAN(100, countPaperPixels(fb));
+}
+
+// Case-mismatch variant of the KEIN-EMPFANG screen: the "did you mean?" hint
+// replaces the plain "gesucht:" line. Dumped so the layout can be reviewed.
+void test_dump_state_offline_case_mismatch() {
+  Frame fb;
+  RenderInput in;
+  in.state = DisplayState::Offline;
+  in.last_fetch_at = 1700000000;
+  in.retry_in_s = 42;
+  in.visible_aps.count = 1;
+  std::snprintf(in.visible_aps.aps[0].ssid, sizeof(in.visible_aps.aps[0].ssid),
+                "%s", "a-net2");
+  in.visible_aps.aps[0].rssi_dbm = -63;
+  in.wanted_ssids.count = 1;
+  std::snprintf(in.wanted_ssids.ssid[0], sizeof(in.wanted_ssids.ssid[0]), "%s",
+                "A-NET2");
+  in.case_mismatch.found = true;
+  std::snprintf(in.case_mismatch.configured,
+                sizeof(in.case_mismatch.configured), "%s", "A-NET2");
+  std::snprintf(in.case_mismatch.visible, sizeof(in.case_mismatch.visible),
+                "%s", "a-net2");
+  renderFrame(in, fb);
+  TEST_ASSERT_TRUE(writePgm(fb, "06b-offline-case.pgm"));
+  TEST_ASSERT_GREATER_THAN(100, countPaperPixels(fb));
+}
+
+// The visible-AP list must actually reach the glass: renderFrame paints text
+// in paper (1) on an ink (0) background, so more SSID rows ⇒ more paper pixels
+// than fewer rows under the same "Gefundene Netze" header. (Comparing against
+// an empty scan is confounded — the no-networks fallback line is itself long
+// text.)
+void test_offline_ssid_list_adds_ink() {
+  RenderInput one;
+  one.state = DisplayState::Offline;
+  one.visible_aps.count = 1;
+  std::snprintf(one.visible_aps.aps[0].ssid,
+                sizeof(one.visible_aps.aps[0].ssid), "%s", "A-NET2");
+  one.visible_aps.aps[0].rssi_dbm = -67;
+  Frame fb_one;
+  renderFrame(one, fb_one);
+
+  RenderInput three = one;
+  three.visible_aps.count = 3;
+  std::snprintf(three.visible_aps.aps[1].ssid,
+                sizeof(three.visible_aps.aps[1].ssid), "%s", "Nachbar-WLAN");
+  three.visible_aps.aps[1].rssi_dbm = -82;
+  std::snprintf(three.visible_aps.aps[2].ssid,
+                sizeof(three.visible_aps.aps[2].ssid), "%s", "Gast-Netz");
+  three.visible_aps.aps[2].rssi_dbm = -90;
+  Frame fb_three;
+  renderFrame(three, fb_three);
+
+  // Two extra SSID rows ⇒ more paper text ⇒ strictly more paper pixels.
+  const int paper_one = countPaperPixels(fb_one);
+  const int paper_three = countPaperPixels(fb_three);
+  TEST_ASSERT_TRUE(paper_three > paper_one);
 }
 
 void test_dump_state_auth() {
@@ -160,18 +231,28 @@ void test_dump_state_auth() {
   TEST_ASSERT_GREATER_THAN(100, countPaperPixels(fb));
 }
 
+void test_dump_state_wifi_auth() {
+  Frame fb;
+  RenderInput in;
+  in.state = DisplayState::WifiAuth;
+  in.wanted_ssids.count = 1;
+  std::snprintf(in.wanted_ssids.ssid[0], sizeof(in.wanted_ssids.ssid[0]), "%s",
+                "a-net2");
+  renderFrame(in, fb);
+  TEST_ASSERT_TRUE(writePgm(fb, "08-wifi-auth.pgm"));
+  TEST_ASSERT_GREATER_THAN(100, countPaperPixels(fb));
+}
+
 void test_fullscreen_states_each_produce_distinct_frames() {
-  // Boot / Quiet / Offline / Auth all use their own fullscreen renderer
-  // (different glyph + text), so every pairwise diff must be non-zero.
+  // Boot / Quiet / Offline / Auth / WifiAuth all use their own fullscreen
+  // renderer (different glyph + text), so every pairwise diff must be non-zero.
   // Stale / Night / Normal share drawBoard() with the same input → they
   // intentionally render identically here; differentiation happens via the
   // state-selector picking the right state, not by the renderer painting
   // different pixels for the same data. Schritt 7.8 trade-off accepted.
   constexpr DisplayState fullscreen[] = {
-      DisplayState::Boot,
-      DisplayState::Quiet,
-      DisplayState::Offline,
-      DisplayState::Auth,
+      DisplayState::Boot, DisplayState::Quiet,    DisplayState::Offline,
+      DisplayState::Auth, DisplayState::WifiAuth,
   };
   constexpr int n = sizeof(fullscreen) / sizeof(fullscreen[0]);
   Frame frames[n];
@@ -305,7 +386,10 @@ int main(int, char **) {
   RUN_TEST(test_dump_state_night);
   RUN_TEST(test_dump_state_quiet);
   RUN_TEST(test_dump_state_offline);
+  RUN_TEST(test_dump_state_offline_case_mismatch);
+  RUN_TEST(test_offline_ssid_list_adds_ink);
   RUN_TEST(test_dump_state_auth);
+  RUN_TEST(test_dump_state_wifi_auth);
   RUN_TEST(test_fullscreen_states_each_produce_distinct_frames);
   RUN_TEST(test_stale_differs_from_normal_with_same_data);
   RUN_TEST(test_every_state_fits_persistence_cap);

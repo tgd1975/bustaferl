@@ -182,7 +182,7 @@ Reihenfolge nach Power-on-Reset, wenn weder Framebuffer noch RTC-Zeit gültig si
 
 `BOOT_INFO_SHOW_S = 0` schaltet den Boot-Check ab; dann deep-cleant Schritt 5 selbst.
 
-Wenn Schritt 1 oder 2 fehlschlägt: 60 s warten, retry. Nach 5 Fehlversuchen: einmaliges Striche-Bild rendern mit Hinweis „Start fehlgeschlagen", dann 5 min schlafen und alles neu versuchen.
+Wenn Schritt 1 oder 2 fehlschlägt (kein WLAN erreichbar): den **KEIN-EMPFANG**-Screen rendern — mit den gesuchten SSIDs, den tatsächlich gefundenen (nicht passenden) Netzen und, falls erkannt, einem Groß-/Kleinschreibungs-Hinweis. Danach 60 s schlafen und erneut versuchen. Solange das Gerät **noch nie** verbunden war (`has_any_data == false`), bleibt es dauerhaft auf dem Cold-Path (siehe `setup()`-Routing): Der Screen wird **einmal pro Minute** mit dem aktuellen Scan-Ergebnis aufgefrischt (erste Anzeige Deep-Clean, danach Light-Full), bis WLAN auftaucht — der nächste Cold-Cycle verbindet sich dann und läuft die volle Boot-Sequenz durch. Es gibt kein endgültiges „Aufgeben"; der Retry-Zähler steigt nur bis zum Cap (für die Boot-Check-„Versuch N"-Anzeige) und ändert die Kadenz nicht mehr.
 
 Erkennung „Cold Boot vs. Wake from Deep Sleep": `esp_sleep_get_wakeup_cause()`. Bei `ESP_SLEEP_WAKEUP_UNDEFINED` ist es Cold Boot.
 
@@ -417,7 +417,7 @@ Die WiFi-Regulierungsdomäne ist auf Österreich gepinnt (2,4 GHz Kanäle 1–13
 | `LIGHT_FULL_INTERVAL_S` | 3600 | Light Full spätestens nach dieser Zeit |
 | `NTP_INTERVAL_S` | 86400 | Sekunden zwischen NTP-Syncs |
 | `COLD_BOOT_RETRY_S` | 60 | Retry-Intervall WiFi/NTP beim Cold Boot |
-| `COLD_BOOT_MAX_RETRIES` | 5 | Retries beim Cold Boot bis Fehlerbild |
+| `COLD_BOOT_MAX_RETRIES` | 5 | Cap des Cold-Boot-Versuchszählers (Boot-Check-Anzeige); danach hält der Zähler, Retry-Kadenz bleibt `COLD_BOOT_RETRY_S` |
 | `FILTER_HEALTH_DEAD_AFTER` | 3 | erfolglose Filter-Matches bis Fehlerzustand |
 | `RESCUE_WINDOW_START_S` / `_END_S` | 20 / 40 | Rescue-Fetch-Fenster nach Display-Update |
 | `RESCUE_MAX_ATTEMPTS` | 3 | max. Komplett-Fetches im Rescue-Fenster |

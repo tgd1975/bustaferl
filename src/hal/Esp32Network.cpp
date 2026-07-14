@@ -2,6 +2,8 @@
 
 #ifndef NATIVE_BUILD
 
+#include "../logic/ssid_match.h"
+
 #include <HTTPClient.h>
 #include <Stream.h>
 #include <WiFi.h>
@@ -174,10 +176,47 @@ private:
   bool done_;
 };
 
+// Latched by the WiFi event handler when the AP rejects our credentials: the
+// SSID was found and association started, but the 4-way WPA handshake failed or
+// the AP sent an auth-related disconnect. File-scope because the ESP event
+// callback is a plain C function pointer with no user context; there is a
+// single Esp32Network instance in production, so this is safe.
+volatile bool g_wifi_auth_failed = false;
+
+void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  if (event != ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    return;
+  }
+  // Reason codes that mean "the AP found us but refused our credentials" — a
+  // wrong PSK. Anything else (beacon timeout, AP gone, assoc-leave) is a normal
+  // transient we keep retrying. 4WAY_HANDSHAKE_TIMEOUT (15) is the field-
+  // observed wrong-password symptom; the others are the sibling auth failures.
+  const uint8_t reason = info.wifi_sta_disconnected.reason;
+  switch (reason) {
+  case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+  case WIFI_REASON_HANDSHAKE_TIMEOUT:
+  case WIFI_REASON_MIC_FAILURE:
+  case WIFI_REASON_AUTH_FAIL:
+  case WIFI_REASON_AUTH_EXPIRE:
+    g_wifi_auth_failed = true;
+    break;
+  default:
+    break;
+  }
+}
+
 } // namespace
 
 void Esp32Network::addAp(const char *ssid, const char *password) {
   wifi_.addAP(ssid, password);
+  // Remember the SSID name (not the password) so the "KEIN EMPFANG" screen can
+  // show which networks the device was looking for. Extra APs beyond the cap
+  // still get added to WiFiMulti; they just aren't listed on-screen.
+  if (ssid != nullptr && configured_.count < MAX_CONFIGURED_APS) {
+    std::snprintf(configured_.ssid[configured_.count],
+                  sizeof(configured_.ssid[0]), "%s", ssid);
+    ++configured_.count;
+  }
 }
 
 bool Esp32Network::connect(unsigned timeout_ms) {
@@ -192,10 +231,80 @@ bool Esp32Network::connect(unsigned timeout_ms) {
                                      /*max_tx_power=*/0,
                                      /*policy=*/WIFI_COUNTRY_POLICY_MANUAL};
   esp_wifi_set_country(&at_country);
-  return wifi_.run(timeout_ms) == WL_CONNECTED;
+
+  // Watch for the auth-failure disconnect reason during this attempt. Register
+  // once; clear the latch each call so lastFailure() reflects only this run.
+  if (!event_registered_) {
+    WiFi.onEvent(onWifiEvent);
+    event_registered_ = true;
+  }
+  g_wifi_auth_failed = false;
+  last_failure_ = WifiFailure::None;
+
+  if (wifi_.run(timeout_ms) == WL_CONNECTED) {
+    return true;
+  }
+  // Wrong password: the AP was found and association started, but the WPA
+  // handshake failed (reason 15 etc.). This is terminal — retrying with the
+  // same credentials can never succeed — so classify it distinctly and let the
+  // caller show the "WLAN-PASSWORT FALSCH" screen instead of the retry loop.
+  if (g_wifi_auth_failed) {
+    last_failure_ = WifiFailure::AuthFailed;
+    Serial.println("[net] WPA handshake failed — wrong password (terminal)");
+    return false;
+  }
+  last_failure_ = WifiFailure::NotFound;
+  // No configured AP matched. WiFiMulti only logs the count ("N networks
+  // found") — dump the actual SSIDs so a field diagnosis can tell whether the
+  // home AP is simply absent, renamed, or on an out-of-range channel. This
+  // re-scans (WiFiMulti already discarded its results — see scanVisible()); the
+  // "KEIN EMPFANG" screen re-scans the same way.
+  ScanResult scan = scanVisible();
+  if (scan.count == 0) {
+    Serial.println("[net] no matching AP; scan results unavailable");
+    return false;
+  }
+  Serial.printf("[net] no matching AP; %d visible:\n", scan.count);
+  for (int i = 0; i < scan.count; ++i) {
+    Serial.printf("[net]   \"%s\" ch%d %ddBm\n", scan.aps[i].ssid,
+                  scan.aps[i].channel, scan.aps[i].rssi_dbm);
+  }
+  // Case-only mismatch is the common footgun: 802.11 SSIDs are case-sensitive
+  // and WiFiMulti compares them exactly, so a configured "A-NET2" never matches
+  // a broadcast "a-net2" even though the AP is right there. Call it out.
+  SsidCaseMismatch cm = findCaseMismatch(configured_, scan);
+  if (cm.found) {
+    Serial.printf("[net] CASE MISMATCH: looking for \"%s\" but found \"%s\" "
+                  "(SSIDs are case-sensitive — fix casing in secrets.h)\n",
+                  cm.configured, cm.visible);
+  }
+  return false;
 }
 
 bool Esp32Network::isConnected() { return WiFi.status() == WL_CONNECTED; }
+
+ScanResult Esp32Network::scanVisible() {
+  ScanResult r;
+  // Run our own scan — do NOT rely on WiFiMulti's results. WiFiMulti::run()
+  // calls WiFi.scanDelete() before it returns (even on the "no matching wifi
+  // found" path), so scanComplete() reads back empty by the time we get here.
+  // A fresh synchronous scan keeps its results valid until the next scan, so
+  // the SSIDs below (and the "KEIN EMPFANG" list) actually have data.
+  int found = WiFi.scanNetworks();
+  for (int i = 0; i < found && r.count < SCAN_MAX_APS; ++i) {
+    ScanEntry &e = r.aps[r.count];
+    std::snprintf(e.ssid, sizeof(e.ssid), "%s", WiFi.SSID(i).c_str());
+    e.rssi_dbm = static_cast<std::int8_t>(WiFi.RSSI(i));
+    e.channel = static_cast<std::uint8_t>(WiFi.channel(i));
+    ++r.count;
+  }
+  WiFi.scanDelete(); // free the scan RAM; we've copied what we need
+  return r;
+}
+
+ConfiguredSsids Esp32Network::configuredSsids() { return configured_; }
+
+WifiFailure Esp32Network::lastFailure() { return last_failure_; }
 
 NetInfo Esp32Network::connectionInfo() {
   NetInfo ni;

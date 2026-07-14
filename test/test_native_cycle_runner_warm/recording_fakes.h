@@ -133,15 +133,33 @@ public:
     out = body_;
     return {true, 200};
   }
+  ScanResult scanVisible() override {
+    trace_.emplace_back("net.scanVisible");
+    ++scan_visible_calls;
+    return scan_;
+  }
+  ConfiguredSsids configuredSsids() override { return configured_; }
+  WifiFailure lastFailure() override { return failure_; }
+  // Seed the SSIDs a failed connect "saw" / the SSIDs it looks for, so the
+  // Offline-screen propagation can be asserted.
+  void seedScan(const ScanResult &s) { scan_ = s; }
+  void seedConfigured(const ConfiguredSsids &c) { configured_ = c; }
+  // Seed the classified failure so the terminal wrong-password path can be
+  // driven (wifi_ok must be false for connect() to fail).
+  void seedFailure(WifiFailure f) { failure_ = f; }
 
 private:
   std::vector<std::string> &trace_;
   bool wifi_ok_;
   bool http_ok_;
   std::string body_;
+  ScanResult scan_;
+  ConfiguredSsids configured_;
+  WifiFailure failure_ = WifiFailure::None;
 
 public:
   int http_calls = 0;
+  int scan_visible_calls = 0;
 };
 
 class RecordingSleep : public ISleep {
@@ -282,10 +300,16 @@ public:
     fb.clear(true);
     fb.setPixel(seq_ % Frame::width, (seq_ / Frame::width) % Frame::height,
                 false);
+    last_visible_aps = in.visible_aps;
+    last_wanted_ssids = in.wanted_ssids;
+    last_case_mismatch = in.case_mismatch;
   }
   int calls = 0;
   bool freeze = false;
   DisplayState last_state = DisplayState::Normal;
+  ScanResult last_visible_aps;
+  ConfiguredSsids last_wanted_ssids;
+  SsidCaseMismatch last_case_mismatch;
 
 private:
   std::vector<std::string> &trace_;

@@ -2,7 +2,9 @@
 #define BUSTAFERL_INETWORK_H
 
 #include "NetInfo.h"
+#include "ScanResult.h"
 
+#include <cstdint>
 #include <string>
 
 #ifndef NATIVE_BUILD
@@ -20,6 +22,17 @@ namespace bustaferl {
 struct HttpResult {
   bool ok = false;
   int http_status = 0;
+};
+
+// Why the last connect() attempt failed. `AuthFailed` is terminal — the SSID
+// was found and association started, but the WPA handshake failed (wrong
+// password): retrying cannot fix it, so the caller stops and shows a dedicated
+// screen. `NotFound` (no matching AP in range) and `None` (connected, or not
+// yet attempted) keep the normal retry loop.
+enum class WifiFailure : std::uint8_t {
+  None,       // connected, or connect() not yet called
+  NotFound,   // no configured SSID in range → keep retrying
+  AuthFailed, // SSID found but WPA handshake failed (wrong password) → terminal
 };
 
 class INetwork {
@@ -40,6 +53,21 @@ public:
   // Defaulted to "no info" so host fakes and the native runtime — which never
   // associate — need no override. Esp32Network fills it from the WiFi driver.
   virtual NetInfo connectionInfo() { return NetInfo{}; }
+
+  // Visible APs from the most recent scan (strongest first), for the
+  // "KEIN EMPFANG" screen. Defaulted to empty so host fakes and the native
+  // runtime need no override; Esp32Network reads its cached scan results.
+  virtual ScanResult scanVisible() { return ScanResult{}; }
+
+  // The SSIDs the device is configured to connect to, for the "KEIN EMPFANG"
+  // screen's "gesucht:" line. Defaulted to empty; Esp32Network records them as
+  // addAp() is called.
+  virtual ConfiguredSsids configuredSsids() { return ConfiguredSsids{}; }
+
+  // Why the most recent connect() failed. Lets the cold path tell a recoverable
+  // "no AP in range" (keep retrying) apart from a terminal "wrong password"
+  // (WPA handshake failed). Defaulted to None for host fakes.
+  virtual WifiFailure lastFailure() { return WifiFailure::None; }
 
 #ifndef NATIVE_BUILD
   // Streaming GET: invokes `consumer(stream)` with the response body

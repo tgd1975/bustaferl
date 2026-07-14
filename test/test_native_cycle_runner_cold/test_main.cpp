@@ -1,11 +1,12 @@
 // Tier 2 — call-sequence recording for runColdCycle. Cold path is rarer in
 // practice but the most dangerous failure mode: a bad cold cycle leaves the
 // device in a guru-meditation loop without a panel update. Three variants:
-// happy (Ok), retry_later, give_up.
+// happy (Ok) vs the no-wifi loop (first paint, refresh, counter cap).
 
 #include "../test_native_cycle_runner_warm/recording_fakes.h"
 #include "logic/cycle_runner.h"
 
+#include <cstdio>
 #include <unity.h>
 
 using namespace bustaferl;
@@ -48,14 +49,18 @@ struct ColdFixture {
 void setUp() {}
 void tearDown() {}
 
-void test_cold_happy_deep_cleans_and_renders_once() {
+void test_cold_happy_deep_cleans_and_renders() {
   ColdFixture fx(/*wifi_ok=*/true, /*http_ok=*/true, /*retries=*/0);
   CycleDeps deps = fx.deps();
   runColdCycle(deps, fx.meta);
 
-  // Cold path always ends with a deepClean (known-good panel) and exactly
-  // one renderer.render call followed by a deepSleep.
-  TEST_ASSERT_EQUAL(1, fx.renderer.calls);
+  // With no trusted frame on glass, the cold path opens with the Boot screen
+  // (render + lightFull) so the user sees "loading…" before WiFi/NTP run, then
+  // renders the real board. Two renderer.render calls (boot + board). The
+  // boot-check dashboard (default boot_info_show_s=15) deep-cleans once, and
+  // both the boot screen and finishColdCycle lightFull → two lightFulls.
+  TEST_ASSERT_EQUAL(2, fx.renderer.calls);
+  TEST_ASSERT_EQUAL(2, fx.display.light_full_calls);
   TEST_ASSERT_EQUAL(1, fx.display.deep_clean_calls);
   TEST_ASSERT_EQUAL(0, fx.display.draw_partial_calls);
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
@@ -66,43 +71,145 @@ void test_cold_happy_deep_cleans_and_renders_once() {
   TEST_ASSERT_EQUAL(0, fx.meta.cold_boot_retries);
 }
 
-void test_cold_retry_later_increments_retries_and_short_sleeps() {
+// First cold attempt with WiFi down: boot screen paints first, then the
+// no-network screen deep-cleans over it (first appearance), the counter
+// advances, and the device sleeps the 60 s retry interval — NOT a longer
+// give-up backoff. The screen stays up and refreshes each minute until WiFi
+// returns.
+void test_cold_no_wifi_first_paints_screen_and_retries_in_60s() {
   ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*retries=*/0);
   CycleDeps deps = fx.deps();
   runColdCycle(deps, fx.meta);
 
-  // No render, no display work: the cycle aborted after the failed boot.
-  TEST_ASSERT_EQUAL(0, fx.renderer.calls);
-  TEST_ASSERT_EQUAL(0, fx.display.deep_clean_calls);
-  // Counter advanced.
+  // Boot screen (lightFull) + KEIN EMPFANG (deepClean) = 2 renders.
+  TEST_ASSERT_EQUAL(2, fx.renderer.calls);
+  TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
+  TEST_ASSERT_EQUAL(1, fx.display.light_full_calls); // boot screen
+  TEST_ASSERT_EQUAL(1, fx.display.deep_clean_calls); // first KEIN EMPFANG
   TEST_ASSERT_EQUAL(1, fx.meta.cold_boot_retries);
-  TEST_ASSERT_GREATER_OR_EQUAL(1, fx.sleep.deep_sleep_calls);
+  TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
   TEST_ASSERT_EQUAL_UINT(fx.cfg.cold_boot_retry_s,
                          fx.sleep.last_deep_sleep_seconds);
 }
 
-void test_cold_give_up_overlay_and_reset() {
-  // After max retries, the boot sequencer returns GiveUp. Cycle renders
-  // the Offline fullscreen state, deep-cleans the panel, and zeroes the
-  // counter. (v2: the old StartFailed overlay folded into Offline.)
+// A later no-wifi cycle (retries > 0): boot screen suppressed, KEIN EMPFANG
+// refreshes with a light single-flash (not another deep clean), still 60 s.
+void test_cold_no_wifi_refresh_is_light_full() {
+  ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*retries=*/2);
+  CycleDeps deps = fx.deps();
+  runColdCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(1, fx.renderer.calls); // only KEIN EMPFANG
+  TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
+  TEST_ASSERT_EQUAL(1, fx.display.light_full_calls); // refresh, not deep clean
+  TEST_ASSERT_EQUAL(0, fx.display.deep_clean_calls);
+  TEST_ASSERT_EQUAL(3, fx.meta.cold_boot_retries); // advanced 2 -> 3
+  TEST_ASSERT_EQUAL_UINT(fx.cfg.cold_boot_retry_s,
+                         fx.sleep.last_deep_sleep_seconds);
+}
+
+// The retry counter holds at the cap instead of wrapping while WiFi stays down.
+void test_cold_no_wifi_counter_holds_at_cap() {
   ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true,
                  /*retries=*/DEFAULT_COLD_BOOT_MAX_RETRIES);
   CycleDeps deps = fx.deps();
   runColdCycle(deps, fx.meta);
 
-  TEST_ASSERT_EQUAL(1, fx.renderer.calls);
   TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
-  TEST_ASSERT_EQUAL(1, fx.display.deep_clean_calls);
-  TEST_ASSERT_EQUAL(0, fx.meta.cold_boot_retries);
+  TEST_ASSERT_EQUAL(DEFAULT_COLD_BOOT_MAX_RETRIES, fx.meta.cold_boot_retries);
   TEST_ASSERT_FALSE(fx.meta.framebuffer_valid);
-  TEST_ASSERT_EQUAL_UINT(fx.cfg.cold_boot_giveup_sleep_s,
+  TEST_ASSERT_EQUAL_UINT(fx.cfg.cold_boot_retry_s,
+                         fx.sleep.last_deep_sleep_seconds);
+}
+
+// The no-network screen carries both the SSIDs the failed scan saw and the
+// SSIDs the device was looking for, so a field diagnosis can read the mismatch
+// off the panel.
+void test_cold_no_wifi_screen_carries_visible_ssids() {
+  ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true,
+                 /*retries=*/DEFAULT_COLD_BOOT_MAX_RETRIES);
+  ScanResult scan;
+  scan.count = 2;
+  std::snprintf(scan.aps[0].ssid, sizeof(scan.aps[0].ssid), "%s", "A-NET2");
+  scan.aps[0].rssi_dbm = -67;
+  std::snprintf(scan.aps[1].ssid, sizeof(scan.aps[1].ssid), "%s", "Nachbar");
+  scan.aps[1].rssi_dbm = -80;
+  fx.net.seedScan(scan);
+
+  ConfiguredSsids wanted;
+  wanted.count = 1;
+  std::snprintf(wanted.ssid[0], sizeof(wanted.ssid[0]), "%s", "Zuhause-WLAN");
+  fx.net.seedConfigured(wanted);
+
+  CycleDeps deps = fx.deps();
+  runColdCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
+  TEST_ASSERT_EQUAL(2, fx.renderer.last_visible_aps.count);
+  TEST_ASSERT_EQUAL_STRING("A-NET2", fx.renderer.last_visible_aps.aps[0].ssid);
+  TEST_ASSERT_EQUAL_STRING("Nachbar", fx.renderer.last_visible_aps.aps[1].ssid);
+  TEST_ASSERT_EQUAL(1, fx.renderer.last_wanted_ssids.count);
+  TEST_ASSERT_EQUAL_STRING("Zuhause-WLAN",
+                           fx.renderer.last_wanted_ssids.ssid[0]);
+  // Configured name shares nothing with the visible ones → no case-mismatch.
+  TEST_ASSERT_FALSE(fx.renderer.last_case_mismatch.found);
+}
+
+// The exact field case: configured "A-NET2" while the AP broadcasts "a-net2".
+// The no-network render must carry the case-mismatch hint to the panel.
+void test_cold_no_wifi_screen_flags_case_mismatch() {
+  ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true,
+                 /*retries=*/DEFAULT_COLD_BOOT_MAX_RETRIES);
+  ScanResult scan;
+  scan.count = 1;
+  std::snprintf(scan.aps[0].ssid, sizeof(scan.aps[0].ssid), "%s", "a-net2");
+  scan.aps[0].rssi_dbm = -63;
+  fx.net.seedScan(scan);
+
+  ConfiguredSsids wanted;
+  wanted.count = 1;
+  std::snprintf(wanted.ssid[0], sizeof(wanted.ssid[0]), "%s", "A-NET2");
+  fx.net.seedConfigured(wanted);
+
+  CycleDeps deps = fx.deps();
+  runColdCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
+  TEST_ASSERT_TRUE(fx.renderer.last_case_mismatch.found);
+  TEST_ASSERT_EQUAL_STRING("A-NET2", fx.renderer.last_case_mismatch.configured);
+  TEST_ASSERT_EQUAL_STRING("a-net2", fx.renderer.last_case_mismatch.visible);
+}
+
+// Wrong WiFi password (WPA handshake failed): terminal. The cold cycle renders
+// the dedicated WifiAuth screen naming the SSID, deep-cleans, resets the retry
+// counter, and sleeps the LONG auth interval — not the 60 s no-network loop.
+void test_cold_wrong_password_is_terminal() {
+  ColdFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*retries=*/0);
+  fx.net.seedFailure(WifiFailure::AuthFailed);
+  ConfiguredSsids wanted;
+  wanted.count = 1;
+  std::snprintf(wanted.ssid[0], sizeof(wanted.ssid[0]), "%s", "a-net2");
+  fx.net.seedConfigured(wanted);
+
+  CycleDeps deps = fx.deps();
+  runColdCycle(deps, fx.meta);
+
+  TEST_ASSERT_EQUAL(DisplayState::WifiAuth, fx.renderer.last_state);
+  TEST_ASSERT_EQUAL_STRING("a-net2", fx.renderer.last_wanted_ssids.ssid[0]);
+  TEST_ASSERT_EQUAL(1, fx.display.deep_clean_calls);
+  TEST_ASSERT_EQUAL(0, fx.meta.cold_boot_retries); // not a retry-loop advance
+  TEST_ASSERT_EQUAL_UINT(fx.cfg.wifi_auth_sleep_s,
                          fx.sleep.last_deep_sleep_seconds);
 }
 
 int main(int, char **) {
   UNITY_BEGIN();
-  RUN_TEST(test_cold_happy_deep_cleans_and_renders_once);
-  RUN_TEST(test_cold_retry_later_increments_retries_and_short_sleeps);
-  RUN_TEST(test_cold_give_up_overlay_and_reset);
+  RUN_TEST(test_cold_happy_deep_cleans_and_renders);
+  RUN_TEST(test_cold_no_wifi_first_paints_screen_and_retries_in_60s);
+  RUN_TEST(test_cold_no_wifi_refresh_is_light_full);
+  RUN_TEST(test_cold_no_wifi_counter_holds_at_cap);
+  RUN_TEST(test_cold_no_wifi_screen_carries_visible_ssids);
+  RUN_TEST(test_cold_no_wifi_screen_flags_case_mismatch);
+  RUN_TEST(test_cold_wrong_password_is_terminal);
   return UNITY_END();
 }
