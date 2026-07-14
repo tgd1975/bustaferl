@@ -110,6 +110,38 @@ void test_classify_long_just_past_threshold() {
                         static_cast<int>(p));
 }
 
+void test_long_fires_at_threshold_while_still_held() {
+  // The whole point of the new semantics: Long is returned AT the threshold,
+  // not on release. With a very long hold (released only at 10 s) the verdict
+  // must come back at ~long_press_ms and the fake clock must NOT have advanced
+  // anywhere near the release time — proof we didn't spin until release.
+  FakeButton btn;
+  btn.release_at = 10000; // held far past the 2 s threshold
+  ButtonPress p = classifyHeld(btn, 2000);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(ButtonPress::Long),
+                        static_cast<int>(p));
+  // Returned shortly after the threshold, long before the 10 s release. The
+  // elapsed clock starts after the debounce settle (t0 = nowMs()
+  // post-debounce), so the latch fires at ~threshold + debounce + one poll step
+  // of slack — far short of the 10 s hold that a release-wait loop would have
+  // spun to.
+  TEST_ASSERT_TRUE_MESSAGE(btn.now <=
+                               2000 + BUTTON_DEBOUNCE_MS + BUTTON_POLL_MS,
+                           "Long must fire at the threshold, not on release");
+}
+
+void test_wait_for_release_blocks_until_line_high() {
+  // waitForRelease drains a still-held line so a Long verdict (returned while
+  // held) doesn't leave GPIO0 LOW when the caller re-arms the wake source.
+  FakeButton btn;
+  btn.release_at = 500;
+  waitForRelease(btn);
+  TEST_ASSERT_TRUE_MESSAGE(btn.now >= 500,
+                           "waitForRelease returned before the line went high");
+  TEST_ASSERT_FALSE_MESSAGE(btn.isPressed(),
+                            "line must read released after waitForRelease");
+}
+
 void test_init_runs_before_first_sample() {
   // init() must be called before the debounce sleep, and before the first
   // isPressed() poll. FakeButton counts ordering loosely (init_calls > 0 by
@@ -172,6 +204,8 @@ int main(int, char **) {
   RUN_TEST(test_classify_short_when_already_released_after_debounce);
   RUN_TEST(test_classify_short_exactly_below_threshold);
   RUN_TEST(test_classify_long_just_past_threshold);
+  RUN_TEST(test_long_fires_at_threshold_while_still_held);
+  RUN_TEST(test_wait_for_release_blocks_until_line_high);
   RUN_TEST(test_init_runs_before_first_sample);
   RUN_TEST(test_classify_press_single_short_no_second);
   RUN_TEST(test_classify_press_double_within_window);

@@ -530,6 +530,28 @@ void finishColdCycle(CycleDeps &deps, PersistedMeta &meta,
 
 } // namespace
 
+CycleKind selectCycle(WakeCause cause, uint8_t cold_boot_retries,
+                      bool has_any_data) {
+  if (cause == WakeCause::Button) {
+    return CycleKind::Button;
+  }
+  // The cold (boot-screen) path is only for a device with nothing to show yet:
+  //   - genuinely never fetched (!has_any_data), or
+  //   - still inside the cold retry loop (cold_boot_retries > 0), which exits
+  //     via deepSleep() and so wakes back as a Timer, not ColdBoot.
+  // Once the device has a board this returns Warm regardless of wake cause.
+  // That is deliberate for the ColdBoot cause specifically: ColdBoot means
+  // "reset, not a deep-sleep wake". A real power-on wipes RTC memory, so
+  // has_any_data is false and this is a true cold boot. But a brownout (WiFi-
+  // current spike), watchdog, panic or software reset during warm operation is
+  // ALSO reported as ColdBoot while leaving RTC — and thus has_any_data —
+  // intact. Routing that to the cold path is what re-flashed the boot screen
+  // mid-operation; gating on has_any_data sends it to a warm cycle that just
+  // reconnects and repaints the real board, no boot screen.
+  const bool needs_cold = cold_boot_retries > 0 || !has_any_data;
+  return needs_cold ? CycleKind::Cold : CycleKind::Warm;
+}
+
 bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,
                                  time_t last_deep_clean,
                                  const CycleConfig &cfg) {
@@ -937,6 +959,10 @@ void runButtonWake(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
   ButtonPress p = classifyPress(btn, deps.cfg.btn_long_press_ms,
                                 deps.cfg.btn_double_click_ms);
   if (p == ButtonPress::Long) {
+    // classifyHeld returned at the 3 s mark while the button is still down.
+    // Drain the hold before the reset re-arms EXT0/GPIO wake so a finger still
+    // on the button doesn't immediately re-wake the next sleep.
+    waitForRelease(btn);
     runBwReset(deps, meta);
   } else if (p == ButtonPress::Double) {
     runDiagMode(deps, btn, meta);
@@ -959,6 +985,10 @@ void pollButtonAndRunWarm(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
     ButtonPress p = classifyPress(btn, deps.cfg.btn_long_press_ms,
                                   deps.cfg.btn_double_click_ms);
     if (p == ButtonPress::Long) {
+      // Long fires at the timeout while still held — drain the hold before the
+      // reset + the warm cycle's light-sleep re-arms the GPIO wake, else the
+      // held-LOW line wakes it again for a second reset.
+      waitForRelease(btn);
       runBwReset(deps, meta);
     } else if (p == ButtonPress::Double) {
       runDiagMode(deps, btn, meta);

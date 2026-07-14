@@ -114,6 +114,30 @@ struct CycleDeps {
   bool deep_wake = false;
 };
 
+// Which cycle setup() should run for a given wake. Keeps the boot-screen-
+// showing cold path off any wake where the device already has data.
+enum class CycleKind : std::uint8_t {
+  Cold,   // runColdCycle: boot screen + WiFi/NTP boot sequence + first fetch
+  Warm,   // runWarmCycle: the routine fetch/render cycle
+  Button, // runButtonWake: classify the press, then a warm cycle
+};
+
+// Pure wake-cause → cycle router. Extracted from setup() so it is host-testable
+// (main.cpp is excluded from the native build, so its routing was never under
+// test — which is how the "boot screen during warm operation" regression got
+// in). `retries` / `has_any_data` come from the persisted meta.
+//
+// Key rule: the boot-screen cold path runs only when the device genuinely has
+// no board to show yet. WakeCause::ColdBoot is reported not just on a real
+// power-on but on ANY non-deep-sleep reset (brownout during a WiFi-current
+// spike, watchdog, panic, software reset). Those leave RTC memory — and thus
+// has_any_data — intact, so routing them to the cold path would re-flash the
+// boot screen mid-operation. When has_any_data is true we therefore route such
+// a reset to a warm cycle instead: it reconnects and repaints the real board
+// with no boot screen.
+CycleKind selectCycle(WakeCause cause, uint8_t cold_boot_retries,
+                      bool has_any_data);
+
 // Decides whether the next sleep is long enough + last clean is old enough to
 // promote the upcoming partial to a full deep clean. Pure data, host-testable.
 bool shouldPromoteToNightlyClean(unsigned next_sleep_s, time_t now,

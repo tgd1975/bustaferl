@@ -99,28 +99,25 @@ void setup() {
   CycleDeps deps = makeDeps(/*deep_wake=*/true);
 
   WakeCause cause = g_sleep.wakeupCause();
-  // A cold-boot retry exits via deepSleep(), so the wake comes back as a Timer,
-  // not ColdBoot. Two cases keep us on the cold path on a Timer wake:
-  //   1. cold_boot_retries > 0 — still inside the cold retry loop; the counter
-  //      must keep climbing rather than ping-ponging through warm cycles.
-  //   2. !has_any_data — the device has never completed a single fetch, so it
-  //      has no board to show. It stays on the cold path until the first
-  //      success flips has_any_data: boot screen → (WiFi down) KEIN EMPFANG,
-  //      re-scanned + repainted every COLD_BOOT_RETRY_S (60 s), until WiFi
-  //      appears and the next cold cycle connects and runs the full sequence.
-  //      Without this the next Timer wake would fall through to a warm cycle
-  //      that renders nothing and polls every 30 s.
-  const bool cold_boot_pending =
-      cause == WakeCause::Timer &&
-      (meta.cold_boot_retries > 0 || !meta.has_any_data);
-  if (cause == WakeCause::ColdBoot || cold_boot_pending) {
+  // Routing lives in selectCycle() (logic/cycle_runner) so it is host-testable
+  // — main.cpp is excluded from the native build. The cold (boot-screen) path
+  // runs only while the device has no board to show yet (never fetched, or
+  // still inside the cold retry loop). Crucially, a non-deep-sleep reset during
+  // warm operation (brownout on a WiFi-current spike, watchdog, panic) reports
+  // as ColdBoot but leaves RTC memory intact, so has_any_data is still true and
+  // selectCycle sends it to a warm cycle — no boot screen flashing mid-run.
+  switch (selectCycle(cause, meta.cold_boot_retries, meta.has_any_data)) {
+  case CycleKind::Cold:
     Serial.println("[boot] cold");
     runColdCycle(deps, meta);
-  } else if (cause == WakeCause::Button) {
+    break;
+  case CycleKind::Button:
     runButtonWake(deps, g_button, meta);
-  } else {
+    break;
+  case CycleKind::Warm:
     Serial.println("[boot] warm");
     runWarmCycle(deps, meta);
+    break;
   }
 }
 

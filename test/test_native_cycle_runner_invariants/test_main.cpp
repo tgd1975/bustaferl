@@ -127,6 +127,69 @@ void test_warm_in_quiet_period_uses_deep_sleep() {
   TEST_ASSERT_EQUAL(1, p.sleep.deep_sleep_calls);
 }
 
+// --- selectCycle: wake-cause → cycle routing (Bug: boot screen mid-op) ------
+
+// The regression: a brownout/watchdog/panic reset during warm operation is
+// reported by the SDK as ColdBoot (ESP_SLEEP_WAKEUP_UNDEFINED) but leaves RTC
+// memory — and thus has_any_data — intact. Routing that to the cold path
+// re-flashed the boot screen mid-operation. With data present it must go warm.
+void test_reset_with_data_routes_warm_no_bootscreen() {
+  TEST_ASSERT_TRUE(CycleKind::Warm == selectCycle(WakeCause::ColdBoot,
+                                                  /*retries=*/0,
+                                                  /*has_any_data=*/true));
+}
+
+// A genuine power-on wipes RTC: has_any_data is false → real cold boot.
+void test_first_power_on_routes_cold() {
+  TEST_ASSERT_TRUE(CycleKind::Cold == selectCycle(WakeCause::ColdBoot,
+                                                  /*retries=*/0,
+                                                  /*has_any_data=*/false));
+}
+
+// Inside the cold retry loop (retries>0) the wake comes back as a Timer; it
+// must stay cold so the boot sequence / counter keep running, even though no
+// board exists yet.
+void test_cold_retry_loop_stays_cold_on_timer() {
+  TEST_ASSERT_TRUE(CycleKind::Cold == selectCycle(WakeCause::Timer,
+                                                  /*retries=*/2,
+                                                  /*has_any_data=*/false));
+}
+
+// Steady state: routine timer wake with data present → warm.
+void test_timer_with_data_routes_warm() {
+  TEST_ASSERT_TRUE(CycleKind::Warm == selectCycle(WakeCause::Timer,
+                                                  /*retries=*/0,
+                                                  /*has_any_data=*/true));
+}
+
+// A button press always classifies as Button regardless of data state, so a
+// press on a never-fetched device still enters the button handler.
+void test_button_always_routes_button() {
+  for (bool has_data : {false, true}) {
+    for (uint8_t retries : {uint8_t{0}, uint8_t{3}}) {
+      TEST_ASSERT_TRUE(CycleKind::Button ==
+                       selectCycle(WakeCause::Button, retries, has_data));
+    }
+  }
+}
+
+// Property: the boot-screen (Cold) path is chosen ONLY when the device has no
+// board to show yet — never once has_any_data is true and no retry is pending.
+// This is the core invariant that keeps the boot screen out of warm operation.
+void test_cold_only_when_no_board() {
+  for (WakeCause cause :
+       {WakeCause::ColdBoot, WakeCause::Timer, WakeCause::Other}) {
+    for (uint8_t retries : {uint8_t{0}, uint8_t{1}, uint8_t{5}}) {
+      for (bool has_data : {false, true}) {
+        const bool cold =
+            selectCycle(cause, retries, has_data) == CycleKind::Cold;
+        const bool needs_cold = retries > 0 || !has_data;
+        TEST_ASSERT_EQUAL(needs_cold, cold);
+      }
+    }
+  }
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_warm_never_deep_sleeps_beyond_24h);
@@ -134,5 +197,11 @@ int main(int, char **) {
   RUN_TEST(test_warm_renders_at_most_once);
   RUN_TEST(test_cold_happy_always_deep_cleans_exactly_once);
   RUN_TEST(test_warm_in_quiet_period_uses_deep_sleep);
+  RUN_TEST(test_reset_with_data_routes_warm_no_bootscreen);
+  RUN_TEST(test_first_power_on_routes_cold);
+  RUN_TEST(test_cold_retry_loop_stays_cold_on_timer);
+  RUN_TEST(test_timer_with_data_routes_warm);
+  RUN_TEST(test_button_always_routes_button);
+  RUN_TEST(test_cold_only_when_no_board);
   return UNITY_END();
 }

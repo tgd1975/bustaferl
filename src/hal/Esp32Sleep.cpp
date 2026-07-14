@@ -5,6 +5,7 @@
 #include "../config.h"
 
 #include <driver/gpio.h>
+#include <driver/rtc_io.h>
 #include <esp_sleep.h>
 
 namespace bustaferl {
@@ -29,7 +30,18 @@ void Esp32Sleep::deepSleep(unsigned seconds) {
   esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(seconds) * 1000000ULL);
   // Also wake on the boot button (active-low). EXT0 is the wake-source that
   // supports deep sleep on a single RTC GPIO at a fixed level.
-  esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(BTN_BOOT_PIN), 0);
+  const gpio_num_t btn = static_cast<gpio_num_t>(BTN_BOOT_PIN);
+  esp_sleep_enable_ext0_wakeup(btn, 0);
+  // Hold GPIO0's pull-up through deep sleep. INPUT_PULLUP is a digital-domain
+  // config that dies when the IO domain powers down, leaving the pin to float —
+  // the field symptom was erratic/dropped button wakes ("sometimes works,
+  // sometimes not"). Configuring the RTC-domain pull (enable pull-up, disable
+  // pull-down) keeps the line firmly HIGH at rest so the button reliably pulls
+  // it LOW and EXT0 latches every press. rtc_gpio_hold_en latches the pad's
+  // config so it survives the power-down.
+  rtc_gpio_pullup_en(btn);
+  rtc_gpio_pulldown_dis(btn);
+  rtc_gpio_hold_en(btn);
   esp_deep_sleep_start();
   while (true) {
   } // unreachable

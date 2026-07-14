@@ -224,6 +224,16 @@ bool slotIsPlan(const Departure &d, bool stale) {
   return !stale && d.valid && d.source != DepartureSource::Realtime;
 }
 
+// Stable width of a HH:MM time cell for right-alignment. Every rendered time
+// is a fixed DD:DD (or "--:--") pattern in a monospaced-advance font, so they
+// all occupy identical glyph cells — but textWidth() measures INK extent, which
+// varies by 1-2 px with the trailing glyph. Measuring a fixed reference string
+// (widest-ink digit "8") instead gives one value-independent width, so the
+// right-aligned left edge does not float. The caller must have selected the
+// row font before calling. "88:88" and "--:--" share the same advance cells;
+// "8" is chosen so the reference never under-reaches a real digit's ink.
+int timeFieldWidth(render::Canvas &canvas) { return canvas.textWidth("88:88"); }
+
 // Right-hand marker for the two-time (TG/EG) rows: either the plan-marker
 // superscript (58B / default) or, on the 58A rows (`show_dev`), the deviation
 // gauge in its place. The two are mutually exclusive per slot — the gauge's
@@ -312,10 +322,18 @@ int drawSlot(render::Canvas &canvas, const SlotSpec &s) {
   // marker.
   char hhmm2[8];
   formatSlotTime(hhmm2, sizeof(hhmm2), *s.d2, s.stale);
-  const int time2_w = canvas.textWidth(hhmm2);
   const bool d2_plan = slotIsPlan(*s.d2, s.stale);
-  const int time1_x = COL_TIME1_DIGIT_RIGHT - time1_w;
-  const int time2_x = COL_TIME2_DIGIT_RIGHT - time2_w;
+  // Right-align to a FIXED template width, not each string's own width.
+  // textWidth() (u8g2 getUTF8Width) returns the ink extent, which for a
+  // proportional-ink font shrinks when the string's LAST glyph has less
+  // right-side ink (a trailing "1" vs "9"). Since logisoso digits share a
+  // fixed advance, all HH:MM strings occupy the same glyph cells — but the
+  // ink-width anchor made the left edge float ±1-2 px with the last digit,
+  // the field-observed "time shifted two pixels left". Anchoring every time
+  // to a constant reference width keeps the left edge put across all values.
+  const int field_w = timeFieldWidth(canvas);
+  const int time1_x = COL_TIME1_DIGIT_RIGHT - field_w;
+  const int time2_x = COL_TIME2_DIGIT_RIGHT - field_w;
 
   canvas.setCursor(time1_x, s.y);
   canvas.print(hhmm);

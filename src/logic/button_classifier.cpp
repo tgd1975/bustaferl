@@ -9,14 +9,26 @@ ButtonPress classifyHeld(IButton &btn, std::uint32_t long_press_ms) {
     return ButtonPress::Short;
   }
   const std::uint32_t t0 = btn.nowMs();
-  bool long_latched = false;
+  // Long press fires AT the threshold while the button is still held — the
+  // user wanted the action to trigger on the timeout, not on the release after
+  // it (waiting for release made a 3 s hold feel like it "did nothing" until
+  // let go). We return Long the instant elapsed crosses long_press_ms; the
+  // caller then drains the still-held line (waitForRelease) before re-arming a
+  // wake source, so the held-LOW GPIO0 doesn't immediately re-trigger.
   while (btn.isPressed()) {
-    if (!long_latched && btn.nowMs() - t0 >= long_press_ms) {
-      long_latched = true;
+    if (btn.nowMs() - t0 >= long_press_ms) {
+      return ButtonPress::Long;
     }
     btn.sleepMs(BUTTON_POLL_MS);
   }
-  return long_latched ? ButtonPress::Long : ButtonPress::Short;
+  // Released before the threshold → Short.
+  return ButtonPress::Short;
+}
+
+void waitForRelease(IButton &btn) {
+  while (btn.isPressed()) {
+    btn.sleepMs(BUTTON_POLL_MS);
+  }
 }
 
 ButtonPress classifyPress(IButton &btn, std::uint32_t long_press_ms,
