@@ -72,6 +72,9 @@ void Esp32Display::drawFull(const uint8_t *fb) {
     impl_->panel.fillScreen(GxEPD_WHITE);
     blit(impl_->panel, fb);
   } while (impl_->panel.nextPage());
+  // GxEPD2's full-update page loop already powers the panel down, but call it
+  // explicitly so every exit from this class leaves the panel unbiased.
+  impl_->panel.powerOff();
 }
 
 void Esp32Display::drawPartial(const uint8_t *fb, const Bbox &bbox) {
@@ -88,6 +91,13 @@ void Esp32Display::drawPartial(const uint8_t *fb, const Bbox &bbox) {
     impl_->panel.fillScreen(GxEPD_WHITE);
     blitPartial(impl_->panel, fb, bbox);
   } while (impl_->panel.nextPage());
+  // CRITICAL: GxEPD2's *partial*-update page loop does NOT power the panel off
+  // (only the full-update path does). Without this, the UC8176 stays biased
+  // after every partial — across the active phase's 30 s light-sleeps and any
+  // long stretch of failed network retries — which wastes power and, left
+  // powered for minutes, lets the held image drift ("gets paler"). E-paper is
+  // bistable: once unpowered it holds the image with zero current.
+  impl_->panel.powerOff();
 }
 
 void Esp32Display::lightFull(const uint8_t *fb) {
