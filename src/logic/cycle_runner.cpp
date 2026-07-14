@@ -780,51 +780,59 @@ static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
   doSleepOrLoop(deps, pre, meta, now);
 }
 
+// Warm-cycle WiFi-down branch. Split out of runWarmCycle to keep it under the
+// readability-function-size threshold. Always terminates the cycle (sleeps),
+// so the caller returns right after.
+void handleWarmWifiDown(CycleDeps &deps, PersistedMeta &meta,
+                        const ScheduleSnapshot &schedule, CycleTrigger trigger,
+                        bool force_stamp) {
+  CYCLE_LOG_LN("[warm] wifi down");
+  // Wrong password mid-life (router credentials changed) is terminal here too —
+  // show the dedicated screen and long-sleep instead of the 30 s poll loop.
+  if (deps.net.lastFailure() == WifiFailure::AuthFailed) {
+    CYCLE_LOG_LN("[warm] wrong wifi password — terminal");
+    RenderInput in;
+    in.state = DisplayState::WifiAuth;
+    in.wanted_ssids = deps.net.configuredSsids();
+    deps.renderer.render(in, deps.curr);
+    deps.display.deepClean(deps.curr.data());
+    meta.framebuffer_valid = false;
+    deps.store.saveMeta(meta);
+    deps.sleep.deepSleep(deps.cfg.wifi_auth_sleep_s);
+    return;
+  }
+  // No WiFi → ask the selector whether to surface Offline / Stale / keep the
+  // last frame. SelectorSignals.wifi_up=false drives the choice.
+  time_t now = deps.clock.now();
+  SelectorSignals sig;
+  sig.first_render_ever = !meta.has_any_data;
+  sig.auth_error_seen = meta.auth_error_seen;
+  sig.wifi_up = false;
+  sig.now = now;
+  sig.last_success = meta.last_success_at;
+  DisplayState s = selectDisplayState(StreamSnapshot{}, schedule, meta, sig);
+  bool rendered = false;
+  if (s == DisplayState::Stale || s == DisplayState::Offline) {
+    renderAndPush(deps, s, StreamSnapshot{}, meta, schedule, force_stamp);
+    rendered = true;
+  }
+  FetchCycleResult wfc;
+  wfc.state = s;
+  CycleOutcome oc;
+  oc.trigger = trigger;
+  oc.rendered = rendered;
+  oc.wifi_failed = true;
+  traceCycle(deps, wfc,
+             SleepDecision{Mode::DeepSleep, deps.cfg.poll_interval_s}, oc, now);
+  deps.sleep.deepSleep(deps.cfg.poll_interval_s);
+}
+
 void runWarmCycle(CycleDeps &deps, PersistedMeta &meta, CycleTrigger trigger) {
   CYCLE_LOG_LN("[warm] cycle start");
   const bool force_stamp = trigger == CycleTrigger::Button;
   ScheduleSnapshot schedule = deps.store.loadSchedule();
   if (!deps.net.connect(deps.cfg.wifi_connect_ms)) {
-    CYCLE_LOG_LN("[warm] wifi down");
-    // Wrong password mid-life (router credentials changed) is terminal here too
-    // — show the dedicated screen and long-sleep instead of the 30 s poll loop.
-    if (deps.net.lastFailure() == WifiFailure::AuthFailed) {
-      CYCLE_LOG_LN("[warm] wrong wifi password — terminal");
-      RenderInput in;
-      in.state = DisplayState::WifiAuth;
-      in.wanted_ssids = deps.net.configuredSsids();
-      deps.renderer.render(in, deps.curr);
-      deps.display.deepClean(deps.curr.data());
-      meta.framebuffer_valid = false;
-      deps.store.saveMeta(meta);
-      deps.sleep.deepSleep(deps.cfg.wifi_auth_sleep_s);
-      return;
-    }
-    // No WiFi → ask the selector whether to surface Offline / Stale / keep
-    // the last frame. SelectorSignals.wifi_up=false drives the choice.
-    time_t now = deps.clock.now();
-    SelectorSignals sig;
-    sig.first_render_ever = !meta.has_any_data;
-    sig.auth_error_seen = meta.auth_error_seen;
-    sig.wifi_up = false;
-    sig.now = now;
-    sig.last_success = meta.last_success_at;
-    DisplayState s = selectDisplayState(StreamSnapshot{}, schedule, meta, sig);
-    bool rendered = false;
-    if (s == DisplayState::Stale || s == DisplayState::Offline) {
-      renderAndPush(deps, s, StreamSnapshot{}, meta, schedule, force_stamp);
-      rendered = true;
-    }
-    FetchCycleResult wfc;
-    wfc.state = s;
-    CycleOutcome oc;
-    oc.trigger = trigger;
-    oc.rendered = rendered;
-    oc.wifi_failed = true;
-    traceCycle(deps, wfc,
-               SleepDecision{Mode::DeepSleep, deps.cfg.poll_interval_s}, oc,
-               now);
-    deps.sleep.deepSleep(deps.cfg.poll_interval_s);
+    handleWarmWifiDown(deps, meta, schedule, trigger, force_stamp);
     return;
   }
   if (!ensureClockSynced(deps, meta))
