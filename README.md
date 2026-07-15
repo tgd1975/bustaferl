@@ -60,7 +60,6 @@ Symbole im Detail:
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Modulkarte, Dataflow,
   Zustandsmaschine
 - [`docs/TESTING.md`](docs/TESTING.md) — Tests schreiben und laufen lassen
-- [`TODO.md`](TODO.md) — Umsetzungsplan, abhakbar
 
 ## Build-Targets
 
