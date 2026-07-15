@@ -94,11 +94,8 @@ time_t computeCutoff(time_t now, int cutoff_hour) {
 }
 
 // Inlines the heap-guard + delay() interleaving that protects against ESP32
-// TLS/mbedtls fragmentation (see docs/main-refactor-plan.md §7.1
-// "Heap-Wächter"). Splitting the iteration would either duplicate the guard
-// or hide it behind a callback indirection. The post-refactor TODO §7.1
-// calls out re-evaluating the guards once the native-runtime exists; this
-// NOLINT lifts together with that.
+// TLS/mbedtls fragmentation. Splitting the iteration would either duplicate
+// the guard or hide it behind a callback indirection.
 // NOLINTBEGIN(readability-function-size)
 ScheduleFetchResult
 fetchSchedule(INetwork &net, time_t now,

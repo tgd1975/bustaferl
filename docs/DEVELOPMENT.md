@@ -95,6 +95,6 @@ keine Quelltext-Änderung.
 
 - `Serial.printf("[tag] msg\n", …)` — landet bei 115200 baud im Monitor
 - Cold-Boot-Pfad zwingen: ESP32 vom Strom trennen, neu einstecken
-- Stale-Verhalten erzwingen: WiFi-Router ausschalten und 4 min warten
+- Offline-Screen erzwingen: WiFi-Router ausschalten und > 5 min warten
 - Filter-Drift simulieren: `FILTER_TOWARDS_58B` temporär auf `"XXX"` setzen
 - Deep Sleep abkürzen: `WAKE_BEFORE_BUS_S` runter, neu flashen

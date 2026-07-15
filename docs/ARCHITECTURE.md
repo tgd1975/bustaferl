@@ -21,7 +21,6 @@ src/
 ├── data/                     plattformneutral, parsing/structs
 │   ├── Departure.h
 │   ├── StreamSnapshot.h
-│   ├── PersistedMeta.h
 │   ├── ScheduleHint.h
 │   ├── CycleTrace.h          RTC-Ringpuffer: Zyklus- + Fehler-Historie
 │   ├── DiagView.h            transientes Bündel für Diagnose-/Boot-Check-Seiten
@@ -30,7 +29,7 @@ src/
 │   └── oebb_hafas_parse.{h,cpp}     mgate.exe-Antwort → S-Bahn-StreamData
 │
 ├── logic/                    plattformneutral, reine Funktionen + kleine Klassen
-│   ├── stale_policy.{h,cpp}         §4
+│   ├── stale_policy.{h,cpp}         `isStale` — Legacy, produktiv ungenutzt
 │   ├── sleep_planner.{h,cpp}        §6
 │   ├── refresh_planner.{h,cpp}      §5
 │   ├── filter_health.{h,cpp}        §9
@@ -53,14 +52,14 @@ src/
 └── render/                   Layout und Rasterisierung
     ├── frame_buffer.h        Template FrameBuffer<W,H>, 1-bpp
     ├── canvas.{h,cpp}        Abstrakter Canvas + HostCanvas / AdafruitGfxCanvas
-    ├── bitmap_fonts.{h,cpp}  U8g2-Font-Roles für die sieben Display-States
+    ├── bitmap_fonts.{h,cpp}  U8g2-Font-Roles für Board + Fullscreen-States
     ├── badge.{h,cpp}         Header-Badges (sm/md/lg)
     ├── plan_marker.{h,cpp}   5×5-Plan-Marker `□`
     ├── deviation_gauge.{h,cpp} 58A Live-vs-Fahrplan-Abweichungsanzeige
     ├── network_plan.{h,cpp}  Diamond/Big/Dot-Marker + Atzg-Linie
-    ├── display_state.{h,cpp} Fullscreen-Renderer für Boot/Offline/Auth/Quiet
+    ├── display_state.{h,cpp} Fullscreen-Renderer für Boot/Offline/Auth/WifiAuth
     ├── diag_page.{h,cpp}     Text-Renderer der Diagnose-Seiten + Boot-Check
-    ├── layout.{h,cpp}        Spalten-Layout für Normal/Stale/Night + `renderFrame`
+    ├── layout.{h,cpp}        Spalten-Board (`Normal`) + `renderFrame`
     └── rle.{h,cpp}           Lauflängenkompression für RTC-RAM
 ```
 
@@ -215,26 +214,43 @@ Fetch darf nie einen langen Schlaf planen).
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ColdBoot: Power-on / MAGIC-Bump
+    [*] --> Routing: setup() — wakeupCause()
 
-    state ColdBoot {
-        [*] --> BootSequenz: WiFi + NTP
+    note right of Routing
+        selectCycle(cause, cold_boot_retries, has_any_data)
+        Button          → ButtonWake
+        sonst + kein Board (kein has_any_data
+          oder Retry offen) → ColdCycle
+        sonst → WarmCycle
+        (ein Reset/Brownout mit Board → WarmCycle,
+         KEIN Boot-Screen)
+    end note
+
+    Routing --> ColdCycle
+    Routing --> WarmCycle
+    Routing --> ButtonWake
+
+    state ColdCycle {
+        [*] --> BootScreen: Boot-Screen (nur wenn kein Frame + kein Retry)
+        BootScreen --> BootSequenz: WiFi + NTP
         BootSequenz --> BootCheck: Ok
         BootCheck --> FirstRender: 15 s Info-Screen (Taste überspringt)
         FirstRender --> [*]: LightFull/DeepClean + Stempel
     }
 
-    ColdBoot --> DeepSleep: Ok → planSleep
-    ColdBoot --> RetrySleep60: RetryLater (WiFi/NTP down, Versuch unter 5)
-    RetrySleep60 --> ColdBoot: Timer-Wakeup
-    ColdBoot --> GiveUp: 5 Versuche erschöpft
-    GiveUp --> DeepSleep: Offline-Screen + langer Schlaf
+    ColdCycle --> DeepSleep: Ok → planSleep
+    ColdCycle --> ColdRetry60: WiFi/NTP down → KEIN EMPFANG (Repaint alle ~5 min)
+    ColdRetry60 --> Routing: Timer-Wakeup (bleibt Cold bis erster Erfolg)
+    ColdCycle --> WifiAuth: falsches Passwort (AuthFailed)
 
-    DeepSleep --> WarmCycle: Timer-Wakeup
-    DeepSleep --> ButtonWake: BOOT-Taste
+    WifiAuth --> DeepSleep: WLAN-PASSWORT-Screen + 1 h Schlaf
+
+    DeepSleep --> Routing: Timer-Wakeup
+    DeepSleep --> ButtonWake: BOOT-Taste (EXT0)
     ButtonWake --> WarmCycle: kurzer Druck → Update-Zyklus
-    ButtonWake --> BwReset: langer Druck (ab 3 s) → DeepClean + Redraw
+    ButtonWake --> BwReset: langer Druck (ab 3 s, feuert beim Timeout) → DeepClean
     ButtonWake --> DiagMode: Doppelklick → Diagnose-Seiten
+    BwReset --> WarmCycle
     Active --> DiagMode: Doppelklick beim Poll
     DiagMode --> WarmCycle: langer Druck / 10-min-Timeout → Board neu
 
@@ -242,17 +258,17 @@ stateDiagram-v2
         [*] --> WifiCheck
         WifiCheck --> ClockCheck: verbunden
         ClockCheck --> Fetch: synced + Uhr plausibel (sonst NTP-Resync)
-        Fetch --> RenderPush: api_ok — Normal/Night/Quiet
-        Fetch --> KeepFrame: Fetch-Fehler, unter 10 min alt (pre-stale)
-        Fetch --> RenderPush: Fetch-Fehler, über 10 min → Stale
+        Fetch --> RenderPush: Erfolg → Normal-Board (Realtime ∪ Plan)
+        Fetch --> KeepFrame: Fetch-Fehler → letztes Bild behalten
         RenderPush --> Rescue: Snapshot unvollständig
         Rescue --> [*]: 1 Extra-Refresh im 20–40 s-Fenster, dann Schlaf
-        WifiCheck --> StaleOffline: WiFi down + Schwelle gerissen
-        StaleOffline --> [*]
         KeepFrame --> [*]
         RenderPush --> [*]
     }
 
+    WarmCycle --> Offline: WiFi down + über 5 min kein Erfolg → KEIN EMPFANG
+    WarmCycle --> WifiAuth: WiFi down + falsches Passwort (AuthFailed)
+    Offline --> DeepSleep: 30 s
     WarmCycle --> DeepSleep: Fetch-Fehler → 60 s Retry (Coma-Fix)
     WarmCycle --> DeepSleep: keine Abfahrten (api_ok) → 30 min
     WarmCycle --> DeepSleep: nächster Bus fern → bis 15 min davor
@@ -262,11 +278,12 @@ stateDiagram-v2
     NightlyClean --> DeepSleep: DeepClean statt Partial
 ```
 
-Auf dem Panel entscheidet pro Zyklus der State-Selector, **welcher der
-sieben Screens** gezeigt wird — eine Prioritätskette, kein Automat
-(`selectDisplayState` in
-[render_input.cpp](../src/logic/render_input.cpp), erste zutreffende
-Bedingung gewinnt):
+Auf dem Panel entscheidet pro Zyklus der State-Selector, **welcher Screen**
+gezeigt wird — eine kurze Prioritätskette, kein Automat (`selectDisplayState`
+in [render_input.cpp](../src/logic/render_input.cpp), erste zutreffende
+Bedingung gewinnt). Nur die Fehler-/Platzhalter-Screens sind eigene States;
+alles mit Daten ist das **Normal**-Board, dessen Inhalt die Daten bestimmen
+(frisch, nur-Plan, veraltet oder eine ruhige Lücke rendern dasselbe Board):
 
 ```mermaid
 flowchart TD
@@ -275,14 +292,15 @@ flowchart TD
     B -->|ja| BOOT["Boot — lädt Fahrplan…"]
     B -->|nein| C{"WiFi down + Erfolg über 5 min her?"}
     C -->|ja| OFF["Offline — Kein Empfang"]
-    C -->|nein| D{"letzter Erfolg über 10 min her?"}
-    D -->|ja| STALE["Stale — alle Slots maskiert"]
-    D -->|nein| E{"alle Abfahrten über 20 min entfernt?"}
-    E -->|ja| QUIET["Quiet — Keine Abfahrten"]
-    E -->|nein| F{"01:00 bis 05:00 + erste Abfahrt fern?"}
-    F -->|ja| NIGHT["Night — Nachtbetrieb"]
-    F -->|nein| NORM["Normal — volles Board"]
+    C -->|nein| NORM["Normal — Board (Realtime ∪ Plan)"]
 ```
+
+Kein separater Stale-/Quiet-/Night-Screen: die nächste Abfahrt (Echtzeit oder
+Plan) wird immer mit ihrer echten Uhrzeit gezeigt — auch wenn sie Stunden
+entfernt liegt. Nur wenn ein Slot weder aus Echtzeit noch aus dem Fahrplan
+gefüllt werden kann, steht dort `--:--`. Der terminale `WifiAuth`-Screen
+(falsches WLAN-Passwort) wird nicht hier, sondern direkt im `cycle_runner`
+gewählt.
 
 ## Wichtige Design-Entscheidungen
 
@@ -320,16 +338,18 @@ Einschlafen gespeicherten `expected_wake_at` liegt, gilt die Uhr als korrupt
 und ein NTP-Resync läuft vor dem Rendern — sonst würden Plan-Hints gegen eine
 um Stunden versetzte Uhr gerendert (Feld-Symptom „58B-Coma").
 
-### Stale-Verhalten ist binär
+### Immer die nächste Abfahrt zeigen
 
-Bewusste Vereinfachung: entweder vertrauenswürdige Echtzeit oder klar
-sichtbares „kaputt". Keine grauen Zwischenzustände mit Zeitstempeln.
+Bewusste Vereinfachung: Es gibt keinen Blank-Screen für „keine Abfahrten
+bald" und keinen maskierten `??:??`-Screen für veraltete Daten. Solange
+irgendeine Abfahrt bekannt ist (Echtzeit **oder** Plan), zeigt das Board sie
+mit ihrer echten Uhrzeit — auch vier Stunden im Voraus. Fällt ein Fetch aus,
+behält der Warm-Zyklus das letzte gute Bild, statt auf `--:--` zu blanken.
 
-### Sieben Display-States
+### Wenige Display-States
 
-Ein zentrales `DisplayState`-Enum mit sieben Werten steuert das Fullscreen-
-Bild statt einzelner Overlay-Banner (`VERALTET`, `Filter ungueltig`,
-`Start fehlgeschlagen`):
+Das `DisplayState`-Enum hat nur noch fünf Werte — die Fehler-/Platzhalter-
+Screens plus das Board:
 
 ```text
                     SelectorSignals
@@ -340,22 +360,27 @@ Bild statt einzelner Overlay-Banner (`VERALTET`, `Filter ungueltig`,
          │     (logic/render_input.cpp)     │
          └────────────────┬─────────────────┘
                           │
-        ┌─────┬─────┬─────┼─────┬─────┬─────┐
-        ▼     ▼     ▼     ▼     ▼     ▼     ▼
-      Boot  Normal Stale Night Quiet Offline Auth
+        ┌─────────┬───────┼────────┬─────────┐
+        ▼         ▼       ▼        ▼         ▼
+      Boot     Normal  Offline   Auth    WifiAuth
 ```
 
-`render/display_state.cpp` rendert für jeden State entweder den
-Spalten-Board (`Normal`/`Stale`/`Night`) oder ein dediziertes
-Fullscreen-Bild (`Boot`/`Quiet`/`Offline`/`Auth`). Die State-Auswahl
-ist pure Funktion → vollständig host-testbar in `test_native_render_input`.
+`render/display_state.cpp` rendert die vier Fullscreen-Bilder
+(`Boot`/`Offline`/`Auth`/`WifiAuth`); `render/layout.cpp` rendert das
+`Normal`-Board, dessen Datenlage (nur Echtzeit, nur Plan, gemischt, leer)
+das Bild bestimmt. Die frühere `Stale`/`Quiet`/`Night`-Trias wurde entfernt —
+sie verwarf echte Abfahrtszeiten für einen blanken oder redundanten Screen.
+Die State-Auswahl ist pure Funktion → host-testbar in
+`test_native_render_input`.
 
-### `towards`-Filter-Drift wird sichtbar gemacht
+### `towards`-Filter-Drift wird mitgezählt
 
-Wenn 58B im Endemann-RBL 3 erfolgreiche API-Calls in Folge keinerlei
-Departure mit passendem `towards` liefert, blendet das Bustaferl
-`58B Filter ungueltig` ein. Sonst würde der Wegfall stillschweigend zu
-`--:--` werden und ewig so bleiben.
+Wenn 58B im Endemann-RBL mehrere erfolgreiche API-Calls in Folge keinerlei
+Departure mit passendem `towards` liefert, führt `FilterHealth` einen
+Streak-Zähler mit (`filter_miss_streak` in `PersistedMeta`). Er hat keinen
+eigenen Screen mehr, ist aber im Diagnose-Modus (STATUS-Seite) und in der
+Fehler-Historie ablesbar — so bleibt ein stiller Filter-Ausfall
+diagnostizierbar, statt einfach ewig `--:--` zu zeigen.
 
 ### Diagnose-Modus statt serieller Logs
 
@@ -363,7 +388,7 @@ Das Gerät hängt im Betrieb an keiner seriellen Konsole. Um eine im Feld
 beobachtete Anomalie („warum stand da `--:--`?") ohne Log verstehen zu können,
 führt jeder Warm-Zyklus einen kompakten **CycleTrace** mit: pro Zyklus ein
 12-B-`CycleRecord` (Zeit, Auslöser, Stream-OK-Bits, fehlgeschlagene Batches,
-Rescue-/Stale-Flags, Schlafdauer) plus 6-B-`ErrorRecord`s für Anomalien — zwei
+Rescue-Flags, Schlafdauer) plus 6-B-`ErrorRecord`s für Anomalien — zwei
 RTC-Ringpuffer (je 16 Einträge, ~292 B), die den Tiefschlaf überstehen.
 
 Ein **Doppelklick** öffnet `runDiagMode`: einmal frisch fetchen, dann vier
@@ -387,10 +412,8 @@ Boot-Check bereits deep-cleant, genügt dem Board danach ein Light-Full.
 
 | Konstante                  | Wert | Modul                         | Effekt                              |
 |----------------------------|------|-------------------------------|-------------------------------------|
-| `STALE_THRESHOLD_V2_S`     | 600  | logic/render_input            | letzter Erfolg älter → `Stale`-Screen (`??:??`) |
+| `STALE_THRESHOLD_V2_S`     | 600  | logic/cycle_runner            | Redraw-Guard-Fenster: Fetch-Fehler älter → Board neu statt letztes Bild |
 | `OFFLINE_THRESHOLD_S`      | 300  | logic/render_input            | WiFi down + Schwelle → `Offline`    |
-| `QUIET_HORIZON_S`          | 1200 | logic/render_input            | alle Abfahrten weiter → `Quiet`     |
-| `NIGHT_FIRST_DEP_MIN_AHEAD_S` | 1800 | logic/render_input         | erste Abfahrt weiter (Nachtfenster) → `Night` |
 | `WAKE_BEFORE_BUS_S`        | 900  | logic/sleep_planner           | Vorlauf vor frühster Abfahrt        |
 | `BOOT_MARGIN_S`            | 30   | logic/sleep_planner           | Boot+WiFi+API-Reserve               |
 | `POLL_INTERVAL_S`          | 30   | logic/cycle_runner            | Poll-Cadence im Wach-Zustand        |

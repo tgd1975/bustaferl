@@ -21,7 +21,10 @@ enum class CycleTrigger : std::uint8_t {
 };
 
 // Bit flags packed into CycleRecord::flags. Stream bits mirror the Stream
-// enum order (0..3); the rest capture the cycle's outcome.
+// enum order (0..3); the rest capture the cycle's outcome. The base stays
+// uint16_t to match the persisted CycleRecord::flags field and keep headroom
+// for future flags — do not narrow it to fit the current value set.
+// NOLINTNEXTLINE(performance-enum-size)
 enum CycleFlag : std::uint16_t {
   CYC_STREAM0_OK = 1u << 0, // 58A -> Atzgersdorf produced a departure
   CYC_STREAM1_OK = 1u << 1, // 58A -> Hietzing
@@ -30,8 +33,7 @@ enum CycleFlag : std::uint16_t {
   CYC_RENDERED = 1u << 4,   // frame was pushed (else last frame kept)
   CYC_RESCUE_TRIED = 1u << 5,
   CYC_RESCUE_OK = 1u << 6,
-  CYC_STALE = 1u << 7,      // rendered the Stale screen
-  CYC_DEEP_SLEEP = 1u << 8, // slept deep (else light/active)
+  CYC_DEEP_SLEEP = 1u << 7, // slept deep (else light/active)
 };
 
 // One cycle. 12 bytes.
@@ -54,10 +56,8 @@ enum class TraceError : std::uint8_t {
   OebbAuth = 4,      // HAFAS err != OK (auth drift)
   EfaFail = 5,       // schedule (EFA) fetch failure
   NtpFail = 6,       // NTP sync failed
-  StaleEnter = 7,    // entered Stale
-  StaleExit = 8,     // recovered from Stale
-  Filter58bDead = 9, // 58B towards-filter dead streak tripped
-  RleOverflow = 10,  // framebuffer RLE exceeded the hardcap
+  Filter58bDead = 7, // 58B towards-filter dead streak tripped
+  RleOverflow = 8,   // framebuffer RLE exceeded the hardcap
 };
 
 // One anomaly. 6 bytes.

@@ -20,7 +20,6 @@
 #include "logic/snapshot_fetcher.h"
 #include "logic/snapshot_logger.h"
 #include "logic/ssid_match.h"
-#include "logic/stale_policy.h"
 #include "render/diag_page.h"
 
 #include <algorithm>
@@ -215,9 +214,9 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
     meta.last_success_at = now;
     meta.has_any_data = true;
     // FilterHealth tracking — still wanted as a diagnostic counter even
-    // though the v2 state-selector no longer renders a dedicated
-    // "FilterDead" screen (subsumed by Stale/Quiet/Auth). The streak data
-    // remains for filter-health monitoring on the next AID rotation.
+    // though the state-selector renders no dedicated "FilterDead" screen. The
+    // streak data remains for filter-health monitoring on the next AID
+    // rotation.
     const bool any_service =
         std::any_of(std::begin(r.snap.stream), std::end(r.snap.stream),
                     [](const StreamData &s) { return s.slot[0].valid; });
@@ -228,36 +227,21 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
     }
   }
 
-  // Build the state-selector inputs and pick the v2 DisplayState. This
-  // replaces the old "OverlayKind out of three options" computation.
-  //
-  // Pre-stale transient fetch failure: the selector would otherwise see an
-  // empty snapshot and pick Quiet (allDeparturesBeyond({}, ...) == true).
-  // That would flicker the display every cycle a single HTTP call fails.
-  // Keep `state = Normal` in that window so the caller's "fc.fetched_ok ||
-  // state != Normal" guard skips the redraw.
+  // Pick the display state. Only the error/placeholder screens are states now
+  // (Auth / Boot / Offline); anything with data is the Normal board.
   SelectorSignals sig;
   sig.first_render_ever = !meta.has_any_data;
   sig.auth_error_seen = meta.auth_error_seen;
   sig.wifi_up = deps.net.isConnected();
   sig.now = now;
   sig.last_success = meta.last_success_at;
-  if (!r.fetched_ok && (now - meta.last_success_at) <= STALE_THRESHOLD_V2_S &&
-      !meta.auth_error_seen) {
-    r.state = DisplayState::Normal;
-  } else {
-    r.state = selectDisplayState(r.snap, schedule, meta, sig);
-  }
+  r.state = selectDisplayState(r.snap, schedule, meta, sig);
 
-  // Stale forces an empty snapshot through the renderer (slots → "??:??").
-  // The merged view for planSleep keeps the hint information so the next
-  // wake still targets the right time.
-  if (r.state == DisplayState::Stale) {
-    r.snap = StreamSnapshot{};
-  }
-  r.merged = (r.state == DisplayState::Stale)
-                 ? r.snap
-                 : mergeSlots(r.snap, schedule, now);
+  // Merge realtime with the schedule hints for both the render and planSleep.
+  // On a fetch failure the realtime snapshot is empty, so the merge falls back
+  // to the scheduled departures — the board keeps showing the next departure
+  // (its real time) instead of blanking to "--:--".
+  r.merged = mergeSlots(r.snap, schedule, now);
   return r;
 }
 
@@ -347,17 +331,11 @@ void traceCycle(CycleDeps &deps, const FetchCycleResult &fc,
                 const SleepDecision &sd, const CycleOutcome &oc, time_t now) {
   CycleTrace t = deps.store.loadTrace();
 
-  // Anomalies: wifi failure this cycle, and Stale transitions detected off
-  // the previous cycle record so they land once (not every stale cycle).
-  const CycleRecord *prev = traceCycleAt(t, 0);
-  const bool was_stale = prev != nullptr && (prev->flags & CYC_STALE) != 0;
-  const bool is_stale = fc.state == DisplayState::Stale;
+  // Anomaly: WiFi failure this cycle. (The Stale enter/exit transitions were
+  // dropped along with the Stale display state — old data now just renders as
+  // the schedule-backed Normal board, so there is no state edge to trace.)
   if (oc.wifi_failed)
     pushError(t, TraceError::WifiFail, now);
-  if (is_stale && !was_stale)
-    pushError(t, TraceError::StaleEnter, now);
-  else if (!is_stale && was_stale)
-    pushError(t, TraceError::StaleExit, now);
 
   CycleRecord rec;
   rec.at = traceEpoch(now);
@@ -368,8 +346,6 @@ void traceCycle(CycleDeps &deps, const FetchCycleResult &fc,
     rec.flags |= CYC_RESCUE_TRIED;
   if (oc.rescue_ok)
     rec.flags |= CYC_RESCUE_OK;
-  if (is_stale)
-    rec.flags |= CYC_STALE;
   if (sd.mode == Mode::DeepSleep)
     rec.flags |= CYC_DEEP_SLEEP;
   const unsigned sleep_s =
@@ -774,16 +750,16 @@ static void finishWarmCycle(CycleDeps &deps, PersistedMeta &meta,
     doNightlyClean(deps, meta, schedule, fc, now);
     rendered = true;
   } else if (fc.fetched_ok || fc.state != DisplayState::Normal || force_stamp) {
-    // force_stamp (button press) pushes even on a transient pre-stale failure:
-    // the user pressed the button, so give visible feedback (stamp advances)
-    // rather than silently keeping the last frame.
+    // force_stamp (button press) pushes even on a fetch failure: the user
+    // pressed the button, so give visible feedback (stamp advances) rather than
+    // silently keeping the last frame.
     renderAndPush(deps, fc.state, fc.snap, meta, schedule, force_stamp);
     rendered = true;
   } else {
-    // Transient fetch failure (not yet stale): keep showing the last good
-    // frame. Re-rendering with an empty snap would flicker every slot to
-    // "--:--" for one cycle and back.
-    CYCLE_LOG_LN("[warm] fetch failed pre-stale — keeping last frame");
+    // Timer-triggered fetch failure: keep showing the last good frame rather
+    // than re-rendering. (The schedule-backed merge would still have valid
+    // times, but freezing avoids churning the panel on every failed poll.)
+    CYCLE_LOG_LN("[warm] fetch failed — keeping last frame");
   }
 
   // Rescue: the snapshot was incomplete → keep trying after the update and
@@ -832,8 +808,10 @@ void handleWarmWifiDown(CycleDeps &deps, PersistedMeta &meta,
     deps.sleep.deepSleep(deps.cfg.wifi_auth_sleep_s);
     return;
   }
-  // No WiFi → ask the selector whether to surface Offline / Stale / keep the
-  // last frame. SelectorSignals.wifi_up=false drives the choice.
+  // No WiFi → surface the Offline "KEIN EMPFANG" screen once the data is old
+  // enough (OFFLINE_THRESHOLD_S); until then keep the last good frame rather
+  // than blanking. SelectorSignals.wifi_up=false drives the choice: the
+  // selector returns Offline past the threshold, else Normal.
   time_t now = deps.clock.now();
   SelectorSignals sig;
   sig.first_render_ever = !meta.has_any_data;
@@ -843,7 +821,7 @@ void handleWarmWifiDown(CycleDeps &deps, PersistedMeta &meta,
   sig.last_success = meta.last_success_at;
   DisplayState s = selectDisplayState(StreamSnapshot{}, schedule, meta, sig);
   bool rendered = false;
-  if (s == DisplayState::Stale || s == DisplayState::Offline) {
+  if (s == DisplayState::Offline) {
     renderAndPush(deps, s, StreamSnapshot{}, meta, schedule, force_stamp);
     rendered = true;
   }

@@ -104,11 +104,12 @@ Pro Slot:
 |-------------|--------------------------------------------------------|
 | `HH:MM`     | nächste Abfahrt aus Echtzeit                           |
 | `□ HH:MM`   | nächste Abfahrt aus **Plan**-Daten (siehe HANDBUCH §4) |
-| `--:--`     | Stream antwortet, hat aber keine Abfahrt im Horizont   |
-| `??:??`     | Veraltet — letzte Echtzeit-Antwort über `STALE_THRESHOLD_V2_S` (10 min) alt |
+| `--:--`     | Slot ohne Abfahrt — weder Echtzeit noch Fahrplan haben etwas |
 
-Das Display nimmt einen von **sieben Zuständen** an. Vollständige
-Erklärung mit Screenshots in [HANDBUCH §3](HANDBUCH.md#3-die-sieben-display-states).
+Das Display zeigt das **Board** (Abfahrtstafel), solange irgendeine Abfahrt
+bekannt ist — sonst einen von **vier** Fehler-/Platzhalter-Screens
+(Boot / Offline / Auth / WifiAuth). Vollständige Erklärung mit Screenshots in
+[HANDBUCH §3](HANDBUCH.md#3-das-board-und-die-sonderfall-screens).
 
 ### Symbol-Cheatsheet
 
@@ -116,11 +117,10 @@ Die abstrakten Glyphen sind ähnlich genug, dass eine Tabelle hilft:
 
 | Anzeige          | Wo es auftaucht        | Was es heißt                                                                 |
 |------------------|------------------------|------------------------------------------------------------------------------|
-| `--:--`          | Slot innerhalb des Boards | Stream lebt, hat aber nichts zu sagen (Lücke / Wendezeit)                |
-| `??:??`          | Slot innerhalb des Boards | Letzte erfolgreiche Antwort ist älter als `STALE_THRESHOLD_V2_S` (10 min) |
-| `—` (groß)       | Fullscreen `Quiet`     | Service-Zeit, aber **kein** Stream hat eine Fahrt im Horizont                |
+| `--:--`          | Slot innerhalb des Boards | Weder Echtzeit noch Fahrplan haben eine Abfahrt für diesen Slot          |
 | `!` (groß)       | Fullscreen `Offline`   | Keine Verbindung / Endpunkte schweigen länger als `OFFLINE_THRESHOLD_S`      |
 | `§9`             | Fullscreen `Auth`      | HAFAS- oder OGD-Auth-Drift: Firmware-Update nötig                            |
+| `!` (groß)       | Fullscreen `WifiAuth`  | Falsches WLAN-Passwort (WPA-Handshake gescheitert) — `secrets.h` korrigieren |
 | `◌`              | Fullscreen `Boot`      | Cold-Boot-Splash, verschwindet beim ersten erfolgreichen Render              |
 | `□` (vor `HH:MM`) | Slot innerhalb des Boards | Plan-Daten statt Echtzeit (nur S2/S3/S4-Wechsel-Spalte zeigt die Linie zusätzlich) |
 
@@ -160,7 +160,7 @@ Empfohlen:
 - Serial-Monitor öffnen (`make monitor`) und nach `[warm]`-Logs schauen
 - `towards`-Strings könnten nicht passen — siehe Punkt unten
 
-### State „Offline" oder verdächtig viele `??:??`
+### State „Offline" oder verdächtig viele `--:--`
 
 - Wiener Linien haben evtl. den `towards`-Richtungstext geändert
 - Aktuelle Werte abfragen: `curl https://www.wienerlinien.at/ogd_realtime/monitor?rbl=$RBL_ENDEMANN`

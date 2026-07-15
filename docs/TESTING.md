@@ -91,8 +91,7 @@ Source und parametrisiert per Build-Define (`LONGTERM_SOAK_CYCLES`).
 Standalone-Treiber, der `runColdCycle` / `runWarmCycle` aus
 [../src/logic/cycle_runner.h](../src/logic/cycle_runner.h) auf dem Host
 gegen die echten Wiener-Linien-Endpoints fährt — kein PIO-Test, ein direktes
-`g++`-Target im Makefile (siehe Annahme in `main-refactor-plan.md` §4.1
-Schritt 9).
+`g++`-Target im Makefile.
 
 | Target | Was | Dauer |
 | --- | --- | --- |

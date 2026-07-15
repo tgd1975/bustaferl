@@ -88,10 +88,6 @@ const char *errorText(std::uint8_t code) {
     return "Morgen-Fahrplan (EFA) fehlt";
   case TraceError::NtpFail:
     return "Zeitabgleich (NTP) fehlgeschlagen";
-  case TraceError::StaleEnter:
-    return "Daten veraltet (Beginn)";
-  case TraceError::StaleExit:
-    return "Daten wieder aktuell";
   case TraceError::Filter58bDead:
     return "58B-Filter liefert nichts";
   case TraceError::RleOverflow:
@@ -206,9 +202,9 @@ void drawCycles(render::Canvas &canvas, const DiagView &v) {
     const char *rescue = (r->flags & CYC_RESCUE_OK)      ? " R+"
                          : (r->flags & CYC_RESCUE_TRIED) ? " R?"
                                                          : "";
-    std::snprintf(buf, sizeof(buf), "%s %c %s f%d%s%s %s", hhmm,
+    std::snprintf(buf, sizeof(buf), "%s %c %s f%d%s %s", hhmm,
                   triggerChar(r->trigger), streams, r->failed_batches, rescue,
-                  (r->flags & CYC_STALE) ? " ST" : "", sleep);
+                  sleep);
     textAt(canvas, DIAG_MARGIN_X, bodyY(line), buf);
   }
   if (v.trace.cycle_count == 0) {

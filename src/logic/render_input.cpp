@@ -8,56 +8,19 @@
 
 namespace bustaferl {
 
-bool allDeparturesBeyond(const StreamSnapshot &snap, std::time_t horizon) {
-  // cppcheck-suppress useStlAlgorithm
-  for (const StreamData &stream : snap.stream) {
-    // cppcheck-suppress useStlAlgorithm
-    for (const Departure &d : stream.slot) {
-      if (d.valid && d.when <= horizon) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool outsideServiceWindow(std::time_t now) {
-  struct tm local{};
-  localtime_r(&now, &local);
-  const int h = local.tm_hour;
-  // END < START → night wraps midnight. Default 5/1 means service runs
-  // 05:00 → 00:59 and night is [01:00, 05:00).
-  if (SERVICE_WINDOW_END_HOUR < SERVICE_WINDOW_START_HOUR) {
-    return h >= SERVICE_WINDOW_END_HOUR && h < SERVICE_WINDOW_START_HOUR;
-  }
-  return h < SERVICE_WINDOW_START_HOUR || h >= SERVICE_WINDOW_END_HOUR;
-}
-
-bool nextDepartureFarAway(const StreamSnapshot &snap, std::time_t now) {
-  std::time_t soonest = 0;
-  bool found = false;
-  for (const StreamData &stream : snap.stream) {
-    for (const Departure &d : stream.slot) {
-      if (!d.valid) {
-        continue;
-      }
-      if (!found || d.when < soonest) {
-        soonest = d.when;
-        found = true;
-      }
-    }
-  }
-  // No valid departure at all → treat as "far away" so Night can fire.
-  if (!found) {
-    return true;
-  }
-  return (soonest - now) > NIGHT_FIRST_DEP_MIN_AHEAD_S;
-}
-
-DisplayState selectDisplayState(const StreamSnapshot &snap,
-                                const ScheduleSnapshot &schedule,
+DisplayState selectDisplayState(const StreamSnapshot & /*snap*/,
+                                const ScheduleSnapshot & /*schedule*/,
                                 const PersistedMeta &meta,
                                 const SelectorSignals &sig) {
+  // Only four screens remain besides the departure board itself: the two
+  // terminal error screens (Auth / WifiAuth — WifiAuth is chosen by the caller,
+  // not here), the first-run Boot placeholder, and Offline. Everything else —
+  // fresh data, only-scheduled data, stale/old data, quiet daytime gaps,
+  // overnight — is the same board: it always shows the next departure (live or
+  // scheduled) with its real time, or "--:--" only when even the schedule has
+  // nothing. There is no separate Stale / Quiet / Night state; the data drives
+  // the board, not a mode label.
+  //
   // Auth ahead of Boot: a cold boot with a broken AID should surface the
   // real problem, not the generic "loading…" screen.
   if (sig.auth_error_seen) {
@@ -68,21 +31,6 @@ DisplayState selectDisplayState(const StreamSnapshot &snap,
   }
   if (!sig.wifi_up && (sig.now - sig.last_success) > OFFLINE_THRESHOLD_S) {
     return DisplayState::Offline;
-  }
-  if ((sig.now - sig.last_success) > STALE_THRESHOLD_V2_S) {
-    return DisplayState::Stale;
-  }
-  // Quiet/Night must be decided against the *merged* view, not raw realtime.
-  // Overnight the realtime window (~70 min) is empty, but the schedule hints
-  // still carry tomorrow's first departures — falling through to Quiet here
-  // would show "KEINE ABFAHRTEN" and throw those hints away. Merging first
-  // means Quiet/Night only fire when even the plan has nothing to show.
-  const StreamSnapshot merged = mergeSlots(snap, schedule, sig.now);
-  if (allDeparturesBeyond(merged, sig.now + QUIET_HORIZON_S)) {
-    return DisplayState::Quiet;
-  }
-  if (outsideServiceWindow(sig.now) && nextDepartureFarAway(merged, sig.now)) {
-    return DisplayState::Night;
   }
   return DisplayState::Normal;
 }
@@ -129,21 +77,12 @@ RenderInput composeRenderInput(DisplayState state, const StreamSnapshot &snap,
     out.retry_in_s = (rem > 0) ? rem : 0;
     break;
   }
-  case DisplayState::Stale:
-    // Slots show "??:??" — driven by valid=false from the merger pass below
-    // (Stale forces an empty snapshot, then no merge). Preserve the fetch's
-    // api_ok so diagnostics don't misreport a reachable API as down.
-    out.snapshot = StreamSnapshot{};
-    out.snapshot.api_ok = snap.api_ok;
-    break;
-  case DisplayState::Night:
   case DisplayState::Normal:
+    // The board: realtime merged with schedule hints. When realtime is empty
+    // (fetch failed, or overnight with no live data) the merge falls back to
+    // the scheduled departures, so the next departure still shows with its real
+    // time; only slots the schedule can't fill render "--:--".
     out.snapshot = mergeSlots(snap, schedule, now);
-    break;
-  case DisplayState::Quiet:
-    // Fullscreen state — slot data is irrelevant, but keep the fetch's api_ok
-    // so run.log reflects the real fetch result instead of the default false.
-    out.snapshot.api_ok = snap.api_ok;
     break;
   case DisplayState::WifiAuth:
     // Terminal wrong-password screen. Its only input (the configured SSID) is

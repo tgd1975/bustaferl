@@ -52,7 +52,8 @@ constexpr uint32_t SCHED_MAGIC = 0x5CEDB053; // sched-bustaferl-3 (v2)
 // needs this magic bumped; the trace simply starts empty after an update.
 RTC_DATA_ATTR uint32_t g_trace_magic = 0;
 RTC_DATA_ATTR CycleTrace g_trace{};
-constexpr uint32_t TRACE_MAGIC = 0x7ACE0001; // trace ring v1
+constexpr uint32_t TRACE_MAGIC = 0x7ACE0002; // trace ring v2 (dropped Stale
+                                             // flag + StaleEnter/Exit errors)
 
 } // namespace
 
