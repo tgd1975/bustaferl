@@ -8,7 +8,7 @@
 # `make help` lists every target.
 
 .DEFAULT_GOAL := help
-.PHONY: help build upload monitor flash \
+.PHONY: help build build-all upload monitor flash \
         test test-native test-native-png test-device test-all test-device-trace \
         test-longterm-smoke test-longterm-jitter test-longterm-horizon-mock \
         test-longterm-wake test-longterm-soak-5min test-longterm-soak-15min \
@@ -24,46 +24,25 @@ TMP        := .tmp
 RESULTS    := $(TMP)/test-results.json
 TRACE_DIR  := $(TMP)/traces
 NR_DIR     := $(TMP)/native-runtime
-NR_BIN     := $(NR_DIR)/bustaferl-native-runtime
+# The driver is built by PlatformIO (env:native-runtime), NOT a hand-rolled
+# g++ recipe — so PIO's dependency resolution is the single source of truth for
+# which src/ files compile, and the list can't silently drift out of sync (it
+# did once: a render-layer split left the old g++ recipe unbuildable and no CI
+# job caught it). NR_BIN is PIO's output artifact; NR_DIR still holds the run
+# outputs (PGMs, run.log) the driver writes via env vars.
+NR_ENV     := native-runtime
+NR_BIN     := .pio/build/$(NR_ENV)/program
 
 DEVICE_ENVS := -e device-fetch -e device-persistent -e device-render \
                -e device-sleep -e device-schedule
 
-# Sources compiled into the native-runtime driver. Anything Adafruit-GFX
-# or Arduino-Core specific stays out — same constraint as env:native's
-# build_src_filter in platformio.ini.
-NR_SRC := \
-  test/test_native_runtime/main.cpp \
-  test/test_native_runtime/DiskStore.cpp \
-  test/test_native_runtime/HttpsNet.cpp \
-  test/test_native_runtime/RecordingRenderer.cpp \
-  src/data/efa_parse.cpp \
-  src/data/oebb_hafas_parse.cpp \
-  src/data/wienerlinien_parse.cpp \
-  src/logic/api_fetcher.cpp \
-  src/logic/boot_sequencer.cpp \
-  src/logic/button_classifier.cpp \
-  src/logic/cycle_runner.cpp \
-  src/logic/display_apply.cpp \
-  src/logic/filter_builder.cpp \
-  src/logic/filter_health.cpp \
-  src/logic/refresh_planner.cpp \
-  src/logic/render_input.cpp \
-  src/logic/schedule_fetcher.cpp \
-  src/logic/schedule_refresh.cpp \
-  src/logic/sleep_planner.cpp \
-  src/logic/slot_merger.cpp \
-  src/logic/snapshot_fetcher.cpp \
-  src/logic/snapshot_logger.cpp \
-  src/logic/stale_policy.cpp \
-  src/render/rle.cpp
-
-# UPDATE_STAMP_ENABLED=0: the soak binary's renderer is a pseudo-raster and
-# does not link the render/ layer that draws the stamp; the stamp path is
-# covered by the env:native cycle-runner tests instead.
-NR_CXXFLAGS := -std=gnu++17 -Wall -Wextra -O2 -g -DNATIVE_BUILD \
-               -DUPDATE_STAMP_ENABLED=0 \
-               -I src -isystem .pio/libdeps/native/ArduinoJson/src
+# The native-runtime driver's source list lives in platformio.ini
+# (env:native-runtime's build_src_filter) — deliberately NOT duplicated here.
+# A hand-maintained list is what drifted and broke the build silently before;
+# PlatformIO's glob is now the one source of truth.
+#
+# NR_LDLIBS is only for the standalone https_smoke below (a single self-
+# contained .cpp, not part of the driver's dependency graph).
 NR_LDLIBS := -lcurl
 
 # write-meta TARGET JSON
@@ -90,6 +69,30 @@ help:                  ## list available targets
 
 build:                 ## compile firmware for ESP32
 	$(PIO) run -e esp32dev
+
+build-all: native-runtime-build  ## compile every `pio run`-buildable env (firmware + native-runtime + mockviews)
+	@# The honest "does it all still compile" gate. `make ci`/`build` only cover
+	@# esp32dev + the host envs; the alternate-main mockview-* firmwares each have
+	@# their own build_src_filter and can rot independently — exactly how the
+	@# native-runtime driver silently broke. Building them here means a drifted
+	@# env fails loudly instead of lurking until someone runs its one-off target.
+	@# Slow (ESP32 cross-builds dominate); not in the pre-commit path — run before
+	@# a release or after touching platformio.ini / the render or logic layers.
+	@#
+	@# Two classes of env are deliberately EXCLUDED because they are not
+	@# `pio run`-buildable by design (each fails standalone, on purpose):
+	@#   * env:native and env:longterm-* — Unity *test* envs; their main() comes
+	@#     from the test runner. Covered by `make test-native` / `test-longterm-*`.
+	@#   * longterm-horizon-mock-firmware — #errors unless MOCK_API_BASE is
+	@#     injected by test/test_longterm_horizon_mock/runner.py.
+	@# device-* envs share esp32dev's src compile (they differ only by
+	@# test_filter), so esp32dev already covers their compile surface.
+	@# native-runtime is built via its make target (release profile, -lcurl);
+	@# the rest go in one pio invocation so a failure names the culprit env.
+	$(PIO) run \
+	  -e esp32dev \
+	  -e mockview-1-normal -e mockview-5-kein-empfang -e mockview-6-auth-fehler \
+	  -e mockview-7-boot -e mockview-8-geometry
 
 upload:                ## flash firmware to attached ESP32
 	$(PIO) run -e esp32dev -t upload
@@ -160,9 +163,16 @@ test-device-trace:                            ## full serial stream into .tmp/tr
 
 # --- CI / quality ---
 
-ci: format-check lint tidy test-native build  ## host only — fast, pre-commit-tauglich (~30-45 s)
+ci: format-check lint tidy test-native build native-runtime-build  ## host only — fast, pre-commit-tauglich (~30-45 s)
 
-ci-heavy: ci native-runtime-smoke  ## ci + native-runtime-smoke (~5-6 min, CI-Pipeline)
+# native-runtime-build is in `ci` on purpose: the soak driver is a *program*
+# that links the full render stack, and it once rotted unnoticed for several
+# commits because nothing in CI compiled it (the workflow runs `make ci`, and
+# ci-heavy — which did build it — was invoked by nothing). Compiling it here is
+# fast, deterministic, and network-free, so a broken driver now fails CI at the
+# same gate as the firmware. The live valgrind smoke stays opt-in below.
+
+ci-heavy: ci native-runtime-smoke  ## ci + live valgrind smoke (~5-6 min, opt-in; needs network to wienerlinien.at)
 
 # --- Long-term (opt-in) ---
 
@@ -212,16 +222,10 @@ test-longterm-day-full:                       ## ~24 h pre-release, unattended o
 
 # --- Native runtime (Schritt 9 — host loop) ---
 
-native-runtime-build: $(NR_BIN)  ## build host loop binary
+native-runtime-build:  ## build host loop binary (via PlatformIO env:native-runtime)
+	$(PIO) run -e $(NR_ENV)
 
-$(NR_BIN): $(NR_SRC)
-	@# ArduinoJson lives under .pio/libdeps/native/; ensure it's been
-	@# fetched by triggering the native env at least once.
-	@[ -d .pio/libdeps/native/ArduinoJson ] || $(PIO) run -e native -t compiledb >/dev/null
-	@mkdir -p $(NR_DIR)
-	g++ $(NR_CXXFLAGS) $(NR_SRC) $(NR_LDLIBS) -o $(NR_BIN)
-
-native-runtime-smoke: $(NR_BIN)  ## 10 cycles unter valgrind, ~5 min
+native-runtime-smoke: native-runtime-build  ## 10 cycles unter valgrind, ~5 min
 	@mkdir -p $(NR_DIR)
 	BUSTAFERL_MAX_CYCLES=10 BUSTAFERL_TIME_SCALE=0.1 BUSTAFERL_FRESH_BOOT=1 \
 	  valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=definite \
@@ -230,7 +234,7 @@ native-runtime-smoke: $(NR_BIN)  ## 10 cycles unter valgrind, ~5 min
 	           --log-file=$(NR_DIR)/valgrind.log \
 	           $(NR_BIN)
 
-native-runtime-massif: $(NR_BIN)  ## 50 cycles unter massif, schreibt $(NR_DIR)/massif-v2.{out,txt}
+native-runtime-massif: native-runtime-build  ## 50 cycles unter massif, schreibt $(NR_DIR)/massif-v2.{out,txt}
 	@mkdir -p $(NR_DIR)
 	BUSTAFERL_MAX_CYCLES=50 BUSTAFERL_TIME_SCALE=0.05 BUSTAFERL_FRESH_BOOT=1 \
 	  valgrind --tool=massif \
@@ -243,7 +247,7 @@ native-runtime-massif: $(NR_BIN)  ## 50 cycles unter massif, schreibt $(NR_DIR)/
 	@echo "[massif] peak snapshot summary:"
 	@grep -E "peak|^[ ]+[0-9]+ " $(NR_DIR)/massif-v2.txt | head -n 20 || true
 
-native-runtime-day: $(NR_BIN)  ## 24 h Soak, schreibt PGM-Sammlung
+native-runtime-day: native-runtime-build  ## 24 h Soak, schreibt PGM-Sammlung
 	@mkdir -p $(NR_DIR)
 	@echo "[runtime] 24h soak — interrupt with Ctrl-C; output in $(NR_DIR)/"
 	BUSTAFERL_TIME_SCALE=1.0 BUSTAFERL_FRESH_BOOT=1 \
