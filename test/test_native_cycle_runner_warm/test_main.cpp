@@ -204,12 +204,10 @@ void test_warm_wifi_down_records_anomaly() {
   TEST_ASSERT_EQUAL(1, t.cycle_count);
 }
 
-void test_warm_wifi_down_stale_renders_stale_overlay() {
+void test_warm_wifi_down_old_data_renders_offline() {
   WarmFixture fx(/*wifi_ok=*/false, /*http_ok=*/true, /*synced=*/true);
-  // Stale-old success past both OFFLINE_THRESHOLD_S and STALE_THRESHOLD_V2_S.
-  // With wifi_up=false the selector picks Offline; we render either Offline
-  // or Stale here — both surface a fullscreen-state to the user, so the
-  // assertion accepts either.
+  // Success past OFFLINE_THRESHOLD_S with wifi down → the selector picks
+  // Offline (the "KEIN EMPFANG" screen).
   fx.meta.last_api_success = kSyncedNow - 10000;
   fx.meta.last_success_at = kSyncedNow - 10000;
   fx.meta.has_any_data = true;
@@ -217,8 +215,7 @@ void test_warm_wifi_down_stale_renders_stale_overlay() {
   runWarmCycle(deps, fx.meta);
 
   TEST_ASSERT_EQUAL(1, fx.renderer.calls);
-  TEST_ASSERT_TRUE(fx.renderer.last_state == DisplayState::Stale ||
-                   fx.renderer.last_state == DisplayState::Offline);
+  TEST_ASSERT_EQUAL(DisplayState::Offline, fx.renderer.last_state);
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
   TEST_ASSERT_EQUAL(0, fx.net.http_calls);
 }
@@ -256,18 +253,21 @@ void test_warm_fetch_fail_prestale_keeps_last_frame() {
   TEST_ASSERT_EQUAL(1, fx.store.save_meta_calls);
 }
 
-void test_warm_fetch_fail_stale_renders_stale_overlay() {
+void test_warm_fetch_fail_old_data_keeps_last_frame() {
+  // WiFi up, HTTP fails, data old. With the Stale screen gone, the selector
+  // returns Normal on a fetch failure regardless of data age, and the redraw
+  // guard keeps the last good frame rather than blanking to "??:??". (The old
+  // behavior flashed a dedicated Stale screen; now the board just holds.)
   WarmFixture fx(/*wifi_ok=*/true, /*http_ok=*/false, /*synced=*/true);
-  // Stale: last api success well past threshold. wifi_up=true so the
-  // selector falls into Stale (not Offline).
   fx.meta.last_api_success = kSyncedNow - 10000;
   fx.meta.last_success_at = kSyncedNow - 10000;
   fx.meta.has_any_data = true;
   CycleDeps deps = fx.deps();
   runWarmCycle(deps, fx.meta);
 
-  TEST_ASSERT_EQUAL(1, fx.renderer.calls);
-  TEST_ASSERT_EQUAL(DisplayState::Stale, fx.renderer.last_state);
+  TEST_ASSERT_EQUAL(0, fx.renderer.calls);
+  TEST_ASSERT_EQUAL(0, fx.display.draw_partial_calls);
+  TEST_ASSERT_EQUAL(0, fx.display.light_full_calls);
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
 }
 
@@ -452,10 +452,10 @@ int main(int, char **) {
   RUN_TEST(test_warm_button_trigger_recorded);
   RUN_TEST(test_warm_wifi_down_records_anomaly);
   RUN_TEST(test_warm_wifi_down_skips_render_and_deepSleeps_poll_interval);
-  RUN_TEST(test_warm_wifi_down_stale_renders_stale_overlay);
+  RUN_TEST(test_warm_wifi_down_old_data_renders_offline);
   RUN_TEST(test_warm_unsynced_clock_forces_ntp_then_continues);
   RUN_TEST(test_warm_fetch_fail_prestale_keeps_last_frame);
-  RUN_TEST(test_warm_fetch_fail_stale_renders_stale_overlay);
+  RUN_TEST(test_warm_fetch_fail_old_data_keeps_last_frame);
   RUN_TEST(test_warm_clock_jumped_hours_ahead_forces_resync);
   RUN_TEST(test_warm_clock_lands_on_wake_target_does_not_resync);
   RUN_TEST(test_warm_first_boot_no_wake_reference_does_not_resync);

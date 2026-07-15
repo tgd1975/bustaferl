@@ -66,12 +66,11 @@ void test_filling_slot_changes_framebuffer() {
       "Filling a slot did not change framebuffer — formatHHMM broken?");
 }
 
-void test_seven_states_produce_distinguishable_frames() {
+void test_states_produce_distinguishable_frames() {
   StreamSnapshot snap{};
   constexpr DisplayState states[] = {
-      DisplayState::Boot,  DisplayState::Normal, DisplayState::Stale,
-      DisplayState::Night, DisplayState::Quiet,  DisplayState::Offline,
-      DisplayState::Auth,
+      DisplayState::Boot, DisplayState::Normal,   DisplayState::Offline,
+      DisplayState::Auth, DisplayState::WifiAuth,
   };
   constexpr int n = sizeof(states) / sizeof(states[0]);
   std::unique_ptr<Frame> frames[n];
@@ -79,11 +78,8 @@ void test_seven_states_produce_distinguishable_frames() {
     frames[i] = makeFrame();
     renderFrame(makeInput(states[i], snap), *frames[i]);
   }
-  // Pairwise: every state pair must produce a different framebuffer. After
-  // Schritt 7.8 this is also where the fullscreen-state Glyph & layout
-  // asserts will go. For now the transitional renderer in layout.cpp
-  // applies a different banner per state (Normal/Night collapse to the
-  // bare board), which still gives ≥1 distinguishable pair.
+  // Pairwise: every state pair must produce a different framebuffer — each of
+  // these five states has its own fullscreen/board renderer.
   int distinct_pairs = 0;
   for (int i = 0; i < n; ++i) {
     for (int j = i + 1; j < n; ++j) {
@@ -96,7 +92,7 @@ void test_seven_states_produce_distinguishable_frames() {
   Serial.printf("[engine] distinct state-pairs: %d (of %d total)\n",
                 distinct_pairs, n * (n - 1) / 2);
   TEST_ASSERT_GREATER_THAN_MESSAGE(
-      0, distinct_pairs, "All 7 DisplayStates collapsed to identical frames");
+      0, distinct_pairs, "All DisplayStates collapsed to identical frames");
 }
 
 void setup() {
@@ -105,7 +101,7 @@ void setup() {
   UNITY_BEGIN();
   RUN_TEST(test_render_empty_snapshot_draws_chrome);
   RUN_TEST(test_filling_slot_changes_framebuffer);
-  RUN_TEST(test_seven_states_produce_distinguishable_frames);
+  RUN_TEST(test_states_produce_distinguishable_frames);
   UNITY_END();
 }
 

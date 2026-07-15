@@ -10,35 +10,32 @@ Mensch selbst.
 ## Was es zeigt
 
 Das Hauptbild zeigt vier Spalten — drei für die Buslinien, eine für die
-S-Bahn — auf einem 400×300-px-Panel. Die autoritativen Mockups stehen in
-[`docs/design_handoff_display/`](docs/design_handoff_display/):
-`screen-1-normal.png` zeigt den Normalfall, `screen-2-veraltet.png` …
-`screen-7-boot.png` die jeweiligen Sonderzustände. Eine Kurzfassung des
-Layouts findet sich auch in [`docs/USER.md`](docs/USER.md).
+S-Bahn — auf einem 400×300-px-Panel. Die autoritativen Host-Screenshots
+stehen in [`docs/screenshots/`](docs/screenshots/) (`01-boot.png` …
+`08-wifi-auth.png`, erzeugt von `make test-native-png`). Eine Kurzfassung des
+Layouts findet sich in [`docs/USER.md`](docs/USER.md), die ausführliche in
+[`docs/HANDBUCH.md`](docs/HANDBUCH.md).
 
-Es gibt sieben Display-Zustände, die der State-Selector aus Datenlage,
-NTP-Sync, Uhrzeit und letzter erfolgreicher Abfrage ableitet:
+**Solange irgendeine Abfahrt bekannt ist — Echtzeit oder Fahrplan — zeigt
+das Gerät das Abfahrts-Board mit ihrer echten Uhrzeit**, auch Stunden im
+Voraus. Es gibt keinen eigenen „Veraltet"-, „Nacht"- oder „Keine
+Abfahrten"-Screen: das Board wird allein von der Datenlage bestimmt (nur
+Echtzeit, nur Plan, gemischt, oder leer → `--:--`). Nur vier
+Fehler-/Platzhalter-Screens ersetzen das Board ganz:
 
-- **Normal** — frische Daten, alle Slots aktuell.
-- **Veraltet** — Daten älter als 10 min; alle Slots zeigen `??:??`.
-- **Nachtbetrieb** — außerhalb der Service-Zeit, leere Slots werden
-  als Plan-Hinweise auf den Morgen aufgefüllt.
-- **Keine Abfahrten** — Service-Zeit, aber kein Stream liefert eine
-  Fahrt (Pause/Wendezeit).
-- **Kein Empfang** — WiFi/NTP fehlgeschlagen oder beide Endpunkte
-  schweigen.
-- **Auth-Fehler** — HAFAS- oder OGD-Endpunkt liefert wiederholt
-  401/Auth-Drift (AID rotiert → Firmware-Update nötig).
 - **Boot** — Splash-Bild beim ersten Hochfahren, bis der erste Cycle
   Daten gerendert hat.
+- **Kein Empfang (Offline)** — WiFi weg und länger als 5 min kein Erfolg.
+- **Auth-Fehler** — HAFAS- oder OGD-Endpunkt liefert wiederholt
+  401/Auth-Drift (AID rotiert → Firmware-Update nötig).
+- **WLAN-Passwort falsch (WifiAuth)** — WPA-Handshake endgültig
+  gescheitert; `secrets.h` korrigieren.
 
 Symbole im Detail:
 
-- `HH:MM` — nächste Abfahrt (Echtzeit, mit stillem Fallback auf Plan)
+- `HH:MM` — nächste Abfahrt (Echtzeit)
 - `□ HH:MM` — Plan-Marker: Slot ist Plan-Daten, nicht Echtzeit
-- `--:--` — Stream antwortet, hat aber keine Abfahrt im Horizont
-- `??:??` — Daten sind älter als die Stale-Schwelle (Display zeigt
-  weiter, aber als veraltet markiert)
+- `--:--` — weder Echtzeit noch Fahrplan haben eine Abfahrt für den Slot
 
 ## Quick Start
 

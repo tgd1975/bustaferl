@@ -1,7 +1,8 @@
-// selectDisplayState + composeRenderInput — v2 7-state coverage.
-// Each test reaches one of the seven DisplayStates by construction (no
-// time-travel), plus a few targeted tests for the pure helpers and the
-// composeRenderInput field-filling logic.
+// selectDisplayState + composeRenderInput coverage. Only the error/placeholder
+// screens are states (Auth / Boot / Offline); everything with data — fresh,
+// scheduled-only, stale, or a far-future gap — is the Normal board. These tests
+// pin that: the cases that used to become Stale / Quiet / Night must now all
+// resolve to Normal so the board keeps showing the next departure's real time.
 
 #include "config.h"
 #include "logic/render_input.h"
@@ -44,7 +45,7 @@ PersistedMeta baseMeta() {
 } // namespace
 
 void setUp() {
-  // Pin TZ so outsideServiceWindow() is deterministic across CI hosts.
+  // Pin TZ so HH:MM formatting is deterministic across CI hosts.
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
   tzset();
 }
@@ -86,7 +87,10 @@ void test_state_offline_when_wifi_down_and_stale() {
                     selectDisplayState(snap, sched, meta, sig));
 }
 
-void test_state_stale_when_long_since_success() {
+// Data old (wifi up) used to become Stale — now stays Normal. The board keeps
+// the last departure it had (or the schedule-backed merge) rather than a blank
+// "??:??" screen; the warm cycle's redraw guard decides whether to repaint.
+void test_state_normal_when_long_since_success() {
   StreamSnapshot snap;
   ScheduleSnapshot sched;
   PersistedMeta meta = baseMeta();
@@ -94,88 +98,30 @@ void test_state_stale_when_long_since_success() {
   SelectorSignals sig = baseSignals();
   sig.wifi_up = true; // wifi up, but data is old
   sig.last_success = kNow - (STALE_THRESHOLD_V2_S + 10);
-  TEST_ASSERT_EQUAL(DisplayState::Stale,
+  TEST_ASSERT_EQUAL(DisplayState::Normal,
                     selectDisplayState(snap, sched, meta, sig));
 }
 
-void test_state_quiet_when_all_deps_beyond_horizon() {
+// A departure hours out used to become Quiet ("KEINE ABFAHRTEN") — now stays
+// Normal so the board shows that departure's real time. This is the exact case
+// the removal was about: there is always a next departure, show it.
+void test_state_normal_when_next_departure_far_out() {
   StreamSnapshot snap;
-  // Single valid departure far beyond QUIET_HORIZON_S.
-  snap.stream[STREAM_58A_ATZ].slot[0] =
-      makeRealtime(kNow + QUIET_HORIZON_S + 60);
+  snap.stream[STREAM_58A_ATZ].slot[0] = makeRealtime(kNow + 4 * 3600); // 4 h
   ScheduleSnapshot sched;
   PersistedMeta meta = baseMeta();
   SelectorSignals sig = baseSignals();
-  TEST_ASSERT_EQUAL(DisplayState::Quiet,
+  TEST_ASSERT_EQUAL(DisplayState::Normal,
                     selectDisplayState(snap, sched, meta, sig));
 }
 
-void test_state_night_when_outside_window_and_next_far() {
-  // Pick a time clearly inside the night window (default 01:00-04:59).
-  // 2023-11-14 02:30 Vienna local ≈ epoch 1700016600 (UTC: 01:30).
-  StreamSnapshot snap;
-  // One real-time slot far in the future so allDeparturesBeyond is false (we
-  // don't want to fall into Quiet) AND nextDepartureFarAway is true.
-  // QUIET_HORIZON_S = 1200, NIGHT_FIRST_DEP_MIN_AHEAD_S = 1800.
-  // 1500 s is below the Quiet horizon but above the Night-far threshold.
-  time_t night_now = 1700016600;
-  snap.stream[STREAM_58A_ATZ].slot[0] = makeRealtime(night_now + 1000);
-  snap.stream[STREAM_58A_ATZ].slot[1] =
-      makeRealtime(night_now + NIGHT_FIRST_DEP_MIN_AHEAD_S + 60);
-
-  // Adjust: we need allDeparturesBeyond(now+QUIET_HORIZON_S) == false, i.e.
-  // *some* departure ≤ now+1200. The 1000 s slot covers that. We also need
-  // nextDepartureFarAway → soonest > now+1800. But soonest=1000 ≤ 1800, so
-  // nextDepartureFarAway is false. The selector then falls through to
-  // Normal, not Night. To force Night we need NO slot within
-  // [now, now+NIGHT_FIRST_DEP_MIN_AHEAD_S]. That means the soonest must be
-  // > now+1800. But then it's also > now+1200 → Quiet wins ahead of Night.
-  //
-  // Conclusion: Night is reachable only when allDeparturesBeyond is false
-  // (so not Quiet) AND nextDepartureFarAway is true. Both can be satisfied
-  // simultaneously only if a non-valid placeholder appears alongside a
-  // future-but-far departure — which doesn't happen in practice. Night is
-  // therefore the empty-snapshot variant of Quiet during night hours.
-  //
-  // Empty snapshot: allDeparturesBeyond returns true (Quiet wins). To
-  // bypass Quiet we'd need a valid slot ≤ now+1200, but then
-  // nextDepartureFarAway is false → Normal.
-  //
-  // The plan's Night state ends up unreachable from the current decision
-  // tree. We exercise it via an artificial snapshot that has a near-term
-  // *expired* slot (valid=true but in the past), which currently fails
-  // both predicates as designed. Skip the assertion and document the gap;
-  // the visual review in Schritt 11.8 verifies the Night fullscreen path
-  // by Service-Window override.
-  StreamSnapshot empty;
-  // With empty snapshot in night window we expect Quiet (allDeparturesBeyond
-  // is true on empty), not Night — this is the documented selector quirk.
-  ScheduleSnapshot sched;
-  PersistedMeta meta = baseMeta();
-  meta.last_success_at = night_now - 60;
-  SelectorSignals sig = baseSignals();
-  sig.now = night_now;
-  sig.last_success = night_now - 60;
-  DisplayState s = selectDisplayState(empty, sched, meta, sig);
-  // Documents current behaviour: empty + night-window → Quiet (not Night).
-  // Night triggers only if a future-valid departure exists that is BOTH
-  // inside the QUIET_HORIZON window AND past the NIGHT_FIRST_DEP threshold,
-  // which is contradictory. Schritt 11.8 visual review will catch any
-  // semantic gap and a follow-up PR can adjust the decision tree.
-  TEST_ASSERT_TRUE(s == DisplayState::Quiet || s == DisplayState::Night);
-}
-
-void test_state_normal_at_night_when_schedule_hint_present() {
-  // Regression: overnight the realtime window (~70 min) is empty, so the
-  // selector used to fall into Quiet ("KEINE ABFAHRTEN") and discard the
-  // schedule hints. With tomorrow's first departures present the selector
-  // must merge them first and yield Normal, so the board shows the plan.
+// Overnight: no realtime, only tomorrow's scheduled first departures. Used to
+// become Night/Quiet; now Normal so the board shows the scheduled times.
+void test_state_normal_overnight_schedule_only() {
   time_t night_now = 1700016600; // 2023-11-14 02:30 Vienna local (night)
   StreamSnapshot empty;          // no realtime departures overnight
   ScheduleSnapshot sched;
   sched.fetched_at = night_now - 3600; // fresh, well within 48 h
-  // First scheduled 58A departure at 05:12-ish — inside the Quiet horizon so
-  // the merged view is not "all beyond horizon".
   sched.hint[STREAM_58A_ATZ].first_tomorrow[0] = night_now + 600;
   sched.hint[STREAM_58A_ATZ].first_tomorrow[1] = night_now + 1200;
 
@@ -199,6 +145,17 @@ void test_state_normal_when_realtime_imminent() {
                     selectDisplayState(snap, sched, meta, sig));
 }
 
+// Empty everything (no realtime, no schedule) still resolves to Normal — the
+// board renders "--:--" placeholders, never a dedicated blank state.
+void test_state_normal_when_no_data_at_all() {
+  StreamSnapshot empty;
+  ScheduleSnapshot sched;
+  PersistedMeta meta = baseMeta();
+  SelectorSignals sig = baseSignals();
+  TEST_ASSERT_EQUAL(DisplayState::Normal,
+                    selectDisplayState(empty, sched, meta, sig));
+}
+
 // Auth wins over Boot — important for cold-boot-with-bad-AID UX.
 void test_state_auth_dominates_boot() {
   StreamSnapshot snap;
@@ -210,41 +167,6 @@ void test_state_auth_dominates_boot() {
   sig.auth_error_seen = true;
   TEST_ASSERT_EQUAL(DisplayState::Auth,
                     selectDisplayState(snap, sched, meta, sig));
-}
-
-// ----- Helpers -----
-
-void test_allDeparturesBeyond_empty_is_true() {
-  StreamSnapshot snap;
-  TEST_ASSERT_TRUE(allDeparturesBeyond(snap, kNow + 1000));
-}
-
-void test_allDeparturesBeyond_finds_close_slot() {
-  StreamSnapshot snap;
-  snap.stream[STREAM_58A_ATZ].slot[0] = makeRealtime(kNow + 100);
-  TEST_ASSERT_FALSE(allDeparturesBeyond(snap, kNow + 500));
-  TEST_ASSERT_TRUE(allDeparturesBeyond(snap, kNow + 90));
-}
-
-void test_outsideServiceWindow_night() {
-  // 2026-01-15 03:00 Vienna local time (UTC 02:00 winter) → night window.
-  TEST_ASSERT_TRUE(outsideServiceWindow(1768442400));
-}
-
-void test_outsideServiceWindow_daytime() {
-  // 2026-01-15 12:00 Vienna local (UTC 11:00 winter) → active service.
-  TEST_ASSERT_FALSE(outsideServiceWindow(1768474800));
-}
-
-void test_nextDepartureFarAway_empty_returns_true() {
-  StreamSnapshot snap;
-  TEST_ASSERT_TRUE(nextDepartureFarAway(snap, kNow));
-}
-
-void test_nextDepartureFarAway_close_returns_false() {
-  StreamSnapshot snap;
-  snap.stream[STREAM_58A_ATZ].slot[0] = makeRealtime(kNow + 100);
-  TEST_ASSERT_FALSE(nextDepartureFarAway(snap, kNow));
 }
 
 // ----- composeRenderInput -----
@@ -308,39 +230,22 @@ void test_compose_normal_merges_slots() {
                           in.snapshot.stream[STREAM_58A_ATZ].slot[0].when);
 }
 
-void test_compose_stale_yields_empty_snapshot() {
-  StreamSnapshot snap;
-  snap.stream[STREAM_58A_ATZ].slot[0] = makeRealtime(kNow + 300);
+// On a fetch failure the raw snapshot is empty, but composeRenderInput merges
+// it with the schedule — so a scheduled departure still fills the slot rather
+// than blanking to "--:--". This is the behavior that replaced the Stale
+// screen's forced-empty render.
+void test_compose_normal_falls_back_to_schedule() {
+  StreamSnapshot empty; // fetch failed → no realtime
   ScheduleSnapshot sched;
+  sched.fetched_at = kNow - 3600;
+  sched.hint[STREAM_58A_ATZ].first_tomorrow[0] = kNow + 600;
   PersistedMeta meta = baseMeta();
   RenderInput in =
-      composeRenderInput(DisplayState::Stale, snap, sched, meta, kNow);
-  TEST_ASSERT_EQUAL(DisplayState::Stale, in.state);
-  TEST_ASSERT_FALSE(in.snapshot.stream[STREAM_58A_ATZ].slot[0].valid);
-}
-
-// The rendered snapshot's api_ok is what run.log prints. Quiet/Stale don't
-// carry slot data, but must still reflect the real fetch result so a
-// reachable API is not misreported as down (soak diagnostics).
-void test_compose_quiet_preserves_api_ok() {
-  StreamSnapshot snap;
-  snap.api_ok = true;
-  ScheduleSnapshot sched;
-  PersistedMeta meta = baseMeta();
-  RenderInput in =
-      composeRenderInput(DisplayState::Quiet, snap, sched, meta, kNow);
-  TEST_ASSERT_EQUAL(DisplayState::Quiet, in.state);
-  TEST_ASSERT_TRUE(in.snapshot.api_ok);
-}
-
-void test_compose_stale_preserves_api_ok() {
-  StreamSnapshot snap;
-  snap.api_ok = true;
-  ScheduleSnapshot sched;
-  PersistedMeta meta = baseMeta();
-  RenderInput in =
-      composeRenderInput(DisplayState::Stale, snap, sched, meta, kNow);
-  TEST_ASSERT_TRUE(in.snapshot.api_ok);
+      composeRenderInput(DisplayState::Normal, empty, sched, meta, kNow);
+  TEST_ASSERT_EQUAL(DisplayState::Normal, in.state);
+  TEST_ASSERT_TRUE(in.snapshot.stream[STREAM_58A_ATZ].slot[0].valid);
+  TEST_ASSERT_EQUAL_INT64(kNow + 600,
+                          in.snapshot.stream[STREAM_58A_ATZ].slot[0].when);
 }
 
 int main(int, char **) {
@@ -348,25 +253,17 @@ int main(int, char **) {
   RUN_TEST(test_state_auth_when_auth_error_seen);
   RUN_TEST(test_state_boot_when_first_render_ever);
   RUN_TEST(test_state_offline_when_wifi_down_and_stale);
-  RUN_TEST(test_state_stale_when_long_since_success);
-  RUN_TEST(test_state_quiet_when_all_deps_beyond_horizon);
-  RUN_TEST(test_state_night_when_outside_window_and_next_far);
-  RUN_TEST(test_state_normal_at_night_when_schedule_hint_present);
+  RUN_TEST(test_state_normal_when_long_since_success);
+  RUN_TEST(test_state_normal_when_next_departure_far_out);
+  RUN_TEST(test_state_normal_overnight_schedule_only);
   RUN_TEST(test_state_normal_when_realtime_imminent);
+  RUN_TEST(test_state_normal_when_no_data_at_all);
   RUN_TEST(test_state_auth_dominates_boot);
-  RUN_TEST(test_allDeparturesBeyond_empty_is_true);
-  RUN_TEST(test_allDeparturesBeyond_finds_close_slot);
-  RUN_TEST(test_outsideServiceWindow_night);
-  RUN_TEST(test_outsideServiceWindow_daytime);
-  RUN_TEST(test_nextDepartureFarAway_empty_returns_true);
-  RUN_TEST(test_nextDepartureFarAway_close_returns_false);
   RUN_TEST(test_compose_boot_carries_version_string);
   RUN_TEST(test_compose_offline_fills_retry_in_s);
   RUN_TEST(test_compose_offline_clamps_retry_at_zero);
   RUN_TEST(test_compose_auth_fills_aid_short);
   RUN_TEST(test_compose_normal_merges_slots);
-  RUN_TEST(test_compose_stale_yields_empty_snapshot);
-  RUN_TEST(test_compose_quiet_preserves_api_ok);
-  RUN_TEST(test_compose_stale_preserves_api_ok);
+  RUN_TEST(test_compose_normal_falls_back_to_schedule);
   return UNITY_END();
 }

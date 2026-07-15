@@ -14,16 +14,14 @@ constexpr int FB_W = 400;
 constexpr int FB_H = 300;
 using Frame = FrameBuffer<FB_W, FB_H>;
 
-// Seven display modes the v2 state-selector decides between. Replaces the
-// old four-variant `OverlayKind` enum — the new model treats every screen as
-// a state, not as "Normal + overlay". See the migration plan §2.2 for the
-// decision tree.
+// Display modes the state-selector decides between. Only error / placeholder
+// screens are their own state; every screen that shows departures is Normal,
+// where the merged data decides what appears (fresh, scheduled-only, stale, or
+// a quiet gap all render the same board). Stale / Night / Quiet were removed —
+// they discarded real departure times for a blank or redundant screen.
 enum class DisplayState : std::uint8_t {
   Boot,     // first render ever (post-MAGIC-bump too) — "lädt Fahrplan…"
-  Normal,   // happy path: realtime + hints, full layout
-  Stale,    // last_success older than STALE_THRESHOLD_S — slots show "??:??"
-  Night,    // outside service window AND first dep is far away
-  Quiet,    // all valid deps beyond QUIET_HORIZON_S
+  Normal,   // the departure board: realtime + schedule hints, full layout
   Offline,  // wifi down AND last_success older than OFFLINE_THRESHOLD_S
   Auth,     // HAFAS err=AID/AUTH OR three consecutive OGD 401/403
   WifiAuth, // WPA handshake failed (wrong WiFi password) — terminal
@@ -36,7 +34,7 @@ constexpr int AUTH_AID_SHORT_CAP = 10;
 struct RenderInput {
   DisplayState state = DisplayState::Normal;
 
-  // Data layer — populated for Normal/Stale/Night; empty otherwise.
+  // Data layer — populated for Normal; empty otherwise.
   StreamSnapshot snapshot;
 
   // Offline-state inputs.

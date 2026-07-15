@@ -30,8 +30,8 @@ struct PersistedMeta {
   // v2 fields (driven by the display state-selector landing in Schritt 7):
   // - has_any_data: false until the first end-to-end fetch succeeded; drives
   //   the Boot screen after power-on / firmware-update (MAGIC bump zeroes it).
-  // - last_success_at: epoch of the last fully-successful fetch cycle;
-  //   feeds Stale / Offline thresholds.
+  // - last_success_at: epoch of the last fully-successful fetch cycle; feeds
+  //   the Offline threshold and the warm-cycle redraw-guard window.
   // - auth_error_seen: HAFAS err="AID"/"AUTH" sticky flag (cleared on next
   //   OK parse); drives the Auth screen.
   // - ogd_auth_streak: consecutive OGD 401/403 from `fetchWithRetry`; the

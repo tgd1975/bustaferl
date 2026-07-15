@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+### Zustandsmaschine vereinfacht
+
+- **`Stale`, `Night` und `Quiet` als Display-States entfernt.** Jeder Screen
+  mit Daten ist jetzt das `Normal`-Board; die Datenlage (nur Echtzeit, nur
+  Plan, gemischt, leer) bestimmt das Bild, kein Modus-Label. Grundregel: Die
+  nächste Abfahrt (Echtzeit **oder** Plan) wird immer mit ihrer echten Uhrzeit
+  gezeigt — auch Stunden im Voraus; `--:--` nur, wenn auch der Fahrplan nichts
+  hat. `DisplayState` hat nur noch fünf Werte (Boot, Normal, Offline, Auth,
+  WifiAuth). Bei Fetch-Fehlern behält der Warm-Zyklus das letzte gute Bild.
+- Entfernt: `QUIET_HORIZON_S`, `NIGHT_FIRST_DEP_MIN_AHEAD_S`,
+  `SERVICE_WINDOW_*`, `drawQuiet`, `allDeparturesBeyond`,
+  `outsideServiceWindow`, `nextDepartureFarAway`, das `stale`-Flag im Renderer
+  sowie die `CYC_STALE`/`StaleEnter`/`StaleExit`-Trace-Einträge
+  (`TRACE_MAGIC`-Bump). Device-Mockviews 2/3/4 gelöscht.
+
+### Fehlerbehebungen
+
+- **Boot-Screen im Warmbetrieb:** Ein Nicht-Deep-Sleep-Reset (Brownout,
+  Watchdog) wurde als Kaltstart fehlgeroutet. Routing jetzt in host-getesteter
+  `selectCycle()` — mit vorhandenem Board geht ein Reset direkt ins Board.
+- **Falsches-Passwort-Fehlauslöser:** WLAN-Disconnect-Reason 15 /
+  `AUTH_EXPIRE` lösten den terminalen WifiAuth-Screen auch bei korrektem
+  Passwort aus. Reason-Set eingeengt auf `{AUTH_FAIL, MIC_FAILURE}`.
+- **Button:** Long-Press feuert jetzt beim Erreichen des 3-s-Timeouts (nicht
+  erst beim Loslassen); RTC-Pullup auf GPIO 0 im Deep Sleep gehalten gegen
+  sporadisch verpasste Wakes.
+- **58A-Zeit-Ausrichtung:** Rechtsbündige Zeiten wackelten ±2 px je nach
+  letzter Ziffer (Tinten- statt Advance-Breite); Ausrichtung an fixer
+  Referenzbreite.
+
 ## v2.0 — S-Bahn Atzgersdorf (sichtbarer Display-Rewrite)
 
 **Breaking:** RTC-`MAGIC` wurde gebumpt — beim ersten Boot nach dem
@@ -57,10 +89,9 @@ Cold-Boot-Cycle ausgelöst (~10–20 s). Kein Anwender-Eingriff nötig.
 
 - Komplette Synchronisation: CONCEPT (v2-Sektion + EVA→HAFAS-extId
   Korrektur), README, ARCHITECTURE, HANDBUCH (Display-Abschnitt
-  Rewrite, alle 7 States dokumentiert), USER (Symbol-Cheatsheet,
-  AID-Erneuerung), TESTING.
-- `docs/design_handoff_display/` ist autoritative Layout-Referenz
-  (`screen-1-normal.png` … `screen-7-boot.png`).
+  Rewrite), USER (Symbol-Cheatsheet, AID-Erneuerung), TESTING.
+- Autoritative Layout-Referenz: die Host-Screenshots in
+  `docs/screenshots/` (`make test-native-png`).
 
 ## v1.0 — Wiener Linien
 

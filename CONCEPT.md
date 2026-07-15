@@ -16,7 +16,7 @@ Die drei Bus-Streams kommen über die Wiener-Linien-OGD-Schnittstelle, der S-Bah
 - [1. Hardware](#1-hardware)
 - [2. Datenquellen und Filter](#2-datenquellen-und-filter)
 - [3. Display-Inhalt](#3-display-inhalt)
-- [4. Aktualität (Stale-Verhalten)](#4-aktualität-stale-verhalten)
+- [4. Aktualität bei Fetch-Fehlern](#4-aktualität-bei-fetch-fehlern)
 - [5. Refresh-Strategie](#5-refresh-strategie)
 - [6. Deep-Sleep-Logik](#6-deep-sleep-logik)
 - [7. NTP-Sync](#7-ntp-sync)
@@ -70,7 +70,7 @@ Drei Datenflüsse:
 
 **ÖBB Scotty (HAFAS `mgate.exe`)** für die S-Bahn Bhf. Atzgersdorf → Wien Hbf. Ein POST pro Refresh liefert die nächsten Abfahrten mit Echtzeit, Richtungs- und Produktfilter. Details zu Request-Schema und Stations-IDs in §11.
 
-Pro Abfahrt wird der Echtzeit-Wert verwendet. Liefert die API nur den Plan-Wert, wird dieser still als Fallback genommen — keine Unterscheidung sichtbar.
+Pro Abfahrt wird der Echtzeit-Wert verwendet. Liefert die API nur den Plan-Wert, wird dieser als Fallback genommen und mit dem Plan-Marker `□` gekennzeichnet (bei 58A zeigt die Abweichungs-Skala stattdessen ein hohles Kästchen).
 
 ## 3. Display-Inhalt
 
@@ -92,26 +92,23 @@ S2  HH:MM   S3  HH:MM
 
 Pro Bus-Richtung die nächsten zwei Abfahrten als absolute Uhrzeit; der S-Bahn-Block zeigt die nächsten Abfahrten mit vorangestellter Linienkennung, weil die Linie pro Slot variiert (mal S2, mal S3/S4, manchmal REX). Keine Countdowns, keine aktuelle Uhrzeit, keine Aufbruchszeit, keine Niederflur-Info, keine Empfehlungslogik.
 
-Leerwert pro Slot (API liefert nichts): `—:—`.
+Leerwert pro Slot (API liefert nichts): `--:--`.
 
-> **Autoritatives Layout**: Das gesamte Display-Layout ist in [docs/design_handoff_display/](docs/design_handoff_display/) ausgelagert. Die Screenshots `screen-1-normal.png` … `screen-7-boot.png` sind die verbindliche Referenz; die ASCII-Mockups hier sind nur zur Orientierung.
+> **Autoritatives Layout**: Die verbindliche Referenz sind die Host-Screenshots in [docs/screenshots/](docs/screenshots/) (`01-boot.png` … `08-wifi-auth.png`), erzeugt von `make test-native-png`; die ASCII-Mockups hier sind nur zur Orientierung.
 
-## 4. Aktualität (Stale-Verhalten)
+## 4. Aktualität bei Fetch-Fehlern
 
-Hart binär. Während das System wach ist und versucht, die API zu erreichen: wenn der letzte erfolgreiche Call ≥ 3 Minuten zurückliegt → Stale-Zustand:
+Es gibt **keinen** eigenen „Veraltet"-Screen. Grundregel: Solange irgendeine Abfahrt bekannt ist — Echtzeit oder Fahrplan — zeigt das Board sie mit ihrer echten Uhrzeit.
 
-- alle Uhrzeiten zu `—:—`
-- deutlich sichtbarer Hinweis „veraltet"
+- **Fetch schlägt fehl (WiFi da):** Der Warm-Zyklus behält das letzte gute Bild, statt Slots auf `--:--` zu blanken. Der schedule-gestützte Merge liefert ohnehin die geplanten Abfahrten, falls die Echtzeit ausfällt.
+- **WiFi weg + letzter Erfolg älter als `OFFLINE_THRESHOLD_S` (5 min):** Fullscreen-`Offline`-Screen (siehe §9 / HANDBUCH §3).
+- **Während Deep Sleep:** kein Fetch, der letzte Render bleibt die ganze Schlafphase sichtbar.
 
-Der Stale-Check gilt **nur im Wachzustand**. Während Deep Sleep nicht — die Vorbedingung „wir konnten nicht" ist nicht erfüllt, weil wir nicht wollten. Der letzte Render bleibt über die ganze Schlafphase sichtbar.
-
-Bei erfolgreichem API-Call nach Stale: automatischer Rückwechsel.
-
-**Bewusste Vereinfachung:** Stale löscht *alle* Slots, auch noch nicht abgelaufene. Alternative wäre „letzte bekannte Werte mit Zeitstempel" — verworfen, weil veraltete Minutenangaben mehr verwirren als ein klares Striche-Bild. Die Anzeige soll entweder vertrauenswürdig sein oder eindeutig kaputt aussehen.
+`STALE_THRESHOLD_V2_S` (10 min) steuert nur noch das interne Redraw-Guard-Fenster im Warm-Zyklus (ab wann bei anhaltendem Fehler neu gezeichnet statt eingefroren wird) — kein sichtbarer Screen.
 
 ### API-Polling im Wachzustand
 
-Poll-Intervall: **30 s**. Damit hat man bei Stale-Schwelle 180 s mindestens 5 Versuche, bevor die Anzeige umschlägt. Ein Wachzustand entsteht entweder im Vorlauf zur frühsten Abfahrt (siehe §6) oder als Übergangsmodus zwischen Polls — d. h. zwischen zwei Polls darf das Gerät kurz schlafen (Light Sleep, kein Deep Sleep mit Reboot), um Strom zu sparen, aber der Stale-Timer läuft weiter.
+Poll-Intervall: **30 s**. Ein Wachzustand entsteht entweder im Vorlauf zur frühsten Abfahrt (siehe §6) oder als Übergangsmodus zwischen Polls — d. h. zwischen zwei Polls darf das Gerät kurz schlafen (Light Sleep, kein Deep Sleep mit Reboot), um Strom zu sparen.
 
 ## 5. Refresh-Strategie
 
@@ -192,11 +189,11 @@ Ein Wake aus Deep Sleep verliert den schnellen Partial-RAM des Panels; der erste
 
 ## 9. Edge Cases
 
-- eine Richtung ohne Daten → `—:—` nur an der betroffenen Stelle, Rest unverändert
+- eine Richtung ohne Daten → `--:--` nur an der betroffenen Stelle, Rest unverändert
 - API komplett unerreichbar im Wachzustand > 3 min → volles Striche-Bild
 - während Deep Sleep: letzter Render bleibt, kein Stale-Trigger
 - Pre-Sleep liefert API bereits erste Morgenbusse → bleiben über Nacht korrekt sichtbar
-- **`towards`-Filter für 58B greift nicht** (Wiener Linien hat den String geändert): sichtbarer Fehlerzustand statt stilles `—:—`. Erkennbar daran, dass die API zwar Daten für den RBL liefert, aber keine einzige Departure mehr auf das `FILTER_TOWARDS`-Muster matcht — über mindestens 3 aufeinanderfolgende erfolgreiche Calls.
+- **`towards`-Filter für 58B greift nicht** (Wiener Linien hat den String geändert): `FilterHealth` zählt einen Streak mit (kein eigener Screen mehr, aber im Diagnose-Modus ablesbar). Erkennbar daran, dass die API zwar Daten für den RBL liefert, aber keine einzige Departure mehr auf das `FILTER_TOWARDS`-Muster matcht — über mindestens 3 aufeinanderfolgende erfolgreiche Calls.
 - **ÖBB-AID/Client veraltet** → `mgate.exe` antwortet `err != "OK"` (z. B. `"AID"`) mit HTTP 200. Über 3 aufeinanderfolgende Calls → `auth_error_seen`, sichtbarer Auth-Fehlerzustand. Behebung: AID in `config.h` aktualisieren, neu flashen.
 - **Schienenersatzverkehr** → ÖBB zeigt SEV-Buslinien (`SEV1` etc.) im selben Feed; der Produktfilter `jnyFltrL` schließt sie aus, sonst stünden Busse im S-Bahn-Block.
 - RTC-Framebuffer-RLE überschreitet das RTC-Slot-Budget → nächster Render erzwingt Light Full, Buffer wird verworfen und neu aufgebaut
@@ -255,16 +252,16 @@ slot[0..1] = die nächsten zwei Departures ab now() aus:
 
 Bewusst keine Unterscheidung: sobald eine Abfahrt ins 70-Minuten-Realtime-Fenster rutscht, ersetzt der Realtime-Wert den Hint auf demselben Slot — exakt das gewünschte „schrittweise" Verhalten. Nutzer sieht keinen Bruch zwischen Plan und Realtime, weder morgens noch abends.
 
-`hint`-Werte werden ignoriert, wenn `schedule_fetched_at == 0` (nie geladen) oder älter als 48 h. Stale-Mechanik aus §4 bleibt unverändert.
+`hint`-Werte werden ignoriert, wenn `schedule_fetched_at == 0` (nie geladen) oder älter als 48 h. Das Fetch-Fehler-Verhalten aus §4 bleibt unverändert.
 
 ### 10.5 S-Bahn und Plan-Hints
 
-Der Wert eines Hint-Mechanismus für die S-Bahn ist geringer als beim Bus: die Stammstrecke fährt von ~5:00 bis ~0:30, das Echtzeit-70-Minuten-Fenster reicht praktisch immer für die nächste Fahrt aus — außer in der Nachtlücke. Default-Verhalten: **kein Hint-Pfad für die S-Bahn**. In der Nacht zeigt der Stream `—:—`; das Vorzimmer-Gerät wird morgens ohnehin für 58A geweckt (Bus fährt früher) und der S-Bahn-Block ist dann durch den normalen 70-Minuten-Vorlauf wieder gefüllt.
+Der Wert eines Hint-Mechanismus für die S-Bahn ist geringer als beim Bus: die Stammstrecke fährt von ~5:00 bis ~0:30, das Echtzeit-70-Minuten-Fenster reicht praktisch immer für die nächste Fahrt aus — außer in der Nachtlücke. Default-Verhalten: **kein Hint-Pfad für die S-Bahn**. In der Nacht zeigt der Stream `--:--`; das Vorzimmer-Gerät wird morgens ohnehin für 58A geweckt (Bus fährt früher) und der S-Bahn-Block ist dann durch den normalen 70-Minuten-Vorlauf wieder gefüllt.
 
 ### 10.6 Edge Cases
 
 - **EFA unreachable** während Cold Boot oder geplantem Refresh → alte `hint`-Werte bleiben gültig (bis Alters-Cap); kein Display-Effekt. Retry beim nächsten regulären Anlass.
-- **EFA-`direction`-Filter greift nicht** (analog zum FilterHealth für OGD): `hint`-Werte für betroffenen Stream bleiben 0; Renderer verhält sich für diesen Slot wie sonst (`—:—` außerhalb des Realtime-Fensters).
+- **EFA-`direction`-Filter greift nicht** (analog zum FilterHealth für OGD): `hint`-Werte für betroffenen Stream bleiben 0; Renderer verhält sich für diesen Slot wie sonst (`--:--` außerhalb des Realtime-Fensters).
 - **Wochenende/Feiertag**: EFA berücksichtigt Kalendervarianten automatisch — wir bekommen die richtigen Werte für den jeweils nächsten Verkehrstag.
 - **DST-Übergang**: `dateTime` aus EFA wird zu `time_t` (UTC) normalisiert; intern alles `time_t`, keine HH:MM-Strings.
 - **Schema-Änderung in RTC-Layout**: `MAGIC` in `Esp32PersistentStore` bumpen, damit alte Strukturen nach Update nicht falsch interpretiert werden.
@@ -386,7 +383,7 @@ wifiMulti.addAP(WIFI_SSID_PRIMARY, WIFI_PASSWORD_PRIMARY);
 #endif
 
 if (wifiMulti.run(10000) != WL_CONNECTED) {
-    // beide unerreichbar → API-Call scheitert → Stale greift nach 3 min
+    // WiFi weg → nach OFFLINE_THRESHOLD_S (5 min) Offline-Screen
 }
 ```
 
@@ -404,10 +401,8 @@ Die WiFi-Regulierungsdomäne ist auf Österreich gepinnt (2,4 GHz Kanäle 1–13
 
 | Variable | Wert | Bedeutung |
 |---|---|---|
-| `STALE_THRESHOLD_V2_S` | 600 | letzter Erfolg älter → `Stale`-Screen (`??:??`) |
+| `STALE_THRESHOLD_V2_S` | 600 | Redraw-Guard-Fenster im Warm-Zyklus (kein eigener Screen) |
 | `OFFLINE_THRESHOLD_S` | 300 | WiFi down + Schwelle → `Offline`-Screen |
-| `QUIET_HORIZON_S` | 1200 | alle Abfahrten weiter entfernt → `Quiet`-Screen |
-| `NIGHT_FIRST_DEP_MIN_AHEAD_S` | 1800 | erste Abfahrt weiter (Nachtfenster) → `Night`-Screen |
 | `WAKE_BEFORE_BUS_S` | 900 | Wake-Zeitpunkt vor Abfahrt |
 | `BOOT_MARGIN_S` | 30 | Boot+WiFi+Render-Reserve |
 | `POLL_INTERVAL_S` | 30 | API-Poll im Wachzustand |
@@ -430,8 +425,9 @@ Die WiFi-Regulierungsdomäne ist auf Österreich gepinnt (2,4 GHz Kanäle 1–13
 | `BOOT_INFO_SHOW_S` | 15 | Dauer des Boot-Check-Screens (0 = aus) |
 
 Hinweis: `STALE_THRESHOLD_S` (180 s) existiert weiterhin in `config.h` als
-Legacy-Wert in `CycleConfig`, steuert aber **nicht** den Stale-Screen — das
-tut der State-Selector über `STALE_THRESHOLD_V2_S` (600 s).
+Legacy-Wert in `CycleConfig`, wird produktiv aber nicht mehr ausgewertet.
+Das Redraw-Guard-Fenster des Warm-Zyklus läuft über `STALE_THRESHOLD_V2_S`
+(600 s); einen sichtbaren „Stale"-Screen gibt es nicht mehr.
 
 ## 14. Bedienung: BOOT-Knopf und Diagnose-Modus
 
@@ -440,7 +436,7 @@ klassifiziert jeden Druck in **Short / Long / Double**:
 
 - **Short** → sofortiger Update-Zyklus (weckt auch aus dem Tiefschlaf); der
   Stempel „upd HH:MM" springt immer, auch bei unveränderten Daten.
-- **Long** (> `BTN_LONG_PRESS_MS`) → S/W-Reset (Deep Clean + Redraw).
+- **Long** (> `BTN_LONG_PRESS_MS`) → S/W-Reset (Deep Clean + Redraw); löst beim Erreichen des Timeouts aus, nicht erst beim Loslassen.
 - **Double** (zwei Short innerhalb `BTN_DOUBLE_CLICK_MS`) → Diagnose-Modus.
 
 Preis der gestenfreien Doppelklick-Erkennung auf einem Taster: ein einzelner
@@ -454,7 +450,7 @@ den Tiefschlaf, nicht den Stromverlust). Ein Doppelklick holt einmal frische
 Daten und blättert dann durch vier schlichte Text-Seiten:
 
 1. **STATUS** — WLAN (SSID/IP/RSSI), Uhr + NTP, Stream-Selbsttest, Streaks, Heap, Uptime
-2. **ZYKLEN** — jüngste Zyklen (Auslöser, Stream-OK, fehlgeschlagene Batches, Rescue/Stale, Schlaf)
+2. **ZYKLEN** — jüngste Zyklen (Auslöser, Stream-OK, fehlgeschlagene Batches, Rescue, Schlaf)
 3. **FEHLER** — jüngste Anomalien im Klartext
 4. **DATEN-DETAILS** — Slot-Quellen (E/P/H), Fahrplan-Ladezeit, Panel-Zustand
 

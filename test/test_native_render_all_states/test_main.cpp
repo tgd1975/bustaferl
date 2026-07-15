@@ -1,11 +1,11 @@
-// Schritt 7 validation: render all 7 DisplayStates on the host and dump
-// each frame as a PGM under .tmp/v2-pgm/ so the migration can be visually
-// reviewed before flashing. The HostCanvas is the apprentice renderer —
-// not pixel-identical to the device, but close enough to spot layout
-// regressions (Risiko V8/V9/V11 quirks remain device-visible).
+// Render every DisplayState + the four board DATA cases (live-only,
+// schedule-only, no-data, mixed) on the host and dump each frame as a PGM under
+// .tmp/v2-pgm/ for visual review before flashing. The HostCanvas is the
+// apprentice renderer — not pixel-identical to the device, but close enough to
+// spot layout regressions.
 //
-// Tests also assert frame distinctness (no two states collapse to the
-// same bytes) and that each frame is non-trivial (≥ N paper pixels).
+// Tests also assert frame distinctness and that each frame is non-trivial
+// (≥ N paper pixels).
 
 #include "config.h"
 #include "data/StreamSnapshot.h"
@@ -66,7 +66,8 @@ int countPaperPixels(const Frame &fb) {
 RenderInput makeBoardInput(DisplayState state) {
   RenderInput in;
   in.state = state;
-  // Populate slots with realistic data so Normal/Stale/Night look full.
+  // A sparse but realistic board (some slots left empty) used by the
+  // persistence-cap, update-stamp, and alignment tests.
   in.snapshot.api_ok = true;
   in.snapshot.stream[STREAM_58A_ATZ].slot[0] = {
       1700000000 + 600, DepartureSource::Realtime, true};
@@ -84,6 +85,81 @@ RenderInput makeBoardInput(DisplayState state) {
       1700000000 + 2000, DepartureSource::Realtime, true};
   std::strncpy(in.snapshot.stream[STREAM_SBAHN_HBF].slot[1].line_label, "S3",
                6);
+  return in;
+}
+
+// Data-case demo builders. Every board is DisplayState::Normal now; what
+// differs is the DATA (live / scheduled / none / mixed). These stand in for the
+// removed Stale/Night/Quiet screens — the same board, driven by its data.
+
+// Fill EVERY rendered slot (both TG/EG columns + all three S-Bahn slots) with
+// the given source, so a "pure" demo shows a fully-populated board rather than
+// makeBoardInput's sparse mix (which left several slots as "--:--"). For live
+// (Realtime) slots a scheduled reference is set too, so the 58A gauge draws a
+// real deviation BAR — a Realtime slot with planned==0 would still render the
+// hollow "no comparison" square, which is what made live-only look scheduled.
+RenderInput makeFullBoard(DepartureSource src) {
+  RenderInput in;
+  in.state = DisplayState::Normal;
+  in.snapshot.api_ok = true;
+  const time_t base = 1700000000;
+  const bool live = (src == DepartureSource::Realtime);
+  // Per-slot deviation (minutes late) so the live gauge bars vary visibly.
+  auto fill = [&](int stream, int slot, int off_min, int dev_min,
+                  const char *label) {
+    Departure &d = in.snapshot.stream[stream].slot[slot];
+    d = {base + off_min * 60, src, true};
+    if (live) {
+      // `when` is the live time; planned = when - deviation.
+      d.planned = d.when - static_cast<time_t>(dev_min) * 60;
+    }
+    if (label[0] != '\0') {
+      std::strncpy(d.line_label, label, 6);
+    }
+  };
+  fill(STREAM_58A_ATZ, 0, 2, 1, "");       // +1 min
+  fill(STREAM_58A_ATZ, 1, 18, -1, "");     // early
+  fill(STREAM_58A_HIETZING, 0, 5, 3, "");  // +3 min
+  fill(STREAM_58A_HIETZING, 1, 20, 0, ""); // on time
+  fill(STREAM_58B_ATZ, 0, 11, 2, "");      // +2 min
+  fill(STREAM_58B_ATZ, 1, 31, 0, "");      // on time
+  fill(STREAM_SBAHN_HBF, 0, 7, 1, "S2");   // (no gauge on S-Bahn rows)
+  fill(STREAM_SBAHN_HBF, 1, 21, 0, "S3");
+  fill(STREAM_SBAHN_HBF, 2, 29, 0, "S2");
+  return in;
+}
+
+// All departures live realtime (gauge draws deviation bars).
+RenderInput makeLiveOnlyInput() {
+  return makeFullBoard(DepartureSource::Realtime);
+}
+
+// All departures scheduled (Plan) — the overnight / no-live-data case
+// (gauge draws the hollow "no live comparison" square).
+RenderInput makeScheduleOnlyInput() {
+  return makeFullBoard(DepartureSource::Plan);
+}
+
+// The everyday board: a full board with a realistic live + scheduled mix.
+// Nearer departures are live (realtime), later ones fall back to the plan —
+// so both the deviation gauges and the ° plan-markers appear together.
+RenderInput makeMixedInput() {
+  RenderInput in = makeFullBoard(DepartureSource::Realtime);
+  // Push the later column of each row to Plan so live/scheduled coexist.
+  in.snapshot.stream[STREAM_58A_ATZ].slot[1].source = DepartureSource::Plan;
+  in.snapshot.stream[STREAM_58A_HIETZING].slot[1].source =
+      DepartureSource::Plan;
+  in.snapshot.stream[STREAM_58B_ATZ].slot[1].source = DepartureSource::Plan;
+  in.snapshot.stream[STREAM_SBAHN_HBF].slot[2].source = DepartureSource::Plan;
+  return in;
+}
+
+// No data at all — every slot invalid, so the board renders "--:--"
+// placeholders. The old Stale / Quiet case, now just an empty Normal board.
+RenderInput makeNoDataInput() {
+  RenderInput in;
+  in.state = DisplayState::Normal;
+  in.snapshot.api_ok = true; // reachable API, just nothing to show
   return in;
 }
 
@@ -105,37 +181,41 @@ void test_dump_state_boot() {
   TEST_ASSERT_GREATER_THAN(100, countPaperPixels(fb));
 }
 
-void test_dump_state_normal() {
+// The board, mixed live + scheduled data (the everyday case).
+void test_dump_board_mixed() {
   Frame fb;
-  RenderInput in = makeBoardInput(DisplayState::Normal);
+  RenderInput in = makeMixedInput();
   renderFrame(in, fb);
-  TEST_ASSERT_TRUE(writePgm(fb, "02-normal.pgm"));
+  TEST_ASSERT_TRUE(writePgm(fb, "02-board-mixed.pgm"));
   TEST_ASSERT_GREATER_THAN(500, countPaperPixels(fb));
 }
 
-void test_dump_state_stale() {
+// Data case: only live realtime departures.
+void test_dump_board_live_only() {
   Frame fb;
-  RenderInput in = makeBoardInput(DisplayState::Stale);
+  RenderInput in = makeLiveOnlyInput();
   renderFrame(in, fb);
-  TEST_ASSERT_TRUE(writePgm(fb, "03-stale.pgm"));
+  TEST_ASSERT_TRUE(writePgm(fb, "03-board-live-only.pgm"));
   TEST_ASSERT_GREATER_THAN(500, countPaperPixels(fb));
 }
 
-void test_dump_state_night() {
+// Data case: only scheduled (Plan) departures — overnight / no live data.
+void test_dump_board_schedule_only() {
   Frame fb;
-  RenderInput in = makeBoardInput(DisplayState::Night);
+  RenderInput in = makeScheduleOnlyInput();
   renderFrame(in, fb);
-  TEST_ASSERT_TRUE(writePgm(fb, "04-night.pgm"));
+  TEST_ASSERT_TRUE(writePgm(fb, "04-board-schedule-only.pgm"));
   TEST_ASSERT_GREATER_THAN(500, countPaperPixels(fb));
 }
 
-void test_dump_state_quiet() {
+// Data case: no data at all — every slot renders "--:--". Was Stale/Quiet.
+void test_dump_board_no_data() {
   Frame fb;
-  RenderInput in;
-  in.state = DisplayState::Quiet;
+  RenderInput in = makeNoDataInput();
   renderFrame(in, fb);
-  TEST_ASSERT_TRUE(writePgm(fb, "05-quiet.pgm"));
-  TEST_ASSERT_GREATER_THAN(100, countPaperPixels(fb));
+  TEST_ASSERT_TRUE(writePgm(fb, "05-board-no-data.pgm"));
+  // Still non-trivial: headers, badges, network plan, and the "--:--" dashes.
+  TEST_ASSERT_GREATER_THAN(500, countPaperPixels(fb));
 }
 
 void test_dump_state_offline() {
@@ -244,15 +324,15 @@ void test_dump_state_wifi_auth() {
 }
 
 void test_fullscreen_states_each_produce_distinct_frames() {
-  // Boot / Quiet / Offline / Auth / WifiAuth all use their own fullscreen
-  // renderer (different glyph + text), so every pairwise diff must be non-zero.
-  // Stale / Night / Normal share drawBoard() with the same input → they
-  // intentionally render identically here; differentiation happens via the
-  // state-selector picking the right state, not by the renderer painting
-  // different pixels for the same data. Schritt 7.8 trade-off accepted.
+  // Boot / Offline / Auth / WifiAuth each use their own fullscreen renderer
+  // (different glyph + text), so every pairwise diff must be non-zero. Normal
+  // is the only board state; the others are all distinct fullscreen error /
+  // placeholder screens.
   constexpr DisplayState fullscreen[] = {
-      DisplayState::Boot, DisplayState::Quiet,    DisplayState::Offline,
-      DisplayState::Auth, DisplayState::WifiAuth,
+      DisplayState::Boot,
+      DisplayState::Offline,
+      DisplayState::Auth,
+      DisplayState::WifiAuth,
   };
   constexpr int n = sizeof(fullscreen) / sizeof(fullscreen[0]);
   Frame frames[n];
@@ -280,26 +360,24 @@ void test_fullscreen_states_each_produce_distinct_frames() {
   }
 }
 
-void test_stale_differs_from_normal_with_same_data() {
-  // Stale renderer forces every slot to '??:??' regardless of the input
-  // snapshot. With the same makeBoardInput() data, Normal and Stale must
-  // therefore diverge.
-  RenderInput n_in = makeBoardInput(DisplayState::Normal);
-  RenderInput s_in = makeBoardInput(DisplayState::Stale);
-  Frame fn;
-  Frame fs;
-  renderFrame(n_in, fn);
-  renderFrame(s_in, fs);
+void test_no_data_board_differs_from_full_board() {
+  // The board's content is driven by its data: a no-data board (all "--:--")
+  // must render differently from the mixed board with real times.
+  RenderInput full = makeBoardInput(DisplayState::Normal);
+  RenderInput empty = makeNoDataInput();
+  Frame ff;
+  Frame fe;
+  renderFrame(full, ff);
+  renderFrame(empty, fe);
   bool different = false;
   for (size_t k = 0; k < Frame::bytes; ++k) {
-    if (fn.data()[k] != fs.data()[k]) {
+    if (ff.data()[k] != fe.data()[k]) {
       different = true;
       break;
     }
   }
-  TEST_ASSERT_TRUE_MESSAGE(
-      different,
-      "Normal and Stale rendered identical bytes despite Stale-marker");
+  TEST_ASSERT_TRUE_MESSAGE(different,
+                           "Full and no-data boards rendered identical bytes");
 }
 
 void test_every_state_fits_persistence_cap() {
@@ -309,8 +387,9 @@ void test_every_state_fits_persistence_cap() {
   // light-full (whole-panel flash). Any layout change that pushes a state
   // over the cap must fail here, not on the device.
   constexpr DisplayState all[] = {
-      DisplayState::Boot,  DisplayState::Normal, DisplayState::Stale,
-      DisplayState::Night, DisplayState::Quiet,  DisplayState::Offline,
+      DisplayState::Boot,
+      DisplayState::Normal,
+      DisplayState::Offline,
       DisplayState::Auth,
   };
   uint8_t enc[RLE_HARDCAP_BYTES];
@@ -427,17 +506,17 @@ void test_hietzing_time1_left_edge_is_value_stable() {
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_dump_state_boot);
-  RUN_TEST(test_dump_state_normal);
-  RUN_TEST(test_dump_state_stale);
-  RUN_TEST(test_dump_state_night);
-  RUN_TEST(test_dump_state_quiet);
+  RUN_TEST(test_dump_board_mixed);
+  RUN_TEST(test_dump_board_live_only);
+  RUN_TEST(test_dump_board_schedule_only);
+  RUN_TEST(test_dump_board_no_data);
   RUN_TEST(test_dump_state_offline);
   RUN_TEST(test_dump_state_offline_case_mismatch);
   RUN_TEST(test_offline_ssid_list_adds_ink);
   RUN_TEST(test_dump_state_auth);
   RUN_TEST(test_dump_state_wifi_auth);
   RUN_TEST(test_fullscreen_states_each_produce_distinct_frames);
-  RUN_TEST(test_stale_differs_from_normal_with_same_data);
+  RUN_TEST(test_no_data_board_differs_from_full_board);
   RUN_TEST(test_every_state_fits_persistence_cap);
   RUN_TEST(test_update_stamp_draws_bottom_right_only);
   RUN_TEST(test_update_stamp_overwrite_is_clean);

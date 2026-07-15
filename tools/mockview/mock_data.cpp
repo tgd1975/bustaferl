@@ -51,13 +51,13 @@ StreamSnapshot buildNormalSnapshot() {
   return s;
 }
 
-StreamSnapshot buildNightSnapshot() {
-  // Offsets and labels match screen-3-nachtbetrieb.png (anchor 04:00 UTC).
-  // All Plan because nightly traffic shows scheduled first departures.
+StreamSnapshot buildScheduleOnlySnapshot() {
+  // Overnight board (anchor 04:00 UTC): all Plan, no realtime — the schedule-
+  // only case that shows the next scheduled departures.
   //   58A → Atzg:  04:23 / 04:38
   //   58A → Hie:   04:31 / 04:46
   //   58B → Atzg:  04:38 / 04:53
-  //   S-Bahn Hbf:  S2 04:43 / S3 04:58  (S7 slot stays empty — §3.3)
+  //   S-Bahn Hbf:  S2 04:43 / S3 04:58 / S2 05:13
   StreamSnapshot s{};
   s.api_ok = true;
 

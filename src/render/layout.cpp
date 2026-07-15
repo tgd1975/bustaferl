@@ -187,13 +187,11 @@ void drawSbahnHeaderBar(render::Canvas &canvas, int y) {
   canvas.print("WIEN HBF");
 }
 
-// Format the HH:MM (or stale/invalid placeholder) into a small string.
-void formatSlotTime(char *out, std::size_t cap, const Departure &d,
-                    bool stale) {
-  if (stale || !d.valid) {
-    // Per docs/design_handoff_display/README.md §"Veraltet": stale and
-    // missing times both render as the dash placeholder. logisoso*_tn is
-    // numbers-only and lacks "?", so we always use the same dash form.
+// Format the HH:MM (or the invalid-slot placeholder) into a small string.
+void formatSlotTime(char *out, std::size_t cap, const Departure &d) {
+  if (!d.valid) {
+    // A slot the merge could fill from neither realtime nor the schedule.
+    // logisoso*_tn is numbers-only and lacks "?", so the dash form stands in.
     std::snprintf(out, cap, "--:--");
   } else {
     formatHHMM(d.when, out, cap);
@@ -213,15 +211,14 @@ struct SlotSpec {
   const Departure *d2;
   BadgeSize sz;
   FontRole row_font;
-  bool stale;
   // 58A only: draw the live-vs-Fahrplan deviation gauge after each time (in
   // place of the plan-marker). Left false for 58B and the S-Bahn, which render
   // exactly as before.
   bool show_dev = false;
 };
 
-bool slotIsPlan(const Departure &d, bool stale) {
-  return !stale && d.valid && d.source != DepartureSource::Realtime;
+bool slotIsPlan(const Departure &d) {
+  return d.valid && d.source != DepartureSource::Realtime;
 }
 
 // Stable width of a HH:MM time cell for right-alignment. Every rendered time
@@ -237,8 +234,7 @@ int timeFieldWidth(render::Canvas &canvas) { return canvas.textWidth("88:88"); }
 // Right-hand marker for the two-time (TG/EG) rows: either the plan-marker
 // superscript (58B / default) or, on the 58A rows (`show_dev`), the deviation
 // gauge in its place. The two are mutually exclusive per slot — the gauge's
-// hollow square already conveys "plan only, no live match". Stale rows show
-// ??:?? and get neither.
+// hollow square already conveys "plan only, no live match".
 void drawTimeMarkers(render::Canvas &canvas, const SlotSpec &s, int row_h,
                      bool d_plan, bool d2_plan) {
   if (!s.show_dev) {
@@ -250,9 +246,6 @@ void drawTimeMarkers(render::Canvas &canvas, const SlotSpec &s, int row_h,
       drawPlanMark(canvas,
                    COL_TIME2_DIGIT_RIGHT + SLOT_PLAN_MARKER_OFFSET_X_GAP, s.y);
     }
-    return;
-  }
-  if (s.stale) {
     return;
   }
   const int gtop = s.y + (row_h - GAUGE_H) / 2;
@@ -295,14 +288,14 @@ int drawSlot(render::Canvas &canvas, const SlotSpec &s) {
   }
 
   char hhmm[8];
-  formatSlotTime(hhmm, sizeof(hhmm), s.d, s.stale);
+  formatSlotTime(hhmm, sizeof(hhmm), s.d);
   canvas.setRoleFont(s.row_font);
   canvas.setTextColor(1);
   const int time1_w = canvas.textWidth(hhmm);
   // Superscript-style "°" marker — sits at the top of the cap-line of the
   // time digits, not vertically centred against the whole row.
   const int plan_mark_y = s.y;
-  const bool d_plan = slotIsPlan(s.d, s.stale);
+  const bool d_plan = slotIsPlan(s.d);
 
   if (s.d2 == nullptr) {
     // Single-time slot (ATZG): left-anchored next to the badge.
@@ -321,8 +314,8 @@ int drawSlot(render::Canvas &canvas, const SlotSpec &s) {
   // digit right edges are identical whether or not a row has a plan
   // marker.
   char hhmm2[8];
-  formatSlotTime(hhmm2, sizeof(hhmm2), *s.d2, s.stale);
-  const bool d2_plan = slotIsPlan(*s.d2, s.stale);
+  formatSlotTime(hhmm2, sizeof(hhmm2), *s.d2);
+  const bool d2_plan = slotIsPlan(*s.d2);
   // Right-align to a FIXED template width, not each string's own width.
   // textWidth() (u8g2 getUTF8Width) returns the ink extent, which for a
   // proportional-ink font shrinks when the string's LAST glyph has less
@@ -353,11 +346,10 @@ const char *sbahnLineLabel(const Departure &slot) {
 }
 
 // One S-Bahn slot — badge + HH:MM when valid, dashed placeholder without
-// badge when invalid/stale. Slots are equally wide; content is left-anchored
+// badge when invalid. Slots are equally wide; content is left-anchored
 // inside the slot box.
-void drawSbahnSlot(render::Canvas &canvas, int x, int y, const Departure &d,
-                   bool stale) {
-  if (stale || !d.valid) {
+void drawSbahnSlot(render::Canvas &canvas, int x, int y, const Departure &d) {
+  if (!d.valid) {
     canvas.setRoleFont(FontRole::Atzg_Row);
     canvas.setTextColor(1);
     canvas.setCursor(x, y);
@@ -365,41 +357,39 @@ void drawSbahnSlot(render::Canvas &canvas, int x, int y, const Departure &d,
     return;
   }
   drawSlot(canvas, SlotSpec{x, y, sbahnLineLabel(d), "", d, nullptr,
-                            BadgeSize::Sm, FontRole::Atzg_Row, stale});
+                            BadgeSize::Sm, FontRole::Atzg_Row});
 }
 
 void drawBoard(render::Canvas &canvas, const RenderInput &in) {
-  const bool stale = (in.state == DisplayState::Stale);
-
   drawHeaderBar(canvas, LAYOUT_TG_BAR_Y, "TULLNERTALGASSE");
   const StreamData &s58a_atz = in.snapshot.stream[STREAM_58A_ATZ];
   drawSlot(canvas, SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW0_Y, "58A",
                             display_dir(STREAM_58A_ATZ), s58a_atz.slot[0],
                             &s58a_atz.slot[1], BadgeSize::Lg, FontRole::TG_Row,
-                            stale, /*show_dev=*/true});
+                            /*show_dev=*/true});
   const StreamData &s58a_hietzing = in.snapshot.stream[STREAM_58A_HIETZING];
   drawSlot(canvas,
            SlotSpec{LAYOUT_PAD_X, LAYOUT_TG_ROW1_Y, "58A",
                     display_dir(STREAM_58A_HIETZING), s58a_hietzing.slot[0],
                     &s58a_hietzing.slot[1], BadgeSize::Lg, FontRole::TG_Row,
-                    stale, /*show_dev=*/true});
+                    /*show_dev=*/true});
 
   drawHeaderBar(canvas, LAYOUT_EG_BAR_Y, "ENDEMANNGASSE · NACH SCHLEIFE");
   const StreamData &s58b_atz = in.snapshot.stream[STREAM_58B_ATZ];
   drawSlot(canvas,
            SlotSpec{LAYOUT_PAD_X, LAYOUT_EG_ROW_Y, "58B",
                     display_dir(STREAM_58B_ATZ), s58b_atz.slot[0],
-                    &s58b_atz.slot[1], BadgeSize::Md, FontRole::EG_Row, stale});
+                    &s58b_atz.slot[1], BadgeSize::Md, FontRole::EG_Row});
 
   drawSbahnHeaderBar(canvas, LAYOUT_SB_BAR_Y);
   const StreamData &sb = in.snapshot.stream[STREAM_SBAHN_HBF];
-  drawSbahnSlot(canvas, LAYOUT_PAD_X, LAYOUT_SB_ROW_Y, sb.slot[0], stale);
+  drawSbahnSlot(canvas, LAYOUT_PAD_X, LAYOUT_SB_ROW_Y, sb.slot[0]);
   drawSbahnSlot(canvas, LAYOUT_PAD_X + SB_SLOT_WIDTH, LAYOUT_SB_ROW_Y,
-                sb.slot[1], stale);
+                sb.slot[1]);
   // Third column shows the next S-Bahn departure after the first two. Renders
   // "--:--" on its own when the slot is empty (drawSbahnSlot handles invalid).
   drawSbahnSlot(canvas, LAYOUT_PAD_X + 2 * SB_SLOT_WIDTH, LAYOUT_SB_ROW_Y,
-                sb.slot[2], stale);
+                sb.slot[2]);
 
   drawNetworkPlan(canvas, LAYOUT_PAD_X, LAYOUT_NETWORK_Y,
                   FB_W - 2 * LAYOUT_PAD_X);
@@ -430,11 +420,6 @@ void renderFrame(const RenderInput &in, Frame &fb) {
   case DisplayState::WifiAuth:
     drawWifiAuth(canvas, in.wanted_ssids);
     return;
-  case DisplayState::Quiet:
-    drawQuiet(canvas);
-    return;
-  case DisplayState::Stale:
-  case DisplayState::Night:
   case DisplayState::Normal:
     drawBoard(canvas, in);
     return;

@@ -27,16 +27,12 @@ inline const char *state(DisplayState s) {
     return "Boot";
   case DisplayState::Normal:
     return "Normal";
-  case DisplayState::Stale:
-    return "Stale";
-  case DisplayState::Night:
-    return "Night";
-  case DisplayState::Quiet:
-    return "Quiet";
   case DisplayState::Offline:
     return "Offline";
   case DisplayState::Auth:
     return "Auth";
+  case DisplayState::WifiAuth:
+    return "WifiAuth";
   }
   return "?";
 }

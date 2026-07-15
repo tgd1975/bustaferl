@@ -10,10 +10,9 @@ bedeutet**. Inbetriebnahme, Verkabelung und Konfiguration findest du in
 [USER.md](USER.md) und [HARDWARE.md](HARDWARE.md).
 
 > Hinweis zu den Screenshots: Die hier eingebetteten Bilder stammen aus
-> [`docs/design_handoff_display/`](design_handoff_display/) — software­seitige
-> Rasterisierungen des e-Paper-Layouts (400 × 300 px, schwarze Pixel auf
-> weißem Hintergrund). Das echte Modul zeigt dieselben Pixel mit dem
-> typischen e-Paper-Kontrast.
+> [`docs/screenshots/`](screenshots/) — Host-Rasterisierungen des
+> e-Paper-Layouts (400 × 300 px), erzeugt von `make test-native-png`. Das echte
+> Modul zeigt dieselben Pixel mit dem typischen e-Paper-Kontrast.
 
 ## 1. Aufbau der Anzeige
 
@@ -23,7 +22,7 @@ dem Spaltenraster ein Header-Balken mit dem aktuellen Datum, darunter pro
 Spalte ein Linien-Badge und die jeweilige Richtung. Rechts unten ein
 kleiner **Netzplan** mit „you are here"-Marker am Bahnhof Atzgersdorf.
 
-![Normalzustand](design_handoff_display/screen-1-normal.png)
+![Normalzustand](screenshots/02-board-mixed.png)
 
 | Spalte                | Linie / Richtung               | Slots pro Spalte |
 |-----------------------|--------------------------------|------------------|
@@ -50,12 +49,13 @@ Spalte konstant ist, kann sie hier pro Slot wechseln.
 |-------------|--------------------------------------------------------------------|
 | `HH:MM`     | Abfahrt — Echtzeit                                                 |
 | `□ HH:MM`   | Abfahrt aus Plan-Daten (Echtzeit nicht verfügbar)                  |
-| `--:--`     | Stream antwortet, hat aber keine Abfahrt im Horizont               |
-| `??:??`     | Veraltet — letzte Echtzeit-Antwort ist älter als die Stale-Schwelle |
+| `--:--`     | Slot ohne Abfahrt — weder Echtzeit noch Fahrplan haben etwas       |
 
-Der **Plan-Marker `□`** ist neu in v2: er signalisiert visuell, dass der
-Slot Plan-Daten statt Echtzeit zeigt. Häufigster Fall: morgens vor dem
-ersten Bus, wo EFA-Plandaten die Echtzeit-Lücke überbrücken.
+Der **Plan-Marker `□`** signalisiert visuell, dass der Slot Plan-Daten statt
+Echtzeit zeigt. Häufigster Fall: morgens vor dem ersten Bus, wo EFA-Plandaten
+die Echtzeit-Lücke überbrücken. Es gibt **keinen** eigenen „Veraltet"-Zustand
+mehr: Fällt die Echtzeit aus, zeigt das Board die geplanten Abfahrten weiter;
+nur wenn auch der Fahrplan nichts hat, steht dort `--:--`.
 
 ### Abweichungs-Anzeige (nur 58A)
 
@@ -74,71 +74,80 @@ Wenn nur eine Spalte keine Daten liefert (z. B. weil dort gerade kein
 Bus im 70-Minuten-Echtzeit-Fenster steht), bleibt der Rest unverändert
 und der betroffene Slot zeigt `--:--`.
 
-## 3. Die sieben Display-States
+## 3. Das Board und die Sonderfall-Screens
 
-Ein zentraler **State-Selector** wählt anhand von Datenlage, Uhrzeit,
-NTP-Sync und letzter erfolgreicher Antwort einen von sieben Zuständen —
-sechs davon zeigen ein charakteristisches Bild, das bewusst nicht mit dem
-Hauptlayout verwechselt werden kann.
+Ein zentraler **State-Selector** wählt pro Zyklus, was gezeigt wird. Die
+Grundregel ist einfach: **Solange irgendeine Abfahrt bekannt ist — Echtzeit
+oder Fahrplan — zeigt das Gerät das Abfahrts-Board.** Nur vier klar
+unterscheidbare Fehler-/Platzhalter-Screens ersetzen das Board ganz.
 
-### Normal
+### Das Board — vier Daten-Fälle, ein Layout
 
-![Normal](design_handoff_display/screen-1-normal.png)
+Das Board sieht immer gleich aus; nur die *Daten* wechseln. Es gibt keinen
+eigenen „Nacht"-, „Veraltet"- oder „Keine Abfahrten"-Screen mehr — die
+nächste Abfahrt wird immer mit ihrer echten Uhrzeit gezeigt, auch wenn sie
+Stunden entfernt liegt.
 
-Alles frisch, alle Streams antworten innerhalb der Stale-Schwelle.
-Standardansicht.
+**Gemischt (Echtzeit + Plan)** — der Alltag: nahe Abfahrten live
+(Abweichungs-Balken), spätere aus dem Fahrplan (Plan-Marker).
 
-### Veraltet (Stale)
+![Board gemischt](screenshots/02-board-mixed.png)
 
-![Veraltet](design_handoff_display/screen-2-veraltet.png)
+**Nur Echtzeit** — alle Streams liefern Live-Daten; die 58A-Skalen zeigen
+Abweichungs-Balken statt hohler Kästchen.
 
-Letzte erfolgreiche Antwort älter als `STALE_THRESHOLD_V2_S` (10 min). Alle
-Slots zeigen `??:??`, das Layout bleibt aber gleich — du weißt, **welche**
-Spalten betroffen sind, vertraust nur den Zeiten nicht mehr.
+![Board nur Echtzeit](screenshots/03-board-live-only.png)
 
-### Nachtbetrieb (Night)
+**Nur Fahrplan** — z. B. nachts / vor dem ersten Bus: alle Zeiten aus EFA,
+mit Plan-Marker bzw. hohlem Kästchen auf der 58A-Skala. Sobald Echtzeit
+verfügbar ist, füllt sie die Slots automatisch.
 
-![Nachtbetrieb](design_handoff_display/screen-3-nachtbetrieb.png)
+![Board nur Fahrplan](screenshots/04-board-schedule-only.png)
 
-Außerhalb der Service-Zeit. Die Slots zeigen weiterhin Werte — aber alle
-mit Plan-Marker, weil sie aus EFA-Plandaten gespeist sind („Bus in der
-Früh"). Sobald die ersten Echtzeit-Abfahrten ins Realtime-Fenster
-rutschen, kippt der State zurück auf `Normal`.
+**Keine Daten** — weder Echtzeit noch Fahrplan haben etwas: alle Slots
+`--:--`, aber Layout, Badges und Netzplan bleiben stehen. (Fällt nur ein
+Fetch aus, behält das Gerät stattdessen das letzte gute Bild.)
 
-### Keine Abfahrten (Quiet)
-
-![Keine Abfahrten](design_handoff_display/screen-4-keine-abfahrten.png)
-
-Wachzeit, alle Endpunkte antworten, aber kein Stream hat eine Fahrt im
-Horizont — typische Pause / Wendezeit. Ein einzelnes großes „—" füllt das
-Display.
+![Board keine Daten](screenshots/05-board-no-data.png)
 
 ### Kein Empfang (Offline)
 
-![Kein Empfang](design_handoff_display/screen-5-kein-empfang.png)
+![Kein Empfang](screenshots/06-offline.png)
 
-WiFi/NTP fehlgeschlagen oder beide Endpunkte schweigen länger als
-`OFFLINE_THRESHOLD_S`. Großes Ausrufezeichen + letzter erfolgreicher
-Zeitstempel.
+WiFi weg und der letzte Erfolg länger als `OFFLINE_THRESHOLD_S` (5 min) her.
+Großes Ausrufezeichen, letzter erfolgreicher Zeitstempel und die gefundenen
+WLAN-Netze (mit Case-Mismatch-Hinweis, falls die SSID nur in der
+Groß-/Kleinschreibung abweicht).
 
 ### Auth-Fehler (Auth)
 
-![Auth-Fehler](design_handoff_display/screen-6-auth-fehler.png)
+![Auth-Fehler](screenshots/07-auth.png)
 
 HAFAS- oder OGD-Endpunkt liefert wiederholt 401 / Auth-Drift (z. B. weil
 der HAFAS-`AID` rotiert wurde). Das Display zeigt einen klaren Hinweis,
 dass die Firmware neu konfiguriert und geflasht werden muss — kein
 stilles Versagen.
 
+### WLAN-Passwort falsch (WifiAuth)
+
+![WLAN-Passwort falsch](screenshots/08-wifi-auth.png)
+
+Der WPA-Handshake ist endgültig gescheitert (falsches Passwort in
+`secrets.h`). Retrys können nicht helfen, deshalb nennt der Screen die
+betroffene SSID und das Gerät legt sich für eine Stunde schlafen, statt die
+60-s-Retry-Schleife zu drehen.
+
 ### Boot
 
-![Boot](design_handoff_display/screen-7-boot.png)
+![Boot](screenshots/01-boot.png)
 
 Kurzer Splash zwischen Power-on und erstem Render. Zeigt einen
 gepunkteten Kreis, den Schriftzug „BUSTAFERL", die Zeile „lädt
 Fahrplan..." und unten die Firmware-Version (`DISPLAY_VERSION_STR`, z. B.
 `v2.0 · UC8176 · 400×300`). Verschwindet, sobald der erste Cycle Daten
-gerendert hat.
+gerendert hat. Ein Reset im laufenden Betrieb (z. B. Brownout) zeigt den
+Boot-Screen **nicht** erneut — hat das Gerät bereits Daten, geht es direkt
+ins Board.
 
 ## 4. Plan-Marker im Detail
 
@@ -241,7 +250,7 @@ Er kennt drei Gesten:
 | Geste | Aktion |
 |-------|--------|
 | **Kurz drücken** | Sofort-Update: Daten neu holen und Anzeige auffrischen — auch aus dem Tiefschlaf heraus. Der Zeitstempel „upd HH:MM" springt immer, auch wenn sich die Abfahrten nicht geändert haben (sichtbare Rückmeldung). |
-| **Lang halten** (> 3 s) | S/W-Reset: Ein Deep Clean räumt Ghosting weg und zeichnet das letzte Bild neu. |
+| **Lang halten** (> 3 s) | S/W-Reset: Ein Deep Clean räumt Ghosting weg und zeichnet das letzte Bild neu. Löst **beim Erreichen der 3 s** aus, nicht erst beim Loslassen. |
 | **Doppelklick** | Öffnet den **Diagnose-Modus** (siehe unten). |
 
 Ein manuelles Update darf beliebig lange dauern, unterbricht aber **kein**
@@ -275,7 +284,7 @@ Beim Verlassen rendert der nächste Zyklus wieder die gewohnte Abfahrtstafel.
    Auslöser (T=Timer, B=Button, C=Cold-Boot; neueste zuerst), welche Streams OK waren,
    fehlgeschlagene Batches, Rescue-Marker und die geplante Schlafdauer.
 3. **FEHLER** — die jüngsten Anomalien im Klartext (z. B. „OEBB lehnt Zugang
-   ab", „Daten veraltet").
+   ab", „WL-Monitor: HTTP-Fehler", „Zeitabgleich fehlgeschlagen").
 4. **DATEN-DETAILS** — pro Slot die Quelle (E=Echtzeit, P=Plan, H=Hint) und
    Zeit, wann der Morgen-Fahrplan geladen wurde, sowie der Panel-Zustand
    (Partials, letzter Light-Full / Deep-Clean).

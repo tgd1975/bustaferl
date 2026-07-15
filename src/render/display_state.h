@@ -15,7 +15,6 @@ void drawOffline(render::Canvas &canvas, std::time_t last_fetch_at,
                  const SsidCaseMismatch &case_mismatch);
 void drawAuth(render::Canvas &canvas, const char *aid_short, int http_code);
 void drawWifiAuth(render::Canvas &canvas, const ConfiguredSsids &wanted_ssids);
-void drawQuiet(render::Canvas &canvas);
 
 } // namespace bustaferl
 

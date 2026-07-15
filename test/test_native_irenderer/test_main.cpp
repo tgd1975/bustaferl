@@ -31,12 +31,12 @@ void test_fake_renderer_records_call() {
   FakeRenderer r;
   Frame fb;
   RenderInput in;
-  in.state = DisplayState::Stale;
+  in.state = DisplayState::Offline;
 
   r.render(in, fb);
 
   TEST_ASSERT_EQUAL(1, r.calls);
-  TEST_ASSERT_EQUAL(DisplayState::Stale, r.last_state);
+  TEST_ASSERT_EQUAL(DisplayState::Offline, r.last_state);
 }
 
 void test_renderer_handle_via_base_pointer() {

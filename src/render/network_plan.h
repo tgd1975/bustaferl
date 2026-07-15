@@ -5,8 +5,8 @@
 
 namespace bustaferl {
 
-// Network plan at the bottom of the Normal/Stale/Night screens. Five-column
-// schematic anchoring the user spatially (Hbf — Atzg — Ende — Tull — Hietz).
+// Network plan at the bottom of the departure board. Five-column schematic
+// anchoring the user spatially (Hbf — Atzg — Ende — Tull — Hietz).
 //
 // Marker layout (column centres, returned in `centres_out[5]`):
 //   0: Hbf       — 4×4 dot

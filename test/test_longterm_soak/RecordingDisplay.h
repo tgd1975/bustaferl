@@ -5,8 +5,7 @@
 // the RLE save/load roundtrip on every drawPartial/lightFull/deepClean —
 // matching the prod heap path — but never pushes pixels to the e-paper
 // panel. Saves panel lifetime in 1 h soaks running every minute against
-// synthetic data, while keeping the heap-leak detector behaviour
-// equivalent (see Schritt 0a.2 of docs/main-refactor-plan.md).
+// synthetic data, while keeping the heap-leak detector behaviour equivalent.
 
 #include "hal/IDisplay.h"
 #include "render/rle.h"

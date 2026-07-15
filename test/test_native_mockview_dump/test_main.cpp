@@ -2,7 +2,7 @@
 // same RenderInput each main_<n>_*.cpp wires up and dumps the framebuffer as
 // PGM under .tmp/v2-pgm/mockview-<n>.pgm. scripts/pgm-to-png.py converts to
 // PNG for docs/screenshots/host/. Stays in lockstep with tools/mockview by
-// reusing the same buildNormalSnapshot / buildNightSnapshot builders.
+// reusing the same buildNormalSnapshot / buildScheduleOnlySnapshot builders.
 
 #include "config.h"
 #include "data/StreamSnapshot.h"
@@ -67,35 +67,32 @@ void setUp() {
 }
 void tearDown() {}
 
-void test_mockview_1_normal() {
+void test_mockview_1_board_mixed() {
   RenderInput in;
   in.state = DisplayState::Normal;
   in.firmware_version = DISPLAY_VERSION_STR;
-  in.snapshot = buildNormalSnapshot();
+  in.snapshot = buildNormalSnapshot(); // live + scheduled mix
   renderAndDump(in, "mockview-1.pgm");
 }
 
-void test_mockview_2_veraltet() {
+void test_mockview_2_board_schedule_only() {
+  // Overnight / no-live-data: all scheduled (Plan) departures. Was the
+  // "Nachtbetrieb" screen — now just the board driven by scheduled data.
   RenderInput in;
-  in.state = DisplayState::Stale;
+  in.state = DisplayState::Normal;
   in.firmware_version = DISPLAY_VERSION_STR;
-  in.snapshot = buildNormalSnapshot();
+  in.snapshot = buildScheduleOnlySnapshot();
   renderAndDump(in, "mockview-2.pgm");
 }
 
-void test_mockview_3_nachtbetrieb() {
+void test_mockview_3_board_no_data() {
+  // No realtime, no schedule → every slot "--:--". Was the "Veraltet" /
+  // "KEINE ABFAHRTEN" screens, now an empty Normal board.
   RenderInput in;
-  in.state = DisplayState::Night;
+  in.state = DisplayState::Normal;
   in.firmware_version = DISPLAY_VERSION_STR;
-  in.snapshot = buildNightSnapshot();
+  in.snapshot.api_ok = true; // reachable, just nothing to show
   renderAndDump(in, "mockview-3.pgm");
-}
-
-void test_mockview_4_keine_abfahrten() {
-  RenderInput in;
-  in.state = DisplayState::Quiet;
-  in.firmware_version = DISPLAY_VERSION_STR;
-  renderAndDump(in, "mockview-4.pgm");
 }
 
 void test_mockview_5_kein_empfang() {
@@ -125,10 +122,9 @@ void test_mockview_7_boot() {
 
 int main(int, char **) {
   UNITY_BEGIN();
-  RUN_TEST(test_mockview_1_normal);
-  RUN_TEST(test_mockview_2_veraltet);
-  RUN_TEST(test_mockview_3_nachtbetrieb);
-  RUN_TEST(test_mockview_4_keine_abfahrten);
+  RUN_TEST(test_mockview_1_board_mixed);
+  RUN_TEST(test_mockview_2_board_schedule_only);
+  RUN_TEST(test_mockview_3_board_no_data);
   RUN_TEST(test_mockview_5_kein_empfang);
   RUN_TEST(test_mockview_6_auth_fehler);
   RUN_TEST(test_mockview_7_boot);

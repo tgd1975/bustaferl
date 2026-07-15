@@ -194,20 +194,4 @@ void drawWifiAuth(render::Canvas &canvas, const ConfiguredSsids &wanted_ssids) {
                "Passwort in secrets.h korrigieren · kein Retry");
 }
 
-void drawQuiet(render::Canvas &canvas) {
-  // Em-dash bar — the design uses a 72 px-wide VT323 em-dash glyph. The
-  // bitmap fonts have no glyph that wide, so we draw a solid paper-coloured
-  // bar with the same visual weight. Roughly centred horizontally and
-  // vertically against the 90 px glyph region the other fullscreen states
-  // use, so the section structure feels consistent.
-  constexpr int QUIET_BAR_W = 72;
-  constexpr int QUIET_BAR_H = 10;
-  const int bar_x = (FB_W - QUIET_BAR_W) / 2;
-  const int bar_y = GLYPH_Y + (GLYPH_H - QUIET_BAR_H) / 2;
-  canvas.fillRect(bar_x, bar_y, QUIET_BAR_W, QUIET_BAR_H, 1);
-  drawCentered(canvas, FontRole::Fullscreen_Title, TITLE_Y, "KEINE ABFAHRTEN");
-  drawCentered(canvas, FontRole::Fullscreen_Sub, SUB_Y,
-               "in den nächsten 20 min");
-}
-
 } // namespace bustaferl

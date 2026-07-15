@@ -71,18 +71,12 @@
 // Display state-selector thresholds (logic/render_input, comes in Schritt 7).
 // Seeded here in Schritt 2.5 so config.h is single-source-of-truth for the
 // whole v2 surface; consumers land in Session D.
-#define OFFLINE_THRESHOLD_S 300  //  5 min ohne erfolgreichen Fetch + WiFi unten
-#define STALE_THRESHOLD_V2_S 600 // 10 min ohne erfolgreichen Fetch
-#define QUIET_HORIZON_S 1200     // 20 min — keine Abfahrten → Quiet
-#define NIGHT_FIRST_DEP_MIN_AHEAD_S                                            \
-  1800 // 30 min — nächste Plan-Abfahrt weiter → Night
-
-// Service window: Spätbetrieb 58A/58B/S-Bahn endet ~0:30, Frühbetrieb ab ~5:00.
-// END_HOUR < START_HOUR ⇒ Fenster wrappt um Mitternacht. outsideServiceWindow()
-// gibt true zurück für [SERVICE_WINDOW_END_HOUR, SERVICE_WINDOW_START_HOUR),
-// also 01:00–04:59.
-#define SERVICE_WINDOW_START_HOUR 5
-#define SERVICE_WINDOW_END_HOUR 1
+// OFFLINE_THRESHOLD_S: wifi down this long → the "KEIN EMPFANG" screen.
+// STALE_THRESHOLD_V2_S: only a pre-stale redraw-guard window in the warm cycle
+// now (no dedicated Stale screen — old data renders as the schedule-backed
+// Normal board).
+#define OFFLINE_THRESHOLD_S 300
+#define STALE_THRESHOLD_V2_S 600
 
 // Display version string (foot line on the Boot screen).
 #define DISPLAY_VERSION_STR "v2.0 · UC8176 · 400×300"
