@@ -53,7 +53,15 @@ jobs:
           clang-tidy --version
       - name: Install cppcheck
         run: sudo apt-get install -y cppcheck
+      - name: Install libcurl (native-runtime driver's HttpsNet dep)
+        run: sudo apt-get install -y libcurl4-openssl-dev
       - name: Provide dummy secrets.h
         run: cp secrets.h.example src/secrets.h
-      - name: CI (format-check + lint + test-native + build)
+      - name: CI (format-check + lint + tidy + test-native + firmware build + native-runtime build)
+        # `make ci` now also compiles the native-runtime soak driver
+        # (env:native-runtime). It links the full render stack on host and had
+        # rotted unnoticed because no CI job built it; keeping it in `make ci`
+        # means a broken driver fails here, not months later when someone runs
+        # the 24h soak. The build is network-free; the live valgrind smoke
+        # (make ci-heavy / native-runtime-smoke) stays out of CI on purpose.
         run: make ci
