@@ -48,7 +48,7 @@ Spalte konstant ist, kann sie hier pro Slot wechseln.
 | Anzeige     | Bedeutung                                                          |
 |-------------|--------------------------------------------------------------------|
 | `HH:MM`     | Abfahrt — Echtzeit                                                 |
-| `□ HH:MM`   | Abfahrt aus Plan-Daten (Echtzeit nicht verfügbar)                  |
+| `HH:MM°`    | Abfahrt aus Plan-Daten — das hochgestellte „°" rechts ist der Plan-Marker |
 | `--:--`     | Slot ohne Abfahrt — weder Echtzeit noch Fahrplan haben etwas       |
 
 Der **Plan-Marker `□`** signalisiert visuell, dass der Slot Plan-Daten statt
@@ -67,6 +67,7 @@ dass ein scheinbar rückwärts springender Slot (z. B. `07:02 → 07:01 → 07:0
 nur eine **Live-Korrektur** ist und kein Datenfehler — der Balken steht dann
 kurz unter der Null. Ein hohles Kästchen auf der Null bedeutet „nur Fahrplan,
 kein Echtzeit-Vergleich". 58B und die S-Bahn haben diese Anzeige nicht.
+Alle Formen im Detail erklärt §5.
 
 ### Teilweise leere Slots
 
@@ -151,9 +152,11 @@ ins Board.
 
 ## 4. Plan-Marker im Detail
 
-Der Plan-Marker `□` (5×5 Pixel hohler Rahmen, links vor der Uhrzeit) sagt
-dir: **„Diese Zeit kommt aus dem Fahrplan, nicht aus der Echtzeit-Spur."**
-Praktischer Unterschied:
+Der Plan-Marker (ein kleines hochgestelltes „°"-Ringerl, 5×5 Pixel, **rechts
+oben neben** der Uhrzeit) sagt dir: **„Diese Zeit kommt aus dem Fahrplan, nicht
+aus der Echtzeit-Spur."** Auf den beiden **58A**-Zeilen übernimmt diese Rolle
+das hohle Kästchen der Abweichungs-Skala (§5) — dort erscheint kein separates
+„°". Praktischer Unterschied:
 
 - Ohne Marker: Bus hat sich in den letzten Sekunden gemeldet, die Zeit
   enthält Verspätung/Vorlauf.
@@ -165,7 +168,40 @@ Der Marker erscheint am häufigsten morgens vor dem ersten Bus (EFA-Hint
 überbrückt die Lücke) und abends, wenn die letzten Busse längst im Depot
 sind und nur noch das nächtliche EFA-Update Daten beigesteuert hat.
 
-## 5. Netzplan im Detail
+## 5. Abweichungs-Anzeige im Detail
+
+Nur auf den beiden **58A**-Zeilen steht rechts neben jeder Uhrzeit eine kleine
+senkrechte Skala. Sie beantwortet die Frage, die eine nackte `HH:MM` nicht kann:
+**Ist eine Zeit, die gerade „gesprungen" ist, eine Live-Korrektur oder ein
+Datenfehler?** Keine Zahlen — die Form allein ist die Information.
+
+![Abweichungs-Skala: alle Zustände](screenshots/deviation-gauge-legend.png)
+
+Die Formen (in der Abbildung von links nach rechts):
+
+| Form | Bedeutung |
+|------|-----------|
+| Hohles Kästchen auf der Mittelmarke | **Nur Fahrplan** — keine Echtzeit zum Vergleichen (statt eines Balkens). |
+| Kurzer Nub auf der Mittelmarke | **Pünktlich** — Echtzeit deckt sich mit dem Fahrplan (±0). |
+| Balken nach **oben** (länger = mehr) | **Verspätung** — später als geplant (+1, +2, … min). |
+| Oberer Anschlag + kleiner Sporn darüber | **Off-Scale** — mehr als +5 min; die Skala ist gedeckelt, der Sporn heißt „mehr als angezeigt". |
+| Balken nach **unten** | **Früher als geplant** (−1, −2, … min). |
+| Unterer Anschlag + Sporn darunter | **Off-Scale** früher — mehr als −3 min. |
+
+**Merkregel:** Die breite Mittelmarke ist der Fahrplan. Balken **hoch = zu
+spät**, **runter = zu früh**, **Kästchen = (noch) keine Echtzeit**. Der
+angezeigte Bereich reicht von **−3 min** (früher) bis **+5 min** (später) — mehr
+Luft nach oben, weil Verspätung häufiger ist als eine verfrühte Abfahrt.
+
+**Der Praxisfall dahinter:** Springt der „nächste Bus"-Slot scheinbar rückwärts
+(`07:02 → 07:01 → 07:00`), steht die Skala **zwei Striche unter der Mitte** — der
+Live-Feed korrigiert die Prognose Richtung tatsächlicher Fahrzeugposition.
+Nichts ist kaputt; genau das macht die Skala sichtbar.
+
+58B (Endemanngasse) und die S-Bahn haben diese Anzeige nicht — dort steht bei
+Plan-Daten stattdessen der „°"-Marker aus §4.
+
+## 6. Netzplan im Detail
 
 In der rechten unteren Ecke zeichnet das Display einen kleinen Netzplan
 mit den nächsten S-Bahn-Stationen Richtung Hauptbahnhof. Der ausgefüllte
@@ -173,7 +209,7 @@ Diamant-Marker markiert **Atzgersdorf** („you are here") — eine
 Orientierung, die für Gäste oder bei seltener Nutzung der S-Bahn-Spalte
 hilft.
 
-## 6. Aktualisierungs-Rhythmus
+## 7. Aktualisierungs-Rhythmus
 
 Das Bustaferl wechselt zwischen **Wach-** und **Tiefschlaf-Phasen**, um
 Strom zu sparen. Was wann passiert:
@@ -221,7 +257,7 @@ Aufwachen aus dem Tiefschlaf ist immer ein voller Refresh (nicht Partial):
 der schnelle Panel-Zwischenspeicher überlebt den Tiefschlaf nicht, ein
 Partial würde weiße Ränder und Artefakte hinterlassen.
 
-## 7. Wenn etwas wirklich klemmt
+## 8. Wenn etwas wirklich klemmt
 
 | Symptom | Erste Maßnahme |
 |---------|----------------|
@@ -234,7 +270,7 @@ Partial würde weiße Ränder und Artefakte hinterlassen.
 
 Tieferes Troubleshooting in [USER.md](USER.md#troubleshooting).
 
-## 8. Stromversorgung
+## 9. Stromversorgung
 
 Hauptsächlich Tiefschlaf, < 50 µA Stromaufnahme zwischen den Wachphasen.
 
@@ -242,7 +278,7 @@ Hauptsächlich Tiefschlaf, < 50 µA Stromaufnahme zwischen den Wachphasen.
 - **Akku (18650 + LDO):** mehrere Wochen pro Ladung realistisch, abhängig
   von Render-Häufigkeit und WiFi-Verbindungszeit
 
-## 9. Der BOOT-Knopf
+## 10. Der BOOT-Knopf
 
 Der einzige Bedienknopf ist der **BOOT**-Taster (GPIO 0) auf dem ESP32-Board.
 Er kennt drei Gesten:
@@ -256,7 +292,7 @@ Er kennt drei Gesten:
 Ein manuelles Update darf beliebig lange dauern, unterbricht aber **kein**
 laufendes Update — es reiht sich dahinter ein.
 
-## 10. Der Diagnose-Modus
+## 11. Der Diagnose-Modus
 
 Das Gerät schreibt keine Logs. Wenn dir im Betrieb eine Anomalie in den
 angezeigten Daten auffällt, gibt dir der Diagnose-Modus ein Fenster darauf,
@@ -292,7 +328,7 @@ Beim Verlassen rendert der nächste Zyklus wieder die gewohnte Abfahrtstafel.
 Die Zyklen- und Fehler-Historie liegt im RTC-Speicher und übersteht den
 Tiefschlaf — sie geht nur bei komplettem Stromverlust verloren.
 
-## 11. Boot-Check nach dem Kaltstart
+## 12. Boot-Check nach dem Kaltstart
 
 Nach einem Kaltstart (Strom an / Reset) zeigt das Gerät für **15 Sekunden**
 einen **Boot-Check** — dieselbe STATUS-Übersicht plus ein paar
