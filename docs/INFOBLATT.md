@@ -4,6 +4,16 @@
 > Das Ausführliche steht in [HANDBUCH.md](HANDBUCH.md) — dieses Blatt ist die
 > Version zum Danebenlegen.
 
+## So sieht der normale Screen aus
+
+![Normaler Abfahrts-Screen des Bustaferl](screenshots/02-board-mixed.png)
+
+- **Die großen Uhrzeiten** = Echtzeit (live).
+- **Das kleine „°"** (z. B. `23:44°` bei 58B) = Fahrplan statt Echtzeit.
+- **Die kleine senkrechte Skala** rechts neben den 58A-Zeiten = Verspätung
+  (siehe unten).
+- **Der ausgefüllte Diamant** im Netzplan unten = Atzgersdorf, „du bist hier".
+
 ## Was am Bildschirm steht
 
 Vier Spalten, jeweils die **absolute Uhrzeit** `HH:MM` (kein „in X min"):
