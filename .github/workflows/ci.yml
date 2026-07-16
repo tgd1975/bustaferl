@@ -53,6 +53,8 @@ jobs:
           clang-tidy --version
       - name: Install cppcheck
         run: sudo apt-get install -y cppcheck
+      - name: Install libcurl (native-runtime driver's HttpsNet dep)
+        run: sudo apt-get install -y libcurl4-openssl-dev
       - name: Provide dummy secrets.h
         run: cp secrets.h.example src/secrets.h
       - name: CI (format-check + lint + tidy + test-native + firmware build + native-runtime build)
