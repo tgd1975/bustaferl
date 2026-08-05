@@ -56,6 +56,7 @@ CycleConfig makeCycleConfig() {
   c.btn_double_click_ms = BTN_DOUBLE_CLICK_MS;
   c.diag_max_s = DIAG_MAX_S;
   c.boot_info_show_s = BOOT_INFO_SHOW_S;
+  c.brownout_show_s = BROWNOUT_SHOW_S;
   c.rescue_window_start_s = RESCUE_WINDOW_START_S;
   c.rescue_window_end_s = RESCUE_WINDOW_END_S;
   c.rescue_retry_pause_s = RESCUE_RETRY_PAUSE_S;
@@ -99,6 +100,14 @@ void setup() {
   CycleDeps deps = makeDeps(/*deep_wake=*/true);
 
   WakeCause cause = g_sleep.wakeupCause();
+  // Real reset cause (brownout vs watchdog/panic vs a genuine power-on or
+  // deep-sleep wake) — distinct from WakeCause, which cannot tell those
+  // apart (see selectCycle()'s routing comment below). Persisted so the
+  // STATUS diagnostic page can show it after this one-shot overlay is gone.
+  ResetReason reset_reason = g_sleep.lastResetReason();
+  meta.last_reset_reason = reset_reason;
+  showBrownoutScreen(deps, reset_reason);
+
   // Routing lives in selectCycle() (logic/cycle_runner) so it is host-testable
   // — main.cpp is excluded from the native build. The cold (boot-screen) path
   // runs only while the device has no board to show yet (never fetched, or

@@ -10,6 +10,7 @@ namespace bustaferl {
 class Esp32Sleep : public ISleep {
 public:
   WakeCause wakeupCause() override;
+  ResetReason lastResetReason() override;
   [[noreturn]] void deepSleep(unsigned seconds) override;
   void lightSleep(unsigned seconds) override;
 };

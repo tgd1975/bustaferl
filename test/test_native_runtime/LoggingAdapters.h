@@ -122,6 +122,7 @@ public:
   LoggingSleep(ISleep &inner, RunLog &log) : inner_(inner), log_(log) {}
 
   WakeCause wakeupCause() override { return inner_.wakeupCause(); }
+  ResetReason lastResetReason() override { return inner_.lastResetReason(); }
   void deepSleep(unsigned seconds) override {
     log_.line("[sleep] deep %u s", seconds);
     inner_.deepSleep(seconds);

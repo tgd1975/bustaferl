@@ -7,6 +7,7 @@
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
 
 namespace bustaferl {
 
@@ -23,6 +24,24 @@ WakeCause Esp32Sleep::wakeupCause() {
     return WakeCause::Button;
   default:
     return WakeCause::Other;
+  }
+}
+
+ResetReason Esp32Sleep::lastResetReason() {
+  switch (esp_reset_reason()) {
+  case ESP_RST_POWERON:
+  case ESP_RST_DEEPSLEEP:
+  case ESP_RST_SW:
+    return ResetReason::Normal;
+  case ESP_RST_BROWNOUT:
+    return ResetReason::Brownout;
+  case ESP_RST_TASK_WDT:
+  case ESP_RST_INT_WDT:
+  case ESP_RST_WDT:
+  case ESP_RST_PANIC:
+    return ResetReason::WatchdogOrPanic;
+  default:
+    return ResetReason::Other;
   }
 }
 

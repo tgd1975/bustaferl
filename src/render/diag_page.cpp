@@ -72,6 +72,20 @@ char triggerChar(std::uint8_t trigger) {
   }
 }
 
+const char *resetReasonText(ResetReason reason) {
+  switch (reason) {
+  case ResetReason::Brownout:
+    return "Brownout";
+  case ResetReason::WatchdogOrPanic:
+    return "Watchdog/Panic";
+  case ResetReason::Other:
+    return "sonstiger Reset";
+  case ResetReason::Normal:
+  default:
+    return "normal";
+  }
+}
+
 const char *errorText(std::uint8_t code) {
   switch (static_cast<TraceError>(code)) {
   case TraceError::WifiFail:
@@ -171,6 +185,10 @@ int drawStatusBody(render::Canvas &canvas, const DiagView &v, int line) {
 
   std::snprintf(buf, sizeof(buf), "Heap %u kB (groesster %u kB)   Uptime %us",
                 v.heap_free_kb, v.heap_largest_kb, v.uptime_s);
+  textAt(canvas, DIAG_MARGIN_X, bodyY(line++), buf);
+
+  std::snprintf(buf, sizeof(buf), "Letzter Reset  %s",
+                resetReasonText(v.last_reset_reason));
   textAt(canvas, DIAG_MARGIN_X, bodyY(line++), buf);
   return line;
 }

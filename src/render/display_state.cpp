@@ -50,6 +50,27 @@ void formatHHMM(std::time_t t, char *out, std::size_t cap) {
 
 } // namespace
 
+void drawBrownoutScreen(render::Canvas &canvas, const char *reason_text) {
+  // Inverted: ink (0) fills the panel, paper (1) draws glyph + text — the
+  // opposite polarity of every other screen, so an unplanned reset is
+  // unmistakable at a glance even without reading the text.
+  canvas.fillRect(0, 0, FB_W, FB_H, 0);
+  drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
+                  GlyphBitmap{GLYPH_EXCLAMATION_90, GLYPH_W, GLYPH_H},
+                  /*ink=*/1);
+  canvas.setRoleFont(FontRole::Fullscreen_Title);
+  canvas.setTextColor(1);
+  const int w = canvas.textWidth(reason_text);
+  canvas.setCursor((FB_W - w) / 2, TITLE_Y);
+  canvas.print(reason_text);
+  canvas.setRoleFont(FontRole::Fullscreen_Sub);
+  canvas.setTextColor(1);
+  const char *sub = "ungeplanter Neustart";
+  const int sub_w = canvas.textWidth(sub);
+  canvas.setCursor((FB_W - sub_w) / 2, SUB_Y);
+  canvas.print(sub);
+}
+
 void drawBoot(render::Canvas &canvas, const char *version_str) {
   drawCustomGlyph(canvas, GLYPH_X, GLYPH_Y,
                   GlyphBitmap{GLYPH_DOTTED_CIRCLE_90, GLYPH_W, GLYPH_H});

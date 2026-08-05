@@ -3,6 +3,7 @@
 
 #include "../data/CycleTrace.h"
 #include "../data/ScheduleHint.h"
+#include "ISleep.h" // ResetReason
 
 #include <cstddef>
 #include <cstdint>
@@ -52,6 +53,12 @@ struct PersistedMeta {
   // a corrupt one (the "58B coma") reads far past it and forces a re-sync.
   // 0 = never slept with a known clock (first boot); guard abstains.
   time_t expected_wake_at = 0;
+
+  // Reset cause of the boot that is CURRENTLY RUNNING, written once in
+  // setup() before the first save. Read back by the STATUS diagnostic page
+  // and by the one-shot brownout overlay's "was the LAST boot unplanned"
+  // check on the boot after this one. See ISleep::lastResetReason().
+  ResetReason last_reset_reason = ResetReason::Normal;
 };
 
 class IPersistentStore {

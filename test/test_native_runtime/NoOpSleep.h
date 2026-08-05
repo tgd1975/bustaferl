@@ -34,6 +34,8 @@ public:
     return WakeCause::Timer;
   }
 
+  ResetReason lastResetReason() override { return ResetReason::Normal; }
+
   void deepSleep(unsigned seconds) override { sleepScaled(seconds); }
   void lightSleep(unsigned seconds) override { sleepScaled(seconds); }
 

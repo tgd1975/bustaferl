@@ -426,6 +426,17 @@ void renderFrame(const RenderInput &in, Frame &fb) {
   }
 }
 
+void renderBrownoutScreen(const char *reason_text, Frame &fb) {
+  fb.clear(false); // ink background; drawBrownoutScreen paints it explicitly
+                   // too but this keeps renderFrame's convention.
+#ifndef NATIVE_BUILD
+  render::AdafruitGfxCanvas canvas(fb.data(), FB_W, FB_H);
+#else
+  render::HostCanvas canvas(fb);
+#endif
+  drawBrownoutScreen(canvas, reason_text);
+}
+
 void renderDiagPage(const DiagView &v, DiagPage page, Frame &fb) {
   fb.clear(false); // ink background
 #ifndef NATIVE_BUILD

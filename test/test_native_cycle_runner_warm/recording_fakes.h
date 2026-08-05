@@ -170,6 +170,11 @@ public:
     trace_.emplace_back("sleep.wakeupCause");
     return cause_;
   }
+  ResetReason lastResetReason() override {
+    trace_.emplace_back("sleep.lastResetReason");
+    return reset_reason_;
+  }
+  void setResetReason(ResetReason r) { reset_reason_ = r; }
   void deepSleep(unsigned seconds) override {
     trace_.emplace_back("sleep.deepSleep(" + std::to_string(seconds) + ")");
     ++deep_sleep_calls;
@@ -188,6 +193,7 @@ public:
 private:
   std::vector<std::string> &trace_;
   WakeCause cause_;
+  ResetReason reset_reason_ = ResetReason::Normal;
 };
 
 class RecordingStore : public IPersistentStore {

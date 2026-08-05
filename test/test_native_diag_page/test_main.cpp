@@ -69,6 +69,17 @@ void test_status_page_lists_key_fields() {
   TEST_ASSERT_TRUE(contains(c.out, "Zeit"));
   TEST_ASSERT_TRUE(contains(c.out, "Heap"));
   TEST_ASSERT_TRUE(contains(c.out, "Seite 1/4"));
+  TEST_ASSERT_TRUE(contains(c.out, "Letzter Reset"));
+  TEST_ASSERT_TRUE(contains(c.out, "normal"));
+}
+
+void test_status_page_shows_brownout_reset_reason() {
+  DiagView v = sampleView();
+  v.last_reset_reason = ResetReason::Brownout;
+  FakeCanvas c;
+  drawDiagPage(c, v, DiagPage::Status);
+  TEST_ASSERT_TRUE(contains(c.out, "Letzter Reset"));
+  TEST_ASSERT_TRUE(contains(c.out, "Brownout"));
 }
 
 void test_cycles_page_shows_history_newest_first() {
@@ -136,6 +147,7 @@ void test_boot_check_shows_rtc_and_attempt() {
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_status_page_lists_key_fields);
+  RUN_TEST(test_status_page_shows_brownout_reset_reason);
   RUN_TEST(test_cycles_page_shows_history_newest_first);
   RUN_TEST(test_cycles_page_empty_note);
   RUN_TEST(test_errors_page_translates_codes);

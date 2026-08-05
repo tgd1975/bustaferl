@@ -400,6 +400,7 @@ DiagView buildDiagView(CycleDeps &deps, const PersistedMeta &meta,
   v.partial_count = meta.partial_count;
   v.last_light_full = meta.last_light_full;
   v.last_deep_clean = meta.last_deep_clean;
+  v.last_reset_reason = meta.last_reset_reason;
   probeSystem(v);
   v.trace = deps.store.loadTrace();
   return v;
@@ -616,6 +617,32 @@ void showBootScreen(CycleDeps &deps, const PersistedMeta &meta) {
   in.firmware_version = DISPLAY_VERSION_STR;
   deps.renderer.render(in, deps.curr);
   deps.display.lightFull(deps.curr.data());
+}
+
+namespace {
+const char *resetReasonText(ResetReason reason) {
+  switch (reason) {
+  case ResetReason::Brownout:
+    return "BROWNOUT";
+  case ResetReason::WatchdogOrPanic:
+    return "WATCHDOG/PANIC";
+  case ResetReason::Other:
+    return "RESET";
+  case ResetReason::Normal:
+  default:
+    return "";
+  }
+}
+} // namespace
+
+void showBrownoutScreen(CycleDeps &deps, ResetReason reason) {
+  if (reason == ResetReason::Normal || deps.cfg.brownout_show_s <= 0) {
+    return;
+  }
+  CYCLE_LOG("[boot] unplanned reset, reason=%d\n", static_cast<int>(reason));
+  renderBrownoutScreen(resetReasonText(reason), deps.curr);
+  deps.display.deepClean(deps.curr.data());
+  deps.sleep.lightSleep(static_cast<unsigned>(deps.cfg.brownout_show_s));
 }
 
 void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {

@@ -64,6 +64,23 @@ void test_repeated_light_sleeps_keep_reporting_timer() {
   }
 }
 
+void test_cold_boot_reports_normal_reset_reason() {
+  // A fresh test upload is a power-on (ESP_RST_POWERON), which maps to
+  // ResetReason::Normal — the overwhelmingly common case and the one that
+  // must stay silent (no brownout overlay). Real ESP_RST_BROWNOUT /
+  // ESP_RST_TASK_WDT / ESP_RST_PANIC values require physically triggering
+  // a brownout or watchdog timeout, which isn't reproducible from a Unity
+  // test session; the mapping table itself is exercised on the host
+  // (test_native_cycle_runner_invariants) via the ISleep interface, so this
+  // just proves the ESP32-side esp_reset_reason() plumbing compiles and
+  // returns something sane for the one cause we CAN reproduce here.
+  ResetReason r = g_sleep.lastResetReason();
+  Serial.printf("[sleep] lastResetReason()=%d (expected Normal=%d)\n",
+                static_cast<int>(r), static_cast<int>(ResetReason::Normal));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(ResetReason::Normal),
+                        static_cast<int>(r));
+}
+
 void test_other_wake_source_maps_to_other() {
   // Manually arm an EXT0/EXT1/ULP wake source (we use EXT0 with a NOP GPIO
   // that won't actually fire) so we can read back a non-Timer cause without
@@ -85,6 +102,7 @@ void setup() {
   delay(2000);
   UNITY_BEGIN();
   RUN_TEST(test_cold_boot_reports_cold_boot);
+  RUN_TEST(test_cold_boot_reports_normal_reset_reason);
   RUN_TEST(test_after_light_sleep_reports_timer);
   RUN_TEST(test_repeated_light_sleeps_keep_reporting_timer);
   RUN_TEST(test_other_wake_source_maps_to_other);

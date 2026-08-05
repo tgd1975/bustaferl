@@ -218,6 +218,17 @@ void test_dump_board_no_data() {
   TEST_ASSERT_GREATER_THAN(500, countPaperPixels(fb));
 }
 
+// Inverted one-shot overlay for an unplanned reset — its own frame-level
+// entry point (renderBrownoutScreen), not a DisplayState.
+void test_dump_state_brownout() {
+  Frame fb;
+  renderBrownoutScreen("BROWNOUT", fb);
+  TEST_ASSERT_TRUE(writePgm(fb, "09-brownout.pgm"));
+  // Inverted: ink fills the panel, so paper pixels are just the glyph+text —
+  // much sparser than a normal screen, but still non-trivial.
+  TEST_ASSERT_GREATER_THAN(100, countPaperPixels(fb));
+}
+
 void test_dump_state_offline() {
   Frame fb;
   RenderInput in;
@@ -506,6 +517,7 @@ void test_hietzing_time1_left_edge_is_value_stable() {
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_dump_state_boot);
+  RUN_TEST(test_dump_state_brownout);
   RUN_TEST(test_dump_board_mixed);
   RUN_TEST(test_dump_board_live_only);
   RUN_TEST(test_dump_board_schedule_only);
