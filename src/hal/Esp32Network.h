@@ -23,6 +23,9 @@ public:
   ConfiguredSsids configuredSsids() override;
   WifiFailure lastFailure() override;
   bool httpGetStream(const std::string &url, StreamConsumer consumer) override;
+  HttpResult httpPostStream(const std::string &url, const std::string &body,
+                            const std::string &content_type,
+                            StreamConsumer consumer) override;
 
 private:
   WiFiMulti wifi_;

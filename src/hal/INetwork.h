@@ -80,6 +80,15 @@ public:
   using StreamConsumer = std::function<bool(::Stream &)>;
   virtual bool httpGetStream(const std::string &url,
                              StreamConsumer consumer) = 0;
+
+  // Streaming POST — same idea as httpGetStream for the HAFAS mgate.exe call,
+  // whose ~30 KB response was the one body still going through a std::string.
+  // Returns the transport/status result so the retry loop can classify it;
+  // `ok` additionally requires `consumer` to have returned true.
+  virtual HttpResult httpPostStream(const std::string &url,
+                                    const std::string &body,
+                                    const std::string &content_type,
+                                    StreamConsumer consumer) = 0;
 #endif
 };
 

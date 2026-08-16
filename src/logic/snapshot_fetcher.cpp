@@ -45,6 +45,46 @@ void formatBatchLabel(char *out, std::size_t out_size, const int *stop_ids,
 
 bool isAuthCode(int status) { return status == HTTP_401 || status == HTTP_403; }
 
+constexpr const char *OEBB_CONTENT_TYPE = "application/json; charset=UTF-8";
+
+// Everything one mgate.exe call yields besides its transport outcome.
+struct OebbParsed {
+  StreamData stream;
+  OebbParseResult result;
+  bool ok = false; // the body deserialized (independent of any API-level err)
+};
+
+// Issues the mgate.exe call and parses whatever comes back, streaming on
+// device and buffering on host. Split out so the transport difference lives
+// in one place instead of widening fetchOebbStream; the return value carries
+// the transport result, `out` the parse.
+FetchOutcome fetchAndParseOebb(INetwork &net, const std::string &url,
+                               const std::string &body, time_t now,
+                               OebbParsed &out, const FetchConfig &cfg) {
+#ifndef NATIVE_BUILD
+  // Stream-parse path: ArduinoJson reads the ~30 KB StationBoard body
+  // straight off the socket, so it is never buffered in a std::string. That
+  // buffer was the last big contiguous allocation left in a cycle, and with
+  // HAFAS chunking the response it aborted the chip roughly every third
+  // minute (operator new → std::terminate, no exceptions on this target).
+  return fetchPostStreamWithRetry(
+      net, url, body, OEBB_CONTENT_TYPE,
+      [&](::Stream &s) {
+        out.ok = parseOebbStationBoard(s, now, out.stream, out.result);
+        return out.ok;
+      },
+      cfg);
+#else
+  std::string resp;
+  FetchOutcome fo =
+      fetchPostWithRetry(net, url, body, OEBB_CONTENT_TYPE, resp, cfg);
+  if (fo.ok) {
+    out.ok = parseOebbStationBoard(resp, now, out.stream, out.result);
+  }
+  return fo;
+#endif
+}
+
 // Single HAFAS mgate.exe POST → parseOebbStationBoard. Updates summary like
 // the OGD batch loop (counts as one batch). The result struct's flags are
 // copied into the StreamData so snapshot_logger / filter_health see the
@@ -53,15 +93,23 @@ void fetchOebbStream(INetwork &net, const FetchInputs &inputs, time_t now,
                      StreamSnapshot &out, FetchSummary &summary,
                      PersistedMeta &meta) {
   std::string body = buildOebbRequest(inputs.oebb_filter);
-  std::string resp;
   FetchConfig fc;
-  FetchOutcome fo = fetchPostWithRetry(
-      net, inputs.mgate_url, body, "application/json; charset=UTF-8", resp, fc);
+  OebbParsed hafas;
+
+  FetchOutcome fo =
+      fetchAndParseOebb(net, inputs.mgate_url, body, now, hafas, fc);
   ++summary.total_batches;
 
-  if (!fo.ok) {
-    SNAP_LOG("[api] oebb httpPost failed after %d attempts (status=%d)\n",
-             fo.attempts_taken, fo.http_status);
+  if (!fo.ok || !hafas.ok) {
+    // Both failure kinds land here — on the streaming path a 2xx body the
+    // parser rejects also collapses into fo.ok == false. The status tells
+    // them apart when reading the log: 2xx means the bytes arrived and the
+    // content was bad, anything else means the call itself failed. Kept as
+    // one status-carrying line rather than a branch, because SNAP_LOG
+    // compiles away on host builds and anything referenced only inside it
+    // reads as unused there.
+    SNAP_LOG("[api] oebb fetch/parse failed (status=%d, attempts=%d)\n",
+             fo.http_status, fo.attempts_taken);
     ++summary.failed_batches;
     return;
   }
@@ -71,22 +119,15 @@ void fetchOebbStream(INetwork &net, const FetchInputs &inputs, time_t now,
              fc.max_attempts);
   }
 
-  OebbParseResult pr;
-  StreamData parsed;
-  if (!parseOebbStationBoard(resp, now, parsed, pr)) {
-    SNAP_LOG("[api] oebb parse failed\n");
-    ++summary.failed_batches;
-    return;
-  }
+  out.stream[STREAM_SBAHN_HBF] = hafas.stream;
+  out.stream[STREAM_SBAHN_HBF].endpoint_responded =
+      hafas.result.endpoint_responded;
+  out.stream[STREAM_SBAHN_HBF].filter_matched = hafas.result.filter_matched;
 
-  out.stream[STREAM_SBAHN_HBF] = parsed;
-  out.stream[STREAM_SBAHN_HBF].endpoint_responded = pr.endpoint_responded;
-  out.stream[STREAM_SBAHN_HBF].filter_matched = pr.filter_matched;
-
-  if (pr.auth_error_seen) {
+  if (hafas.result.auth_error_seen) {
     SNAP_LOG("[api] oebb auth_error_seen=1\n");
     meta.auth_error_seen = true;
-  } else if (pr.endpoint_responded) {
+  } else if (hafas.result.endpoint_responded) {
     // HAFAS antwortet wieder normal — Auth-Drift ist weg. Den OGD-Streak
     // räumt die OGD-Schleife (siehe runOgdBatchLoop).
     meta.auth_error_seen = false;

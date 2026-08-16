@@ -127,21 +127,16 @@ std::string buildOebbRequest(const OebbStreamFilter &f) {
   return out;
 }
 
-// HAFAS-StationBoard-Parser. Depth tracks the response shape (svcResL →
-// res → jnyL → stbStop → fields); refactoring would hide the per-jny match
-// logic behind helpers that all need the same common[prodL] reference.
+namespace {
+
+// Shared post-deserialization logic behind both parseOebbStationBoard
+// overloads (std::string body and ::Stream). Depth tracks the response shape
+// (svcResL → res → jnyL → stbStop → fields); refactoring further would hide
+// the per-jny match logic behind helpers that all need the same
+// common[prodL] reference.
 // NOLINTNEXTLINE(readability-function-size,readability-function-cognitive-complexity)
-bool parseOebbStationBoard(const std::string &json, time_t now,
-                           StreamData &out_stream, OebbParseResult &result) {
-  out_stream = StreamData{};
-  result = OebbParseResult{};
-
-  JsonDocument doc;
-  auto derr = deserializeJson(
-      doc, json, DeserializationOption::NestingLimit(OEBB_JSON_NESTING_LIMIT));
-  if (derr)
-    return false;
-
+bool consumeOebbDoc(const JsonDocument &doc, time_t now, StreamData &out_stream,
+                    OebbParseResult &result) {
   // cppcheck-suppress badBitmaskCheck // ArduinoJson operator| (default value)
   const char *err = doc["err"] | "";
   if (std::strcmp(err, "AID") == 0 || std::strcmp(err, "AUTH") == 0) {
@@ -260,5 +255,37 @@ bool parseOebbStationBoard(const std::string &json, time_t now,
   result.filter_matched = (matched > 0);
   return true;
 }
+
+} // namespace
+
+bool parseOebbStationBoard(const std::string &json, time_t now,
+                           StreamData &out_stream, OebbParseResult &result) {
+  out_stream = StreamData{};
+  result = OebbParseResult{};
+
+  JsonDocument doc;
+  auto derr = deserializeJson(
+      doc, json, DeserializationOption::NestingLimit(OEBB_JSON_NESTING_LIMIT));
+  if (derr)
+    return false;
+
+  return consumeOebbDoc(doc, now, out_stream, result);
+}
+
+#ifndef NATIVE_BUILD
+bool parseOebbStationBoard(::Stream &json, time_t now, StreamData &out_stream,
+                           OebbParseResult &result) {
+  out_stream = StreamData{};
+  result = OebbParseResult{};
+
+  JsonDocument doc;
+  auto derr = deserializeJson(
+      doc, json, DeserializationOption::NestingLimit(OEBB_JSON_NESTING_LIMIT));
+  if (derr)
+    return false;
+
+  return consumeOebbDoc(doc, now, out_stream, result);
+}
+#endif
 
 } // namespace bustaferl
