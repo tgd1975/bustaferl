@@ -172,8 +172,7 @@ void doSleepOrLoop(CycleDeps &deps, const SleepDecision &sd,
     deps.sleep.deepSleep(sd.seconds);
     return;
   }
-  CYCLE_LOG("[sleep] staying active, light sleep for %u s\n",
-            deps.cfg.poll_interval_s);
+  CYCLE_LOG("[sleep] staying active, waiting %u s\n", deps.cfg.poll_interval_s);
   deps.sleep.pause(deps.cfg.poll_interval_s);
 }
 
