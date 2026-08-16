@@ -4,10 +4,12 @@
 
 #include "../config.h"
 
+#include <Arduino.h>
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <esp_timer.h>
 
 namespace bustaferl {
 
@@ -74,7 +76,22 @@ void Esp32Sleep::lightSleep(unsigned seconds) {
   gpio_wakeup_enable(static_cast<gpio_num_t>(BTN_BOOT_PIN),
                      GPIO_INTR_LOW_LEVEL);
   esp_sleep_enable_gpio_wakeup();
-  esp_light_sleep_start();
+
+  // Roughly 1 in 40 light sleeps never returns: the chip comes back on
+  // RTCWDT_RTC_RESET instead, with the serial line cut mid-print at exactly
+  // this call (observed 2026-08-16, twice). Without this line the next
+  // occurrence leaves no evidence either — so record what the call actually
+  // did. esp_light_sleep_start() can reject the request outright
+  // (ESP_ERR_SLEEP_REJECT, returns immediately) or refuse a too-short
+  // duration, and both are invisible today because the result is discarded.
+  // A wake far short of `seconds` points at the wake source; no line at all
+  // after "[sleep] staying active" means the chip never came back.
+  const int64_t entered_us = esp_timer_get_time();
+  const esp_err_t err = esp_light_sleep_start();
+  const int64_t slept_ms = (esp_timer_get_time() - entered_us) / 1000;
+  Serial.printf(
+      "[sleep] light sleep returned err=%d after %lld ms (asked %u s)\n",
+      static_cast<int>(err), static_cast<long long>(slept_ms), seconds);
 }
 
 } // namespace bustaferl
