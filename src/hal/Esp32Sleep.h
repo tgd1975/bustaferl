@@ -13,6 +13,7 @@ public:
   ResetReason lastResetReason() override;
   [[noreturn]] void deepSleep(unsigned seconds) override;
   void lightSleep(unsigned seconds) override;
+  void pause(unsigned seconds) override;
 };
 
 } // namespace bustaferl

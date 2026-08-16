@@ -13,6 +13,9 @@
 
 namespace bustaferl {
 
+// How often pause() samples the boot button while waiting.
+constexpr unsigned BUTTON_POLL_MS = 20;
+
 WakeCause Esp32Sleep::wakeupCause() {
   switch (esp_sleep_get_wakeup_cause()) {
   case ESP_SLEEP_WAKEUP_UNDEFINED:
@@ -92,6 +95,24 @@ void Esp32Sleep::lightSleep(unsigned seconds) {
   Serial.printf(
       "[sleep] light sleep returned err=%d after %lld ms (asked %u s)\n",
       static_cast<int>(err), static_cast<long long>(slept_ms), seconds);
+}
+
+void Esp32Sleep::pause(unsigned seconds) {
+  // Plain wait, no power-down — see ISleep::pause() for why the cycle no
+  // longer light-sleeps here.
+  //
+  // Polls the boot button so a press still cuts the wait short, which is what
+  // the light sleep's GPIO wake used to provide (GPIO 0 is active-low). The
+  // 20 ms cadence makes the response no worse than before; classifyPress()
+  // downstream does the short/long/double discrimination.
+  const int64_t deadline_us =
+      esp_timer_get_time() + static_cast<int64_t>(seconds) * 1000000;
+  while (esp_timer_get_time() < deadline_us) {
+    if (digitalRead(BTN_BOOT_PIN) == LOW) {
+      return;
+    }
+    delay(BUTTON_POLL_MS);
+  }
 }
 
 } // namespace bustaferl

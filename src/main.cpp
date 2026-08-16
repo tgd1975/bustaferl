@@ -132,10 +132,10 @@ void setup() {
 
 void loop() {
   // Active-phase polling: runWarmCycle set us up for
-  // lightSleep(POLL_INTERVAL_S) and we get here when it returns — either
-  // on timer, or because the boot button was pressed (configured as a GPIO
-  // wake source). Check the button first so a long press during active
-  // mode still resets the panel.
+  // pause(POLL_INTERVAL_S) and we get here when it returns — either because
+  // the interval elapsed, or because the boot button was pressed (pause()
+  // polls the pin and returns early). Check the button first so a long press
+  // during active mode still resets the panel.
   PersistedMeta meta = g_store.loadMeta();
   CycleDeps deps = makeDeps();
   pollButtonAndRunWarm(deps, g_button, meta);
