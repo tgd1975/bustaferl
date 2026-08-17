@@ -11,6 +11,11 @@
 // This proves the WakeCause enum mapping that gates the cold-vs-warm branch
 // in main.cpp's setup(); the deep-sleep CALL itself is just one esp-idf
 // function and would be exercised by an integration run, not a unit test.
+//
+// NOTE: Esp32Sleep::lightSleep() exists only for this file — it is not on
+// ISleep and the cycle never calls it, because its exit path RTC-watchdog-
+// resets the chip on ~1.5% of sleeps (see ISleep::pause()). Used here it is
+// harmless: a failed exit would fail the run loudly, not corrupt a result.
 
 #include "hal/Esp32Sleep.h"
 
@@ -39,7 +44,7 @@ void test_after_light_sleep_reports_timer() {
   // is the deep-sleep timer-wake case modulo the chip reset.
   Serial.println("[sleep] entering 1 s light sleep ...");
   uint32_t t0 = millis();
-  g_sleep.lightSleep(1);
+  Esp32Sleep::lightSleep(1);
   uint32_t dt = millis() - t0;
   Serial.printf("[sleep] light sleep returned after %u ms\n", dt);
   TEST_ASSERT_TRUE_MESSAGE(dt >= 900 && dt <= 2000,
@@ -56,7 +61,7 @@ void test_repeated_light_sleeps_keep_reporting_timer() {
   // Sanity: the cause sticks across multiple wakes — guards against a
   // regression where the mapping accidentally resets between calls.
   for (int i = 0; i < 3; ++i) {
-    g_sleep.lightSleep(1);
+    Esp32Sleep::lightSleep(1);
     WakeCause c = g_sleep.wakeupCause();
     Serial.printf("[sleep] iter=%d wakeupCause()=%d\n", i, static_cast<int>(c));
     TEST_ASSERT_EQUAL_INT(static_cast<int>(WakeCause::Timer),

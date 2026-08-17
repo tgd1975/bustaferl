@@ -112,9 +112,9 @@ struct CycleDeps {
   const CycleConfig &cfg;
   // True when this cycle runs after a deep-sleep wake (setup() entry), where
   // the panel's on-glass differential RAM can't be trusted and the first
-  // refresh must be a full, not a partial. False in the active-phase loop
-  // (light sleep keeps the panel powered), so partials stay cheap. See
-  // planRefresh().
+  // refresh must be a full, not a partial. False in the active-phase loop,
+  // which never powers down and so keeps the panel's RAM — partials stay
+  // cheap there. See planRefresh().
   bool deep_wake = false;
 };
 

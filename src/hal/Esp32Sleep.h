@@ -12,8 +12,14 @@ public:
   WakeCause wakeupCause() override;
   ResetReason lastResetReason() override;
   [[noreturn]] void deepSleep(unsigned seconds) override;
-  void lightSleep(unsigned seconds) override;
   void pause(unsigned seconds) override;
+
+  // Real light sleep — deliberately NOT part of ISleep, because the cycle
+  // must not use it (see ISleep::pause()). It survives solely as
+  // test_device_sleep's proxy for the deep-sleep wake path: a timer wake out
+  // of light sleep reports the same wakeupCause() enum as one out of deep
+  // sleep, but without the chip reset that would kill the Unity process.
+  static void lightSleep(unsigned seconds);
 };
 
 } // namespace bustaferl

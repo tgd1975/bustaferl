@@ -37,7 +37,7 @@ public:
   ResetReason lastResetReason() override { return ResetReason::Normal; }
 
   void deepSleep(unsigned seconds) override { sleepScaled(seconds); }
-  void lightSleep(unsigned seconds) override { sleepScaled(seconds); }
+  void pause(unsigned seconds) override { sleepScaled(seconds); }
 
 private:
   void sleepScaled(unsigned seconds) {

@@ -68,7 +68,7 @@ const CycleConfig g_cycle_cfg = makeCycleConfig();
 
 // `deep_wake` marks a setup()-entry cycle (fresh deep-sleep wake): the panel's
 // on-glass RAM is untrusted so the first refresh is forced full. The loop()
-// active phase reuses the powered panel across light sleep, so it leaves the
+// active phase never powers down, so it reuses the powered panel, leaves the
 // default false and keeps partials.
 CycleDeps makeDeps(bool deep_wake = false) {
   return CycleDeps{g_clock,     g_net,      g_sleep,     g_store,

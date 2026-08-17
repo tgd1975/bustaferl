@@ -449,7 +449,7 @@ void traceColdBoot(CycleDeps &deps, const StreamSnapshot &snap,
 }
 
 // Boot-check dashboard: render + deep-clean it and hold for boot_info_show_s
-// (a boot-button tap wakes the light sleep early to skip ahead to the board).
+// (a boot-button tap ends the wait early to skip ahead to the board).
 void showBootCheck(CycleDeps &deps, const PersistedMeta &meta,
                    const StreamSnapshot &snap, const ScheduleSnapshot &schedule,
                    const FetchSummary &summary, const ColdBootStats &stats) {

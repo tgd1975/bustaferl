@@ -127,9 +127,9 @@ public:
     log_.line("[sleep] deep %u s", seconds);
     inner_.deepSleep(seconds);
   }
-  void lightSleep(unsigned seconds) override {
-    log_.line("[sleep] light %u s", seconds);
-    inner_.lightSleep(seconds);
+  void pause(unsigned seconds) override {
+    log_.line("[sleep] wait %u s", seconds);
+    inner_.pause(seconds);
   }
 
 private:

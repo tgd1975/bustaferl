@@ -22,8 +22,9 @@ WakeCause Esp32Sleep::wakeupCause() {
     return WakeCause::ColdBoot;
   case ESP_SLEEP_WAKEUP_TIMER:
     return WakeCause::Timer;
-  // EXT0 fires when GPIO 0 goes LOW during deep sleep; GPIO fires for the
-  // same edge during light sleep. Both are the boot-button being pressed.
+  // EXT0 fires when GPIO 0 goes LOW during deep sleep — the live path. GPIO
+  // is the same edge out of light sleep, which only test_device_sleep still
+  // enters; kept so the mapping stays complete for that proxy.
   case ESP_SLEEP_WAKEUP_EXT0:
   case ESP_SLEEP_WAKEUP_GPIO:
     return WakeCause::Button;
@@ -71,39 +72,24 @@ void Esp32Sleep::deepSleep(unsigned seconds) {
   } // unreachable
 }
 
+// Test-only; see the declaration in Esp32Sleep.h. Not reachable from the
+// cycle, which waits via pause().
 void Esp32Sleep::lightSleep(unsigned seconds) {
   esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(seconds) * 1000000ULL);
-  // Light sleep uses the GPIO wake source (EXT0 is deep-sleep only). Wake
-  // when GPIO 0 is held LOW so a press interrupts the active-phase poll
-  // rather than waiting for the next 30 s timer.
+  // GPIO wake, because EXT0 is deep-sleep only: a press on GPIO 0 ends the
+  // sleep early rather than waiting out the timer.
   gpio_wakeup_enable(static_cast<gpio_num_t>(BTN_BOOT_PIN),
                      GPIO_INTR_LOW_LEVEL);
   esp_sleep_enable_gpio_wakeup();
-
-  // Roughly 1 in 40 light sleeps never returns: the chip comes back on
-  // RTCWDT_RTC_RESET instead, with the serial line cut mid-print at exactly
-  // this call (observed 2026-08-16, twice). Without this line the next
-  // occurrence leaves no evidence either — so record what the call actually
-  // did. esp_light_sleep_start() can reject the request outright
-  // (ESP_ERR_SLEEP_REJECT, returns immediately) or refuse a too-short
-  // duration, and both are invisible today because the result is discarded.
-  // A wake far short of `seconds` points at the wake source; no line at all
-  // after "[sleep] staying active" means the chip never came back.
-  const int64_t entered_us = esp_timer_get_time();
-  const esp_err_t err = esp_light_sleep_start();
-  const int64_t slept_ms = (esp_timer_get_time() - entered_us) / 1000;
-  Serial.printf(
-      "[sleep] light sleep returned err=%d after %lld ms (asked %u s)\n",
-      static_cast<int>(err), static_cast<long long>(slept_ms), seconds);
+  esp_light_sleep_start();
 }
 
 void Esp32Sleep::pause(unsigned seconds) {
-  // Plain wait, no power-down — see ISleep::pause() for why the cycle no
-  // longer light-sleeps here.
+  // Plain wait, no power-down — see ISleep::pause() for why.
   //
   // Polls the boot button so a press still cuts the wait short, which is what
-  // the light sleep's GPIO wake used to provide (GPIO 0 is active-low). The
-  // 20 ms cadence makes the response no worse than before; classifyPress()
+  // the GPIO wake did back when this was a light sleep (GPIO 0 is active-low).
+  // The 20 ms cadence keeps the response no worse than before; classifyPress()
   // downstream does the short/long/double discrimination.
   const int64_t deadline_us =
       esp_timer_get_time() + static_cast<int64_t>(seconds) * 1000000;

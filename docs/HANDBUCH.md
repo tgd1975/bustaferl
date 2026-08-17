@@ -248,7 +248,7 @@ wake_at = t_ref − 15 min − 30 s Boot-Margin
 ```
 
 - Bleibt mehr als **2 min** bis `wake_at` → **Tiefschlaf** (< 50 µA)
-- Weniger als 2 min → **durchgängig wach**, Light Sleep zwischen Polls
+- Weniger als 2 min → **durchgängig wach**, 30-s-Wartezeit zwischen Polls
 - Wake-Punkt liegt in der Vergangenheit → **sofort wach**, regulärer 30-s-Poll
 
 Während des Tiefschlafs bleibt der letzte Render auf dem Display
