@@ -105,4 +105,21 @@ FetchOutcome fetchPostWithRetry(INetwork &net, const std::string &url,
   });
 }
 
+#ifndef NATIVE_BUILD
+FetchOutcome fetchPostStreamWithRetry(INetwork &net, const std::string &url,
+                                      const std::string &request_body,
+                                      const std::string &content_type,
+                                      INetwork::StreamConsumer consumer,
+                                      const FetchConfig &cfg) {
+  // Same classification/backoff policy as the buffered variants; the body
+  // never exists as a string, so runRetryLoop's `body` stays an unused stub.
+  // A retried attempt re-invokes `consumer`, which is safe because the HAFAS
+  // parser resets its outputs on entry.
+  std::string unused;
+  return runRetryLoop(unused, cfg, [&](std::string &) {
+    return net.httpPostStream(url, request_body, content_type, consumer);
+  });
+}
+#endif
+
 } // namespace bustaferl

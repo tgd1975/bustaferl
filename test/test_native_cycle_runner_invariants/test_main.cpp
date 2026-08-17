@@ -113,9 +113,9 @@ void test_cold_happy_always_deep_cleans_exactly_once() {
   TEST_ASSERT_EQUAL(1, p.display.deep_clean_calls);
 }
 
-// Property: light-sleep is the active-phase tool only. The warm cycle in
-// the steady-state (next-bus-far-away) path must deepSleep, not lightSleep.
-// A lightSleep here would burn battery during the overnight pause.
+// Property: staying awake is the active-phase tool only. The warm cycle in
+// the steady-state (next-bus-far-away) path must deepSleep, not pause().
+// A pause() here would hold the chip awake through the overnight quiet.
 void test_warm_in_quiet_period_uses_deep_sleep() {
   Probe p(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true,
           WakeCause::Timer);
@@ -123,7 +123,7 @@ void test_warm_in_quiet_period_uses_deep_sleep() {
   runWarmCycle(deps, p.meta);
   // With an empty StreamSnapshot (the parse of "{}" produces nothing
   // departable), planSleep falls back to NO_DATA_SLEEP_S — a deepSleep.
-  TEST_ASSERT_EQUAL(0, p.sleep.light_sleep_calls);
+  TEST_ASSERT_EQUAL(0, p.sleep.pause_calls);
   TEST_ASSERT_EQUAL(1, p.sleep.deep_sleep_calls);
 }
 
@@ -190,6 +190,50 @@ void test_cold_only_when_no_board() {
   }
 }
 
+// --- showBrownoutScreen: one-shot overlay for an unplanned reset ----------
+
+// Normal reset (power-on / deep-sleep wake / deliberate software reset) is
+// the overwhelmingly common case — must be a total no-op, no display calls
+// and no extra sleep, so it never taxes the panel on ordinary boots.
+void test_brownout_screen_noop_on_normal_reset() {
+  Probe p(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true,
+          WakeCause::Timer);
+  p.sleep.setResetReason(ResetReason::Normal);
+  CycleDeps deps = p.deps();
+  showBrownoutScreen(deps, ResetReason::Normal);
+  TEST_ASSERT_EQUAL(0, p.display.deep_clean_calls);
+  TEST_ASSERT_EQUAL(0, p.sleep.pause_calls);
+}
+
+// A brownout or watchdog/panic reset shows the overlay exactly once: one
+// deep-clean push, one light sleep for the configured duration.
+void test_brownout_screen_shows_once_on_unplanned_reset() {
+  for (ResetReason reason :
+       {ResetReason::Brownout, ResetReason::WatchdogOrPanic,
+        ResetReason::Other}) {
+    Probe p(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true,
+            WakeCause::Timer);
+    CycleDeps deps = p.deps();
+    showBrownoutScreen(deps, reason);
+    TEST_ASSERT_EQUAL(1, p.display.deep_clean_calls);
+    TEST_ASSERT_EQUAL(1, p.sleep.pause_calls);
+    TEST_ASSERT_EQUAL(static_cast<unsigned>(p.cfg.brownout_show_s),
+                      p.sleep.last_pause_seconds);
+  }
+}
+
+// brownout_show_s == 0 disables the overlay even for an unplanned reset —
+// the escape hatch a deployment can use to skip the extra light-sleep delay.
+void test_brownout_screen_disabled_by_zero_show_s() {
+  Probe p(/*wifi_ok=*/true, /*http_ok=*/true, /*synced=*/true,
+          WakeCause::Timer);
+  p.cfg.brownout_show_s = 0;
+  CycleDeps deps = p.deps();
+  showBrownoutScreen(deps, ResetReason::Brownout);
+  TEST_ASSERT_EQUAL(0, p.display.deep_clean_calls);
+  TEST_ASSERT_EQUAL(0, p.sleep.pause_calls);
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_warm_never_deep_sleeps_beyond_24h);
@@ -203,5 +247,8 @@ int main(int, char **) {
   RUN_TEST(test_timer_with_data_routes_warm);
   RUN_TEST(test_button_always_routes_button);
   RUN_TEST(test_cold_only_when_no_board);
+  RUN_TEST(test_brownout_screen_noop_on_normal_reset);
+  RUN_TEST(test_brownout_screen_shows_once_on_unplanned_reset);
+  RUN_TEST(test_brownout_screen_disabled_by_zero_show_s);
   return UNITY_END();
 }

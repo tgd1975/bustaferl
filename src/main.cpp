@@ -56,6 +56,7 @@ CycleConfig makeCycleConfig() {
   c.btn_double_click_ms = BTN_DOUBLE_CLICK_MS;
   c.diag_max_s = DIAG_MAX_S;
   c.boot_info_show_s = BOOT_INFO_SHOW_S;
+  c.brownout_show_s = BROWNOUT_SHOW_S;
   c.rescue_window_start_s = RESCUE_WINDOW_START_S;
   c.rescue_window_end_s = RESCUE_WINDOW_END_S;
   c.rescue_retry_pause_s = RESCUE_RETRY_PAUSE_S;
@@ -67,7 +68,7 @@ const CycleConfig g_cycle_cfg = makeCycleConfig();
 
 // `deep_wake` marks a setup()-entry cycle (fresh deep-sleep wake): the panel's
 // on-glass RAM is untrusted so the first refresh is forced full. The loop()
-// active phase reuses the powered panel across light sleep, so it leaves the
+// active phase never powers down, so it reuses the powered panel, leaves the
 // default false and keeps partials.
 CycleDeps makeDeps(bool deep_wake = false) {
   return CycleDeps{g_clock,     g_net,      g_sleep,     g_store,
@@ -99,6 +100,14 @@ void setup() {
   CycleDeps deps = makeDeps(/*deep_wake=*/true);
 
   WakeCause cause = g_sleep.wakeupCause();
+  // Real reset cause (brownout vs watchdog/panic vs a genuine power-on or
+  // deep-sleep wake) — distinct from WakeCause, which cannot tell those
+  // apart (see selectCycle()'s routing comment below). Persisted so the
+  // STATUS diagnostic page can show it after this one-shot overlay is gone.
+  ResetReason reset_reason = g_sleep.lastResetReason();
+  meta.last_reset_reason = reset_reason;
+  showBrownoutScreen(deps, reset_reason);
+
   // Routing lives in selectCycle() (logic/cycle_runner) so it is host-testable
   // — main.cpp is excluded from the native build. The cold (boot-screen) path
   // runs only while the device has no board to show yet (never fetched, or
@@ -123,10 +132,10 @@ void setup() {
 
 void loop() {
   // Active-phase polling: runWarmCycle set us up for
-  // lightSleep(POLL_INTERVAL_S) and we get here when it returns — either
-  // on timer, or because the boot button was pressed (configured as a GPIO
-  // wake source). Check the button first so a long press during active
-  // mode still resets the panel.
+  // pause(POLL_INTERVAL_S) and we get here when it returns — either because
+  // the interval elapsed, or because the boot button was pressed (pause()
+  // polls the pin and returns early). Check the button first so a long press
+  // during active mode still resets the panel.
   PersistedMeta meta = g_store.loadMeta();
   CycleDeps deps = makeDeps();
   pollButtonAndRunWarm(deps, g_button, meta);

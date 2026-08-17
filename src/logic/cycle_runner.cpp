@@ -172,9 +172,8 @@ void doSleepOrLoop(CycleDeps &deps, const SleepDecision &sd,
     deps.sleep.deepSleep(sd.seconds);
     return;
   }
-  CYCLE_LOG("[sleep] staying active, light sleep for %u s\n",
-            deps.cfg.poll_interval_s);
-  deps.sleep.lightSleep(deps.cfg.poll_interval_s);
+  CYCLE_LOG("[sleep] staying active, waiting %u s\n", deps.cfg.poll_interval_s);
+  deps.sleep.pause(deps.cfg.poll_interval_s);
 }
 
 SleepConfig makeSleepConfig(const CycleConfig &cfg) {
@@ -250,7 +249,7 @@ FetchCycleResult doFetchCycle(CycleDeps &deps, PersistedMeta &meta,
 // update and push one extra refresh as soon as a complete snapshot arrives.
 // The window's lower bound keeps two panel updates from landing back-to-back.
 // The button is never polled here — a press during a rescue merely ends the
-// pacing lightSleep early; the running update finishes, it is not interrupted.
+// pacing pause() early; the running update finishes, it is not interrupted.
 // Returns true iff a complete snapshot was fetched and pushed (fc replaced).
 bool runRescueFetch(CycleDeps &deps, PersistedMeta &meta,
                     const ScheduleSnapshot &schedule, FetchCycleResult &fc,
@@ -272,7 +271,7 @@ bool runRescueFetch(CycleDeps &deps, PersistedMeta &meta,
       return false;
     if (step == RescueStep::Wait) {
       ++waits;
-      deps.sleep.lightSleep(wait_s);
+      deps.sleep.pause(wait_s);
       continue;
     }
     ++attempts;
@@ -285,7 +284,7 @@ bool runRescueFetch(CycleDeps &deps, PersistedMeta &meta,
       renderAndPush(deps, fc.state, fc.snap, meta, schedule);
       return true;
     }
-    deps.sleep.lightSleep(static_cast<unsigned>(rc.retry_pause_s));
+    deps.sleep.pause(static_cast<unsigned>(rc.retry_pause_s));
   }
   return false;
 }
@@ -400,6 +399,7 @@ DiagView buildDiagView(CycleDeps &deps, const PersistedMeta &meta,
   v.partial_count = meta.partial_count;
   v.last_light_full = meta.last_light_full;
   v.last_deep_clean = meta.last_deep_clean;
+  v.last_reset_reason = meta.last_reset_reason;
   probeSystem(v);
   v.trace = deps.store.loadTrace();
   return v;
@@ -449,7 +449,7 @@ void traceColdBoot(CycleDeps &deps, const StreamSnapshot &snap,
 }
 
 // Boot-check dashboard: render + deep-clean it and hold for boot_info_show_s
-// (a boot-button tap wakes the light sleep early to skip ahead to the board).
+// (a boot-button tap ends the wait early to skip ahead to the board).
 void showBootCheck(CycleDeps &deps, const PersistedMeta &meta,
                    const StreamSnapshot &snap, const ScheduleSnapshot &schedule,
                    const FetchSummary &summary, const ColdBootStats &stats) {
@@ -458,7 +458,7 @@ void showBootCheck(CycleDeps &deps, const PersistedMeta &meta,
   DiagView v = buildBootCheckView(deps, meta, snap, schedule, summary, stats);
   renderBootCheck(v, deps.curr);
   deps.display.deepClean(deps.curr.data());
-  deps.sleep.lightSleep(static_cast<unsigned>(deps.cfg.boot_info_show_s));
+  deps.sleep.pause(static_cast<unsigned>(deps.cfg.boot_info_show_s));
 }
 
 // Render/clean/sleep tail of the cold cycle. Split from runColdCycle to keep
@@ -616,6 +616,32 @@ void showBootScreen(CycleDeps &deps, const PersistedMeta &meta) {
   in.firmware_version = DISPLAY_VERSION_STR;
   deps.renderer.render(in, deps.curr);
   deps.display.lightFull(deps.curr.data());
+}
+
+namespace {
+const char *resetReasonText(ResetReason reason) {
+  switch (reason) {
+  case ResetReason::Brownout:
+    return "BROWNOUT";
+  case ResetReason::WatchdogOrPanic:
+    return "WATCHDOG/PANIC";
+  case ResetReason::Other:
+    return "RESET";
+  case ResetReason::Normal:
+  default:
+    return "";
+  }
+}
+} // namespace
+
+void showBrownoutScreen(CycleDeps &deps, ResetReason reason) {
+  if (reason == ResetReason::Normal || deps.cfg.brownout_show_s <= 0) {
+    return;
+  }
+  CYCLE_LOG("[boot] unplanned reset, reason=%d\n", static_cast<int>(reason));
+  renderBrownoutScreen(resetReasonText(reason), deps.curr);
+  deps.display.deepClean(deps.curr.data());
+  deps.sleep.pause(static_cast<unsigned>(deps.cfg.brownout_show_s));
 }
 
 void runColdCycle(CycleDeps &deps, PersistedMeta &meta) {
@@ -964,8 +990,8 @@ void pollButtonAndRunWarm(CycleDeps &deps, IButton &btn, PersistedMeta &meta) {
                                   deps.cfg.btn_double_click_ms);
     if (p == ButtonPress::Long) {
       // Long fires at the timeout while still held — drain the hold before the
-      // reset + the warm cycle's light-sleep re-arms the GPIO wake, else the
-      // held-LOW line wakes it again for a second reset.
+      // reset, else the still-LOW line ends the warm cycle's next pause()
+      // immediately and we get a second reset.
       waitForRelease(btn);
       runBwReset(deps, meta);
     } else if (p == ButtonPress::Double) {

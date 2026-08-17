@@ -9,7 +9,7 @@ gegen die echten Wiener-Linien-Endpoints fährt. Refactor-Plan §9.
 - Cycle-Logik unter realer HTTP-Latenz und realen JSON-Responses (deckt
   Klassen ab, die der `test_native_*`-Bucket mit Fake-`INetwork` nicht
   sehen kann — Header-Encoding-Edge-Cases, EFA-Mapping gegen Live-Daten,
-  Timing der `lightSleep`/`deepSleep`-Übergänge in Wandzeit).
+  Timing der `pause`/`deepSleep`-Übergänge in Wandzeit).
 - Heap-Profil über viele Cycles in einem Prozess (valgrind +
   `make native-runtime-smoke`). Leaks im Render-Pfad korrelieren mit der
   PGM-Anzahl im Dump-Verzeichnis.

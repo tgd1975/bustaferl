@@ -66,6 +66,12 @@ struct RenderInput {
 // Both targets exercise the same render/* code.
 void renderFrame(const RenderInput &in, Frame &fb);
 
+// One-shot inverted overlay for an unplanned reset (display_state.h). Its own
+// frame-level entry point, parallel to renderFrame — not a DisplayState since
+// it is never the merged-data board, just a transient screen shown once
+// before the caller's normal cycle continues.
+void renderBrownoutScreen(const char *reason_text, Frame &fb);
+
 // Debug stamp (UPDATE_STAMP_ENABLED): overdraws a small "upd HH:MM" bottom-
 // right of an already-rendered frame — the time the panel content last
 // actually changed. Clears its own background, so overwriting an older stamp

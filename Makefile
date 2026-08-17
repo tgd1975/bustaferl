@@ -14,6 +14,7 @@
         test-longterm-wake test-longterm-soak-5min test-longterm-soak-15min \
         test-longterm-soak-1h test-longterm-horizon-scan \
         test-longterm-horizon-evening test-longterm-day-full \
+        test-longterm-reset-watch \
         native-runtime-build native-runtime-smoke native-runtime-day \
         native-runtime-massif native-runtime-https-smoke \
         mockview-1 mockview-5 mockview-6 mockview-7 mockview-8 \
@@ -219,6 +220,28 @@ test-longterm-day-full:                       ## ~24 h pre-release, unattended o
 	@mkdir -p $(TMP)
 	$(PIO) test -e longterm-day-full -v --json-output-path $(TMP)/longterm-day-full.json
 	@$(call write-meta,longterm-day-full,$(TMP)/longterm-day-full.json)
+
+# Flashes the PRODUCTION firmware (not a Unity test env) and watches its
+# serial output for unplanned resets (brownout/watchdog/panic) over a real
+# deep-sleep cycle — the field symptom none of the test_longterm_* envs can
+# see, because a chip reset kills their Unity process along with the rest of
+# RAM. See scripts/soak_reset_watch.py.
+# RESET_WATCH_HOURS overrides the default 8h watch, e.g.
+#   make test-longterm-reset-watch RESET_WATCH_HOURS=12
+# RESET_WATCH_GAP_S is the silent-gap alarm threshold. Serial goes quiet for
+# the whole deep sleep, and planSleep() sleeps until 15 min before the next
+# departure (NO_DATA_SLEEP_S = 1800 s overnight) — so anything below ~1800 s
+# flags routine off-peak sleeps as a failure. A real hang still trips it,
+# because the gap then runs until the end of the watch.
+RESET_WATCH_HOURS ?= 8
+RESET_WATCH_GAP_S ?= 2100
+test-longterm-reset-watch:                    ## ~8 h (RESET_WATCH_HOURS=n) production firmware, watches for spontaneous resets
+	@mkdir -p $(TMP)
+	@PORT=$$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | head -n1); \
+	[ -n "$$PORT" ] || { echo "[skip] no ESP32 on /dev/ttyUSB*/ttyACM*"; exit 0; }; \
+	$(PIO) run -e esp32dev -t upload --upload-port "$$PORT"; \
+	python3 scripts/soak_reset_watch.py --port "$$PORT" --hours $(RESET_WATCH_HOURS) \
+	        --gap-threshold-s $(RESET_WATCH_GAP_S)
 
 # --- Native runtime (Schritt 9 — host loop) ---
 

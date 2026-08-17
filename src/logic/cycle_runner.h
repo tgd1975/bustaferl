@@ -52,6 +52,7 @@ constexpr unsigned DEFAULT_BTN_LONG_PRESS_MS = 2000;
 constexpr unsigned DEFAULT_BTN_DOUBLE_CLICK_MS = 400;
 constexpr int DEFAULT_DIAG_MAX_S = 600;
 constexpr int DEFAULT_BOOT_INFO_SHOW_S = 15;
+constexpr int DEFAULT_BROWNOUT_SHOW_S = 4;
 
 // Endpoint URLs + tunables the cycle reads. Defaults reflect the production
 // values in config.h; host tests instantiate with empty strings and the
@@ -84,6 +85,9 @@ struct CycleConfig {
   // the boot-check dashboard duration after a cold boot (0 disables it).
   int diag_max_s = DEFAULT_DIAG_MAX_S;
   int boot_info_show_s = DEFAULT_BOOT_INFO_SHOW_S;
+  // One-shot overlay shown when this setup()-entry cycle followed an
+  // unplanned reset (see showBrownoutScreen()). 0 disables it.
+  int brownout_show_s = DEFAULT_BROWNOUT_SHOW_S;
   // Rescue fetch (logic/rescue_policy.h): when a cycle rendered with an
   // incomplete snapshot, re-fetch inside this window after the display update
   // and push one extra update as soon as the data is complete.
@@ -108,9 +112,9 @@ struct CycleDeps {
   const CycleConfig &cfg;
   // True when this cycle runs after a deep-sleep wake (setup() entry), where
   // the panel's on-glass differential RAM can't be trusted and the first
-  // refresh must be a full, not a partial. False in the active-phase loop
-  // (light sleep keeps the panel powered), so partials stay cheap. See
-  // planRefresh().
+  // refresh must be a full, not a partial. False in the active-phase loop,
+  // which never powers down and so keeps the panel's RAM — partials stay
+  // cheap there. See planRefresh().
   bool deep_wake = false;
 };
 
@@ -137,6 +141,15 @@ enum class CycleKind : std::uint8_t {
 // with no boot screen.
 CycleKind selectCycle(WakeCause cause, uint8_t cold_boot_retries,
                       bool has_any_data);
+
+// One-shot overlay for a setup()-entry cycle (deep_wake) that followed an
+// unplanned reset: briefly shows an inverted "BROWNOUT" / "WATCHDOG/PANIC"
+// screen before the caller proceeds to runColdCycle/runWarmCycle as
+// selectCycle() routed it. No-op when `reason` is Normal or
+// cfg.brownout_show_s <= 0. Called once from main.cpp's setup(), before the
+// cold/warm/button dispatch, so it never fires from the loop()-driven warm
+// polls (deep_wake is false there).
+void showBrownoutScreen(CycleDeps &deps, ResetReason reason);
 
 // Decides whether the next sleep is long enough + last clean is old enough to
 // promote the upcoming partial to a full deep clean. Pure data, host-testable.

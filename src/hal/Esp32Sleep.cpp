@@ -4,11 +4,17 @@
 
 #include "../config.h"
 
+#include <Arduino.h>
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
+#include <esp_timer.h>
 
 namespace bustaferl {
+
+// How often pause() samples the boot button while waiting.
+constexpr unsigned BUTTON_POLL_MS = 20;
 
 WakeCause Esp32Sleep::wakeupCause() {
   switch (esp_sleep_get_wakeup_cause()) {
@@ -16,13 +22,32 @@ WakeCause Esp32Sleep::wakeupCause() {
     return WakeCause::ColdBoot;
   case ESP_SLEEP_WAKEUP_TIMER:
     return WakeCause::Timer;
-  // EXT0 fires when GPIO 0 goes LOW during deep sleep; GPIO fires for the
-  // same edge during light sleep. Both are the boot-button being pressed.
+  // EXT0 fires when GPIO 0 goes LOW during deep sleep — the live path. GPIO
+  // is the same edge out of light sleep, which only test_device_sleep still
+  // enters; kept so the mapping stays complete for that proxy.
   case ESP_SLEEP_WAKEUP_EXT0:
   case ESP_SLEEP_WAKEUP_GPIO:
     return WakeCause::Button;
   default:
     return WakeCause::Other;
+  }
+}
+
+ResetReason Esp32Sleep::lastResetReason() {
+  switch (esp_reset_reason()) {
+  case ESP_RST_POWERON:
+  case ESP_RST_DEEPSLEEP:
+  case ESP_RST_SW:
+    return ResetReason::Normal;
+  case ESP_RST_BROWNOUT:
+    return ResetReason::Brownout;
+  case ESP_RST_TASK_WDT:
+  case ESP_RST_INT_WDT:
+  case ESP_RST_WDT:
+  case ESP_RST_PANIC:
+    return ResetReason::WatchdogOrPanic;
+  default:
+    return ResetReason::Other;
   }
 }
 
@@ -47,15 +72,33 @@ void Esp32Sleep::deepSleep(unsigned seconds) {
   } // unreachable
 }
 
+// Test-only; see the declaration in Esp32Sleep.h. Not reachable from the
+// cycle, which waits via pause().
 void Esp32Sleep::lightSleep(unsigned seconds) {
   esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(seconds) * 1000000ULL);
-  // Light sleep uses the GPIO wake source (EXT0 is deep-sleep only). Wake
-  // when GPIO 0 is held LOW so a press interrupts the active-phase poll
-  // rather than waiting for the next 30 s timer.
+  // GPIO wake, because EXT0 is deep-sleep only: a press on GPIO 0 ends the
+  // sleep early rather than waiting out the timer.
   gpio_wakeup_enable(static_cast<gpio_num_t>(BTN_BOOT_PIN),
                      GPIO_INTR_LOW_LEVEL);
   esp_sleep_enable_gpio_wakeup();
   esp_light_sleep_start();
+}
+
+void Esp32Sleep::pause(unsigned seconds) {
+  // Plain wait, no power-down — see ISleep::pause() for why.
+  //
+  // Polls the boot button so a press still cuts the wait short, which is what
+  // the GPIO wake did back when this was a light sleep (GPIO 0 is active-low).
+  // The 20 ms cadence keeps the response no worse than before; classifyPress()
+  // downstream does the short/long/double discrimination.
+  const int64_t deadline_us =
+      esp_timer_get_time() + static_cast<int64_t>(seconds) * 1000000;
+  while (esp_timer_get_time() < deadline_us) {
+    if (digitalRead(BTN_BOOT_PIN) == LOW) {
+      return;
+    }
+    delay(BUTTON_POLL_MS);
+  }
 }
 
 } // namespace bustaferl

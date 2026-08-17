@@ -120,6 +120,12 @@
 // the departure board. A boot-button tap skips it early; 0 disables it.
 #define BOOT_INFO_SHOW_S 15
 
+// Inverted "BROWNOUT" / "WATCHDOG/PANIC" overlay shown for this many seconds
+// after an unplanned reset (ISleep::ResetReason != Normal), before the boot
+// or warm cycle continues as usual. A boot-button tap skips it early; 0
+// disables it.
+#define BROWNOUT_SHOW_S 4
+
 // Behaviour thresholds (seconds unless noted).
 #define STALE_THRESHOLD_S 180  // 3 min until stale state
 #define WAKE_BEFORE_BUS_S 900  // 15 min safety lead

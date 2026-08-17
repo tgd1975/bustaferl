@@ -12,7 +12,8 @@ void Esp32Button::init() {
   // the button wakes reliably from deep sleep. That hold freezes the pad, so on
   // the way back up we must release it before the digital-domain pinMode takes
   // over — otherwise digitalRead() reads the frozen RTC config, not the live
-  // line. Harmless when no hold is active (e.g. after a light-sleep wake).
+  // line. Harmless when no hold is active (e.g. on an active-phase re-init,
+  // which never went through deep sleep).
   const gpio_num_t pad = static_cast<gpio_num_t>(pin_);
   if (rtc_gpio_is_valid_gpio(pad)) {
     rtc_gpio_hold_dis(pad);

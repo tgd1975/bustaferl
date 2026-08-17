@@ -48,8 +48,8 @@ struct RefreshConfig {
 // have dropped and a fast-partial-update panel (UC8176) would render garbage
 // everywhere outside the freshly-written bbox. When set, a would-be Partial is
 // promoted to LightFull so the whole panel is rewritten from a known state.
-// Light-sleep polls keep the panel powered, so the active-phase caller leaves
-// this false and partials stay cheap.
+// The active phase never powers down between polls, so the panel keeps its
+// RAM and that caller leaves this false — partials stay cheap.
 RefreshDecision planRefresh(const uint8_t *prev, const uint8_t *curr,
                             bool prev_valid, time_t now, time_t last_light_full,
                             uint16_t partial_count, const RefreshConfig &cfg,

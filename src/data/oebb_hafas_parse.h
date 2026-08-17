@@ -7,6 +7,10 @@
 #include <ctime>
 #include <string>
 
+#ifndef NATIVE_BUILD
+#include <Stream.h>
+#endif
+
 namespace bustaferl {
 
 // Single-stream filter for one HAFAS `mgate.exe` StationBoard request. The
@@ -50,6 +54,20 @@ struct OebbParseResult {
 //     uses this to drive the Auth screen.
 bool parseOebbStationBoard(const std::string &json, time_t now,
                            StreamData &out_stream, OebbParseResult &result);
+
+#ifndef NATIVE_BUILD
+// Streaming overload: ArduinoJson pulls the body straight off the HTTP
+// stream, so the ~30 KB response is never buffered in a std::string. That
+// buffer was the last big contiguous allocation in a cycle and the one that
+// aborted the chip when the server chunked the response (no Content-Length →
+// geometric string growth → operator new failure → std::terminate).
+//
+// Fully-qualified `::Stream` because bustaferl has its own `Stream` enum
+// (StreamSnapshot.h) — unqualified lookup inside the namespace finds that
+// enum first and the Arduino class second.
+bool parseOebbStationBoard(::Stream &json, time_t now, StreamData &out_stream,
+                           OebbParseResult &result);
+#endif
 
 } // namespace bustaferl
 

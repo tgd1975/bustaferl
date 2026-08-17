@@ -201,7 +201,7 @@ sequenceDiagram
     end
 
     CR->>ST: saveMeta(meta)
-    CR->>M: deepSleep(n s) bzw. lightSleep(30 s) wenn Active
+    CR->>M: deepSleep(n s) bzw. pause(30 s) wenn Active
 ```
 
 ## Zustandsmaschine — Sonderfälle
@@ -273,7 +273,7 @@ stateDiagram-v2
     WarmCycle --> DeepSleep: keine Abfahrten (api_ok) → 30 min
     WarmCycle --> DeepSleep: nächster Bus fern → bis 15 min davor
     WarmCycle --> Active: nächster Bus unter 2 min
-    Active --> WarmCycle: lightSleep 30 s, dann neu pollen
+    Active --> WarmCycle: pause 30 s, dann neu pollen
     WarmCycle --> NightlyClean: langer Schlaf geplant + 20 h ohne DeepClean
     NightlyClean --> DeepSleep: DeepClean statt Partial
 ```

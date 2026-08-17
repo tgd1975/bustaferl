@@ -146,7 +146,7 @@ void test_warm_happy_renders_and_saves_before_sleep() {
                 {"net.connect", "renderer.render", "store.saveFramebuffer",
                  "store.saveMeta", "sleep.deepSleep"});
   TEST_ASSERT_EQUAL(1, fx.sleep.deep_sleep_calls);
-  TEST_ASSERT_EQUAL(0, fx.sleep.light_sleep_calls);
+  TEST_ASSERT_EQUAL(0, fx.sleep.pause_calls);
   TEST_ASSERT_EQUAL(1, fx.renderer.calls);
   TEST_ASSERT_EQUAL(1, fx.store.save_meta_calls);
 }

@@ -61,6 +61,18 @@ FetchOutcome fetchPostWithRetry(INetwork &net, const std::string &url,
                                 std::string &response_body,
                                 const FetchConfig &cfg);
 
+#ifndef NATIVE_BUILD
+// Same retry policy again, but the response is handed to `consumer` as a
+// stream instead of being buffered. `ok` means "a 2xx attempt whose consumer
+// also returned true"; a consumer that rejects a 2xx body is not retried
+// (the bytes were fine, the content was not).
+FetchOutcome fetchPostStreamWithRetry(INetwork &net, const std::string &url,
+                                      const std::string &request_body,
+                                      const std::string &content_type,
+                                      INetwork::StreamConsumer consumer,
+                                      const FetchConfig &cfg);
+#endif
+
 } // namespace bustaferl
 
 #endif

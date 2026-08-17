@@ -15,6 +15,13 @@ namespace bustaferl {
 
 namespace {
 
+// Up-front size for a buffered POST response body whose length the server
+// does not announce. Sized above the largest observed HAFAS mgate.exe reply
+// (~30 KB and slowly growing over the day) so one allocation covers the whole
+// body. Only the buffered httpPost() path needs it; httpPostStream() never
+// materialises the body at all.
+constexpr std::size_t POST_RESPONSE_RESERVE_BYTES = 48U * 1024U;
+
 // Append-only Stream that forwards into a std::string. Lets us pass `out`
 // to HTTPClient::writeToStream() so the body lands directly in its final
 // buffer — no Arduino String intermediate, so no 2x 37 KB peak (which on
@@ -225,6 +232,28 @@ void Esp32Network::addAp(const char *ssid, const char *password) {
 }
 
 bool Esp32Network::connect(unsigned timeout_ms) {
+  // Watch for the auth-failure disconnect reason during this attempt. Register
+  // once; clear the latch each call so lastFailure() reflects only this run.
+  //
+  // MUST happen before WiFi.mode() starts the driver. WiFi.onEvent() is a bare
+  // push_back onto the Arduino core's static `cbEventList` vector, with no lock
+  // of any kind, while _arduino_event_task() concurrently iterates that same
+  // vector and copies entries out of it by value (WiFiGeneric.cpp:1161). Once
+  // the driver is up, that task is live and immediately posting events
+  // (WIFI_READY/STA_START), so registering afterwards races the growth of an
+  // empty vector against a reader: the reader sees the new size with the old
+  // (freed/null) buffer, copies a garbage std::function out of it, and jumps
+  // through its manager pointer — observed on a cold boot as
+  //   Guru Meditation Error: Core 1 panic'ed (InstrFetchProhibited)
+  //   PC: 0x0f03070f  ... WiFiEventCbList::WiFiEventCbList(WiFiEventCbList
+  //   const&) <- WiFiGenericClass::_eventCallback <- _arduino_event_task
+  // Registering while the driver is still down means the list is only ever
+  // mutated with no event task running, and never again afterwards.
+  if (!event_registered_) {
+    WiFi.onEvent(onWifiEvent);
+    event_registered_ = true;
+  }
+
   // Pin the regulatory domain to Austria/ETSI (2.4 GHz channels 1-13). The
   // default world/US domain caps scanning at ch1-11, so an AP that has
   // auto-hopped to ch12/13 is invisible to the radio (observed in the field:
@@ -237,12 +266,6 @@ bool Esp32Network::connect(unsigned timeout_ms) {
                                      /*policy=*/WIFI_COUNTRY_POLICY_MANUAL};
   esp_wifi_set_country(&at_country);
 
-  // Watch for the auth-failure disconnect reason during this attempt. Register
-  // once; clear the latch each call so lastFailure() reflects only this run.
-  if (!event_registered_) {
-    WiFi.onEvent(onWifiEvent);
-    event_registered_ = true;
-  }
   g_wifi_auth_failed = false;
   last_failure_ = WifiFailure::None;
 
@@ -375,6 +398,16 @@ HttpResult Esp32Network::httpPost(const std::string &url,
                 static_cast<unsigned>(ESP.getFreeHeap()),
                 static_cast<unsigned>(
                     heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT)));
+  // Reserve the buffer BEFORE the request, while the heap is still whole.
+  // The reserve further down only fires when Content-Length is known, and
+  // HAFAS sends its large bodies chunked (getSize() == -1) — so without this
+  // the appends below climb the geometric ladder 16→32→64 KB, and the 64 KB
+  // step needs a contiguous block *after* the TLS handshake has taken its
+  // share. On a 9.5 h soak that failed ~every 3 min: operator new → no
+  // exceptions on this target → std::terminate → abort() → chip reset, inside
+  // StringAppender::write(). Sizing up front costs one transient allocation
+  // out of ~195 KB free and removes the ladder entirely.
+  out.reserve(POST_RESPONSE_RESERVE_BYTES);
   HTTPClient http;
   WiFiClientSecure client;
   client.setInsecure(); // HAFAS Let's Encrypt / DigiCert in system bundle
@@ -464,6 +497,58 @@ bool Esp32Network::httpGetStream(const std::string &url,
   Serial.printf("[net] STREAM HTTP %d, consumer=%s heap_after=%u\n", code,
                 ok ? "ok" : "fail", static_cast<unsigned>(ESP.getFreeHeap()));
   return ok;
+}
+
+HttpResult Esp32Network::httpPostStream(const std::string &url,
+                                        const std::string &body,
+                                        const std::string &content_type,
+                                        StreamConsumer consumer) {
+  Serial.printf("[net] STREAM POST %s (%u B) heap_free=%u largest=%u\n",
+                url.c_str(), static_cast<unsigned>(body.size()),
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(
+                    heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT)));
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure(); // HAFAS Let's Encrypt / DigiCert in system bundle
+  if (!http.begin(client, url.c_str())) {
+    Serial.println("[net] http.begin() failed");
+    return {false, 0};
+  }
+  http.setTimeout(8000);
+  http.addHeader("Content-Type", content_type.empty()
+                                     ? String("application/json")
+                                     : String(content_type.c_str()));
+  int code =
+      http.POST(reinterpret_cast<uint8_t *>(const_cast<char *>(body.data())),
+                body.size());
+  if (code < 200 || code >= 300) {
+    Serial.printf("[net] HTTP %d (non-2xx, aborting)\n", code);
+    http.end();
+    return {false, code > 0 ? code : 0};
+  }
+  int content_length = http.getSize();
+  WiFiClient *raw = http.getStreamPtr();
+  if (!raw) {
+    Serial.println("[net] getStreamPtr() returned null");
+    http.end();
+    return {false, code};
+  }
+  bool ok;
+  if (content_length < 0) {
+    // HAFAS sends the big StationBoard bodies chunked. getStreamPtr() hands
+    // out the raw TCP bytes (HTTPClient only decodes chunking inside
+    // writeToStream/getString), so strip the framing before the consumer.
+    ChunkedDecodingStream chunked(*raw, 8000);
+    ok = consumer(chunked);
+  } else {
+    BlockingClientStream blocking(*raw, 8000);
+    ok = consumer(blocking);
+  }
+  http.end();
+  Serial.printf("[net] STREAM POST HTTP %d, consumer=%s heap_after=%u\n", code,
+                ok ? "ok" : "fail", static_cast<unsigned>(ESP.getFreeHeap()));
+  return {ok, code};
 }
 
 } // namespace bustaferl

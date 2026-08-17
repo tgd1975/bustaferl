@@ -1,6 +1,7 @@
 #ifndef BUSTAFERL_DATA_DIAGVIEW_H
 #define BUSTAFERL_DATA_DIAGVIEW_H
 
+#include "../hal/ISleep.h" // ResetReason
 #include "CycleTrace.h"
 #include "ScheduleHint.h"
 #include "StreamSnapshot.h"
@@ -37,6 +38,7 @@ struct DiagView {
   std::uint32_t heap_free_kb = 0;
   std::uint32_t heap_largest_kb = 0;
   std::uint32_t uptime_s = 0;
+  ResetReason last_reset_reason = ResetReason::Normal;
 
   // --- Panel state (DATA page) ---
   std::uint16_t partial_count = 0;
